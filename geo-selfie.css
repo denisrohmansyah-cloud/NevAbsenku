@@ -1,0 +1,60 @@
+/* =========================================================
+   NEV ABSENKU — Tambahan: Lokasi Kantor (Geofencing) & Selfie
+   File terpisah, tidak mengubah tampilan lama, hanya menambah
+   style untuk peta lokasi kantor dan modal selfie absensi.
+========================================================= */
+
+.office-map{
+    height: 340px;
+    width: 100%;
+    border-radius: 12px;
+    margin: 15px 0;
+    border: 1px solid #eee;
+    z-index: 1;
+}
+
+/* Marker kantor kustom pada peta */
+.office-marker-icon{
+    font-size: 26px;
+    text-align: center;
+    line-height: 1;
+    filter: drop-shadow(0 2px 2px rgba(0,0,0,.35));
+}
+
+.selfie-frame{
+    position: relative;
+    width: 100%;
+    max-width: 360px;
+    aspect-ratio: 4 / 3;
+    margin: 15px auto;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #111;
+}
+
+.selfie-frame video,
+.selfie-frame img{
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transform: scaleX(-1); /* tampilan cermin, natural untuk selfie */
+}
+
+.proof-thumb{
+    width: 34px;
+    height: 34px;
+    object-fit: cover;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid #ddd;
+    transition: transform .15s ease;
+}
+
+.proof-thumb:hover{
+    transform: scale(1.15);
+}
+
+#selfieModal .modal-box{
+    max-width: 420px;
+}

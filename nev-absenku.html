@@ -1,0 +1,5333 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEV Absenku</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<link rel="stylesheet"
+href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+<!-- QR Generator -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<!-- QR Scanner -->
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+<!-- Excel -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+<!-- PDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+<!-- Peta lokasi kantor (Geofencing) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- File tambahan: lokasi (geofencing) & selfie -->
+<link rel="stylesheet" href="geo-selfie.css">
+
+<style>
+:root{
+    --red:#e50914;
+    --red-dark:#b80710;
+    --black:#101010;
+    --black2:#181818;
+    --white:#ffffff;
+    --gray:#f4f4f5;
+    --gray2:#e5e7eb;
+    --text:#171717;
+    --muted:#737373;
+    --green:#16a34a;
+    --orange:#f59e0b;
+    --blue:#2563eb;
+    --danger:#dc2626;
+    --sidebar:260px;
+}
+
+*{
+    box-sizing:border-box;
+    margin:0;
+    padding:0;
+}
+
+body{
+    font-family:'Inter',sans-serif;
+    background:#f5f5f5;
+    color:var(--text);
+}
+
+button,input,select,textarea{
+    font-family:inherit;
+}
+
+button{
+    cursor:pointer;
+}
+
+.hidden{
+    display:none!important;
+}
+
+/* LOGIN */
+
+.login-screen{
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:
+        radial-gradient(circle at 20% 20%,rgba(229,9,20,.18),transparent 30%),
+        linear-gradient(135deg,#0c0c0c,#1b1b1b);
+    padding:25px;
+}
+
+.login-box{
+    width:100%;
+    max-width:1000px;
+    min-height:580px;
+    background:white;
+    border-radius:25px;
+    overflow:hidden;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    box-shadow:0 25px 80px rgba(0,0,0,.35);
+}
+
+.login-brand{
+    background:var(--black);
+    color:white;
+    padding:55px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+}
+
+.logo-circle{
+    width:75px;
+    height:75px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin-bottom:25px;
+    overflow:hidden;
+}
+
+.logo-circle img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.login-brand h1{
+    font-size:42px;
+    margin-bottom:12px;
+}
+
+.login-brand p{
+    color:#cfcfcf;
+    line-height:1.7;
+}
+
+.login-features{
+    margin-top:30px;
+    display:grid;
+    gap:15px;
+}
+
+.login-feature{
+    display:flex;
+    gap:12px;
+    align-items:center;
+}
+
+.login-feature i{
+    color:#ff3b45;
+}
+
+.login-form{
+    padding:55px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+}
+
+.login-form h2{
+    font-size:28px;
+    margin-bottom:8px;
+}
+
+.login-subtitle{
+    color:var(--muted);
+    margin-bottom:28px;
+}
+
+.role-selector{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:10px;
+    margin-bottom:22px;
+}
+
+.role-btn{
+    border:1px solid var(--gray2);
+    background:white;
+    border-radius:12px;
+    padding:15px 8px;
+    font-weight:600;
+    color:#555;
+}
+
+.role-btn.active{
+    background:var(--red);
+    border-color:var(--red);
+    color:white;
+}
+
+.form-group{
+    margin-bottom:18px;
+}
+
+.form-group label{
+    display:block;
+    font-size:13px;
+    font-weight:700;
+    margin-bottom:8px;
+}
+
+.form-control{
+    width:100%;
+    border:1px solid var(--gray2);
+    border-radius:11px;
+    padding:13px 14px;
+    outline:none;
+    background:white;
+}
+
+.form-control:focus{
+    border-color:var(--red);
+    box-shadow:0 0 0 3px rgba(229,9,20,.1);
+}
+
+.btn{
+    border:0;
+    border-radius:11px;
+    padding:13px 17px;
+    font-weight:700;
+    display:inline-flex;
+    gap:9px;
+    align-items:center;
+    justify-content:center;
+    transition:.2s;
+}
+
+.btn:hover{
+    transform:translateY(-1px);
+}
+
+.btn-primary{
+    background:var(--red);
+    color:white;
+}
+
+.btn-primary:hover{
+    background:var(--red-dark);
+}
+
+.btn-dark{
+    background:var(--black);
+    color:white;
+}
+
+.btn-outline{
+    background:white;
+    color:var(--black);
+    border:1px solid var(--gray2);
+}
+
+.btn-success{
+    background:var(--green);
+    color:white;
+}
+
+.btn-danger{
+    background:var(--danger);
+    color:white;
+}
+
+.btn-warning{
+    background:var(--orange);
+    color:white;
+}
+
+.btn-blue{
+    background:var(--blue);
+    color:white;
+}
+
+.btn-block{
+    width:100%;
+}
+
+.login-register{
+    text-align:center;
+    margin-top:20px;
+    font-size:13px;
+}
+
+.link{
+    color:var(--red);
+    font-weight:700;
+    cursor:pointer;
+}
+
+/* APP */
+
+.app{
+    min-height:100vh;
+}
+
+.sidebar{
+    position:fixed;
+    left:0;
+    top:0;
+    bottom:0;
+    width:var(--sidebar);
+    background:var(--black);
+    color:white;
+    z-index:100;
+    display:flex;
+    flex-direction:column;
+}
+
+.sidebar-logo{
+    height:80px;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:0 25px;
+    border-bottom:1px solid #292929;
+}
+
+.sidebar-logo-icon{
+    width:40px;
+    height:40px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+}
+
+.sidebar-logo-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.sidebar-logo span{
+    font-weight:800;
+    font-size:18px;
+}
+
+.sidebar-menu{
+    padding:20px 12px;
+    overflow-y:auto;
+    flex:1;
+}
+
+.menu-title{
+    color:#777;
+    font-size:10px;
+    font-weight:800;
+    letter-spacing:1px;
+    padding:12px 13px 8px;
+}
+
+.menu-item{
+    display:flex;
+    align-items:center;
+    gap:13px;
+    padding:12px 14px;
+    color:#aaa;
+    border-radius:10px;
+    margin-bottom:4px;
+    cursor:pointer;
+    font-size:13px;
+    font-weight:600;
+}
+
+.menu-item i{
+    width:20px;
+    text-align:center;
+}
+
+.menu-item:hover,
+.menu-item.active{
+    background:#272727;
+    color:white;
+}
+
+.menu-item.active{
+    border-left:3px solid var(--red);
+}
+
+.sidebar-bottom{
+    padding:15px;
+    border-top:1px solid #292929;
+}
+
+.user-mini{
+    display:flex;
+    gap:10px;
+    align-items:center;
+    padding:10px;
+    margin-bottom:10px;
+}
+
+.avatar{
+    width:38px;
+    height:38px;
+    border-radius:50%;
+    background:var(--red);
+    color:white;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-weight:800;
+}
+
+.user-mini-info{
+    min-width:0;
+}
+
+.user-mini-info strong{
+    display:block;
+    font-size:12px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.user-mini-info span{
+    display:block;
+    font-size:10px;
+    color:#888;
+}
+
+.main{
+    margin-left:var(--sidebar);
+    min-height:100vh;
+}
+
+.topbar{
+    height:80px;
+    background:white;
+    border-bottom:1px solid var(--gray2);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0 30px;
+    position:sticky;
+    top:0;
+    z-index:50;
+}
+
+.topbar-title h2{
+    font-size:19px;
+}
+
+.topbar-title p{
+    color:var(--muted);
+    font-size:11px;
+    margin-top:3px;
+}
+
+.mobile-menu{
+    display:none;
+    background:none;
+    border:0;
+    font-size:21px;
+}
+
+.content{
+    padding:30px;
+}
+
+.page{
+    display:none;
+}
+
+.page.active{
+    display:block;
+}
+
+/* CARDS */
+
+.welcome{
+    background:linear-gradient(135deg,#151515,#252525);
+    color:white;
+    border-radius:20px;
+    padding:30px;
+    margin-bottom:25px;
+    position:relative;
+    overflow:hidden;
+}
+
+.welcome:after{
+    content:"";
+    width:180px;
+    height:180px;
+    position:absolute;
+    right:-50px;
+    top:-70px;
+    background:var(--red);
+    opacity:.25;
+    border-radius:50%;
+}
+
+.welcome h1{
+    font-size:27px;
+    margin-bottom:7px;
+}
+
+.welcome p{
+    color:#cfcfcf;
+    font-size:13px;
+}
+
+.stats{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:17px;
+    margin-bottom:25px;
+}
+
+.stat-card{
+    background:white;
+    border-radius:16px;
+    padding:21px;
+    border:1px solid #eee;
+}
+
+.stat-icon{
+    width:45px;
+    height:45px;
+    border-radius:12px;
+    background:#f7f7f7;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:18px;
+    margin-bottom:16px;
+}
+
+.stat-card h3{
+    font-size:25px;
+}
+
+.stat-card p{
+    color:var(--muted);
+    font-size:11px;
+    margin-top:4px;
+}
+
+.section-card{
+    background:white;
+    border:1px solid #eee;
+    border-radius:16px;
+    padding:22px;
+    margin-bottom:22px;
+}
+
+.section-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:15px;
+    margin-bottom:18px;
+}
+
+.section-header h3{
+    font-size:17px;
+}
+
+.section-header p{
+    font-size:11px;
+    color:var(--muted);
+    margin-top:3px;
+}
+
+/* GRID */
+
+.grid-2{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:20px;
+}
+
+.grid-3{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:17px;
+}
+
+.activity-card{
+    border:1px solid var(--gray2);
+    border-radius:15px;
+    padding:20px;
+    transition:.2s;
+}
+
+.activity-card:hover{
+    border-color:#bbb;
+    transform:translateY(-2px);
+}
+
+.activity-icon{
+    width:48px;
+    height:48px;
+    border-radius:13px;
+    background:#f3f3f3;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin-bottom:14px;
+    font-size:20px;
+}
+
+.activity-card h4{
+    margin-bottom:5px;
+}
+
+.activity-card p{
+    color:var(--muted);
+    font-size:11px;
+    line-height:1.6;
+}
+
+/* QR */
+
+.qr-layout{
+    display:grid;
+    grid-template-columns:1fr 360px;
+    gap:22px;
+}
+
+.qr-preview{
+    background:#fff;
+    border:1px solid var(--gray2);
+    border-radius:18px;
+    padding:30px;
+    text-align:center;
+}
+
+.qr-box{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    margin:20px auto;
+    min-height:270px;
+}
+
+.qr-info{
+    background:#f7f7f7;
+    border-radius:12px;
+    padding:14px;
+    text-align:left;
+    margin-top:15px;
+}
+
+.qr-info-row{
+    display:flex;
+    justify-content:space-between;
+    gap:15px;
+    padding:6px 0;
+    font-size:12px;
+    border-bottom:1px solid #e5e5e5;
+}
+
+.qr-info-row:last-child{
+    border-bottom:0;
+}
+
+.qr-info-row span:last-child{
+    font-weight:700;
+    text-align:right;
+}
+
+.qr-actions{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    margin-top:15px;
+}
+
+.token{
+    background:#111;
+    color:white;
+    padding:9px 12px;
+    border-radius:8px;
+    font-family:monospace;
+    font-size:12px;
+    word-break:break-all;
+}
+
+/* TABLE */
+
+.table-wrapper{
+    overflow-x:auto;
+}
+
+table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:12px;
+}
+
+th{
+    background:#f7f7f7;
+    text-align:left;
+    padding:12px;
+    font-size:11px;
+    color:#555;
+    white-space:nowrap;
+}
+
+td{
+    padding:12px;
+    border-bottom:1px solid #eee;
+    white-space:nowrap;
+}
+
+.badge{
+    display:inline-flex;
+    align-items:center;
+    padding:5px 9px;
+    border-radius:20px;
+    font-size:10px;
+    font-weight:800;
+}
+
+.badge-hadir{
+    background:#dcfce7;
+    color:#15803d;
+}
+
+.badge-izin{
+    background:#fef3c7;
+    color:#b45309;
+}
+
+.badge-sakit{
+    background:#dbeafe;
+    color:#1d4ed8;
+}
+
+.badge-alpha{
+    background:#fee2e2;
+    color:#b91c1c;
+}
+
+.badge-active{
+    background:#dcfce7;
+    color:#15803d;
+}
+
+.badge-inactive{
+    background:#eee;
+    color:#555;
+}
+
+/* FILTER */
+
+.filter-grid{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:12px;
+    margin-bottom:18px;
+}
+
+/* SCANNER */
+
+.scanner-container{
+    max-width:600px;
+    margin:auto;
+}
+
+#reader{
+    width:100%;
+    border-radius:15px;
+    overflow:hidden;
+}
+
+.scanner-status{
+    padding:15px;
+    border-radius:12px;
+    background:#f7f7f7;
+    margin-top:15px;
+    text-align:center;
+    font-size:13px;
+}
+
+/* SETTINGS */
+
+.settings-grid{
+    display:grid;
+    grid-template-columns:1fr 320px;
+    gap:20px;
+}
+
+.illustration{
+    background:linear-gradient(135deg,#151515,#2b2b2b);
+    color:white;
+    border-radius:18px;
+    padding:30px;
+    min-height:300px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+}
+
+.illustration-icon{
+    font-size:80px;
+    color:#ff2732;
+    margin-bottom:20px;
+}
+
+/* MODAL */
+
+.modal{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.6);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:1000;
+    padding:20px;
+}
+
+.modal.show{
+    display:flex;
+}
+
+.modal-box{
+    background:white;
+    width:100%;
+    max-width:520px;
+    border-radius:18px;
+    max-height:90vh;
+    overflow-y:auto;
+}
+
+.modal-header{
+    padding:20px;
+    border-bottom:1px solid #eee;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+}
+
+.modal-header h3{
+    font-size:17px;
+}
+
+.modal-close{
+    border:0;
+    background:#f2f2f2;
+    width:35px;
+    height:35px;
+    border-radius:50%;
+}
+
+.modal-body{
+    padding:20px;
+}
+
+.modal-footer{
+    padding:20px;
+    border-top:1px solid #eee;
+    display:flex;
+    justify-content:flex-end;
+    gap:10px;
+}
+
+/* TOAST */
+
+.toast-container{
+    position:fixed;
+    right:20px;
+    bottom:20px;
+    z-index:2000;
+    display:grid;
+    gap:10px;
+}
+
+.toast{
+    min-width:270px;
+    background:#111;
+    color:white;
+    padding:14px 17px;
+    border-radius:12px;
+    box-shadow:0 10px 30px rgba(0,0,0,.2);
+    font-size:12px;
+    animation:slideIn .25s;
+}
+
+.toast.success{
+    border-left:4px solid var(--green);
+}
+
+.toast.error{
+    border-left:4px solid var(--red);
+}
+
+@keyframes slideIn{
+    from{
+        transform:translateX(30px);
+        opacity:0;
+    }
+    to{
+        transform:translateX(0);
+        opacity:1;
+    }
+}
+
+/* EMPTY */
+
+.empty{
+    padding:40px;
+    text-align:center;
+    color:#999;
+}
+
+.empty i{
+    font-size:35px;
+    margin-bottom:12px;
+}
+
+/* RESPONSIVE */
+
+@media(max-width:1100px){
+    .stats{
+        grid-template-columns:repeat(2,1fr);
+    }
+
+    .qr-layout,
+    .settings-grid{
+        grid-template-columns:1fr;
+    }
+
+    .filter-grid{
+        grid-template-columns:repeat(2,1fr);
+    }
+}
+
+@media(max-width:800px){
+    :root{
+        --sidebar:0px;
+    }
+
+    .sidebar{
+        width:260px;
+        transform:translateX(-100%);
+        transition:.25s;
+    }
+
+    .sidebar.open{
+        transform:translateX(0);
+    }
+
+    .main{
+        margin-left:0;
+    }
+
+    .mobile-menu{
+        display:block;
+        margin-right:12px;
+    }
+
+    .topbar{
+        padding:0 18px;
+    }
+
+    .content{
+        padding:18px;
+    }
+
+    .grid-2,
+    .grid-3{
+        grid-template-columns:1fr;
+    }
+
+    .login-box{
+        grid-template-columns:1fr;
+    }
+
+    .login-brand{
+        display:none;
+    }
+
+    .login-form{
+        padding:30px 25px;
+    }
+}
+
+@media(max-width:550px){
+    .stats{
+        grid-template-columns:1fr 1fr;
+        gap:10px;
+    }
+
+    .stat-card{
+        padding:15px;
+    }
+
+    .stat-card h3{
+        font-size:20px;
+    }
+
+    .filter-grid{
+        grid-template-columns:1fr;
+    }
+
+    .qr-actions{
+        grid-template-columns:1fr;
+    }
+
+    .section-card{
+        padding:16px;
+    }
+
+    .role-selector{
+        grid-template-columns:1fr;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<!-- =========================================================
+LOGIN
+========================================================= -->
+
+<div id="loginScreen" class="login-screen">
+
+    <div class="login-box">
+
+        <div class="login-brand">
+
+            <div class="logo-circle">
+                <img src="Hijau Monokrom Modern Maulid Nabi Muhammad SAW Your Story_20260901_202118_0000.png" alt="NEV Logo">
+            </div>
+
+            <h1>NEV Absenku</h1>
+
+            <p>
+                Sistem absensi digital untuk mengelola
+                kehadiran staf, kegiatan, QR attendance,
+                dan rekap absensi secara terintegrasi.
+            </p>
+
+            <div class="login-features">
+
+                <div class="login-feature">
+                    <i class="fa-solid fa-circle-check"></i>
+                    <span>Absensi menggunakan QR otomatis</span>
+                </div>
+
+                <div class="login-feature">
+                    <i class="fa-solid fa-calendar"></i>
+                    <span>Jadwal kegiatan terintegrasi</span>
+                </div>
+
+                <div class="login-feature">
+                    <i class="fa-solid fa-chart-column"></i>
+                    <span>Rekap dan laporan absensi</span>
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="login-form">
+
+            <h2>Selamat Datang</h2>
+
+            <p class="login-subtitle">
+                Masuk ke akun NEV Absenku
+            </p>
+
+            <div class="role-selector">
+
+                <button class="role-btn active"
+                        onclick="selectLoginRole('STAF',this)">
+                    <i class="fa-solid fa-user"></i><br>
+                    STAF
+                </button>
+
+                <button class="role-btn"
+                        onclick="selectLoginRole('HRD',this)">
+                    <i class="fa-solid fa-user-tie"></i><br>
+                    HRD
+                </button>
+
+                <button class="role-btn"
+                        onclick="selectLoginRole('KOOR KP',this)">
+                    <i class="fa-solid fa-users-gear"></i><br>
+                    Koor KP
+                </button>
+
+            </div>
+
+            <form onsubmit="login(event)">
+
+                <div class="form-group">
+
+                    <label>Username / NIM</label>
+
+                    <input
+                        id="loginUsername"
+                        class="form-control"
+                        placeholder="Masukkan username"
+                        required
+                    >
+
+                </div>
+
+                <div class="form-group">
+
+                    <label>Password</label>
+
+                    <input
+                        id="loginPassword"
+                        type="password"
+                        class="form-control"
+                        placeholder="Masukkan password"
+                        required
+                    >
+
+                </div>
+
+                <button class="btn btn-primary btn-block">
+                    <i class="fa-solid fa-right-to-bracket"></i>
+                    Masuk
+                </button>
+
+            </form>
+
+            <div class="login-register">
+
+                Belum mempunyai akun?
+                <span class="link" onclick="openRegister()">
+                    Daftar sekarang
+                </span>
+
+            </div>
+
+            <div style="margin-top:25px;text-align:center;font-size:10px;color:#999;">
+                Demo STAF: <b>24101001</b> / <b>123456</b><br>
+                Demo HRD: <b>HRD001</b> / <b>123456</b><br>
+                Demo Koor KP: <b>KOORKP001</b> / <b>123456</b>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+APP
+========================================================= -->
+
+<div id="app" class="app hidden">
+
+    <!-- SIDEBAR -->
+
+    <aside id="sidebar" class="sidebar">
+
+        <div class="sidebar-logo">
+
+            <div class="sidebar-logo-icon">
+                <img src="Hijau Monokrom Modern Maulid Nabi Muhammad SAW Your Story_20260901_202118_0000.png" alt="NEV Logo">
+            </div>
+
+            <span>NEV Absenku</span>
+
+        </div>
+
+        <div id="sidebarMenu" class="sidebar-menu"></div>
+
+        <div class="sidebar-bottom">
+
+            <div class="user-mini">
+
+                <div id="sidebarAvatar" class="avatar">
+                    N
+                </div>
+
+                <div class="user-mini-info">
+
+                    <strong id="sidebarName">
+                        User
+                    </strong>
+
+                    <span id="sidebarRole">
+                        STAF
+                    </span>
+
+                </div>
+
+            </div>
+
+            <button
+                class="btn btn-danger btn-block"
+                onclick="logout()">
+
+                <i class="fa-solid fa-right-from-bracket"></i>
+                Keluar
+
+            </button>
+
+        </div>
+
+    </aside>
+
+
+    <!-- MAIN -->
+
+    <main class="main">
+
+        <header class="topbar">
+
+            <div style="display:flex;align-items:center;">
+
+                <button
+                    class="mobile-menu"
+                    onclick="toggleSidebar()">
+
+                    <i class="fa-solid fa-bars"></i>
+
+                </button>
+
+                <div class="topbar-title">
+
+                    <h2 id="pageTitle">
+                        Dashboard
+                    </h2>
+
+                    <p id="pageSubtitle">
+                        NEV Absenku
+                    </p>
+
+                </div>
+
+            </div>
+
+            <div id="currentDate"
+                 style="font-size:11px;color:#777;">
+            </div>
+
+        </header>
+
+
+        <div class="content">
+
+
+            <!-- =================================================
+            STAF DASHBOARD
+            ================================================= -->
+
+            <section id="page-staf-dashboard" class="page">
+
+                <div class="welcome">
+
+                    <h1>
+                        Halo, <span id="welcomeName">Staf</span> 👋
+                    </h1>
+
+                    <p>
+                        Jangan lupa melakukan absensi sesuai
+                        kegiatan yang sedang berlangsung.
+                    </p>
+
+                </div>
+
+
+                <div class="stats">
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon">
+                            <i class="fa-solid fa-calendar-check"></i>
+                        </div>
+
+                        <h3 id="stafTotalHadir">0</h3>
+                        <p>Total Kehadiran</p>
+
+                    </div>
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon">
+                            <i class="fa-solid fa-clock"></i>
+                        </div>
+
+                        <h3 id="stafTotalIzin">0</h3>
+                        <p>Izin</p>
+
+                    </div>
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon">
+                            <i class="fa-solid fa-notes-medical"></i>
+                        </div>
+
+                        <h3 id="stafTotalSakit">0</h3>
+                        <p>Sakit</p>
+
+                    </div>
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon">
+                            <i class="fa-solid fa-xmark"></i>
+                        </div>
+
+                        <h3 id="stafTotalAlpha">0</h3>
+                        <p>Alpha</p>
+
+                    </div>
+
+                </div>
+
+
+                <div class="section-card">
+
+                    <div class="section-header">
+
+                        <div>
+                            <h3>Absensi Cepat</h3>
+                            <p>
+                                Scan QR kegiatan yang tersedia
+                            </p>
+                        </div>
+
+                        <button
+                            class="btn btn-primary"
+                            onclick="showPage('staf-scan')">
+
+                            <i class="fa-solid fa-qrcode"></i>
+                            Scan QR
+
+                        </button>
+
+                    </div>
+
+
+                    <div class="grid-3">
+
+                        <div class="activity-card">
+
+                            <div class="activity-icon">
+                                <i class="fa-solid fa-people-group"></i>
+                            </div>
+
+                            <h4>Rapat Rutin</h4>
+
+                            <p>
+                                Absensi kegiatan rapat rutin
+                                menggunakan QR.
+                            </p>
+
+                        </div>
+
+
+                        <div class="activity-card">
+
+                            <div class="activity-icon">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+
+                            <h4>Ngoprek</h4>
+
+                            <p>
+                                Kegiatan Ngoprek berdasarkan
+                                divisi Networking, Cyber,
+                                atau Sysadmin.
+                            </p>
+
+                        </div>
+
+
+                        <div class="activity-card">
+
+                            <div class="activity-icon">
+                                <i class="fa-solid fa-flag"></i>
+                            </div>
+
+                            <h4>Kepanitiaan</h4>
+
+                            <p>
+                                Absensi kegiatan kepanitiaan NEV.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="section-card">
+
+                    <div class="section-header">
+
+                        <div>
+                            <h3>Absensi Terbaru</h3>
+                            <p>Riwayat absensi Anda</p>
+                        </div>
+
+                        <button
+                            class="btn btn-outline"
+                            onclick="showPage('staf-history')">
+
+                            Lihat Semua
+
+                        </button>
+
+                    </div>
+
+                    <div id="stafRecentAttendance"></div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+            STAF SCAN
+            ================================================= -->
+
+            <section id="page-staf-scan" class="page">
+
+                <div class="section-card scanner-container">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h3>
+                                <i class="fa-solid fa-qrcode"></i>
+                                Scan QR Absensi
+                            </h3>
+
+                            <p>
+                                Arahkan kamera ke QR yang
+                                dibuat oleh HRD atau Koor KP.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                    <div id="reader"></div>
+
+                    <div class="scanner-status"
+                         id="scannerStatus">
+
+                        Tekan tombol mulai untuk
+                        mengaktifkan kamera.
+
+                    </div>
+
+                    <div style="display:grid;gap:10px;margin-top:15px;">
+
+                        <button
+                            id="startScannerBtn"
+                            class="btn btn-primary"
+                            onclick="startScanner()">
+
+                            <i class="fa-solid fa-camera"></i>
+                            Mulai Scanner
+
+                        </button>
+
+                        <button
+                            class="btn btn-outline"
+                            onclick="stopScanner()">
+
+                            <i class="fa-solid fa-stop"></i>
+                            Hentikan Kamera
+
+                        </button>
+
+                    </div>
+
+                    <div style="margin:25px 0;text-align:center;color:#aaa;">
+                        atau
+                    </div>
+
+                    <div class="form-group">
+
+                        <label>
+                            Masukkan token QR secara manual
+                        </label>
+
+                        <input
+                            id="manualToken"
+                            class="form-control"
+                            placeholder="Contoh: NEV-ABS-..."
+                        >
+
+                    </div>
+
+                    <button
+                        class="btn btn-dark btn-block"
+                        onclick="processAttendance(document.getElementById('manualToken').value)">
+
+                        <i class="fa-solid fa-check"></i>
+                        Validasi Absensi
+
+                    </button>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+            STAF HISTORY
+            ================================================= -->
+
+            <section id="page-staf-history" class="page">
+
+                <div class="section-card">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h3>Riwayat Absensi</h3>
+
+                            <p>
+                                Seluruh riwayat kehadiran Anda
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                    <div id="stafHistoryTable"></div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+            STAF CALENDAR
+            ================================================= -->
+
+            <section id="page-staf-calendar" class="page">
+
+                <div class="section-card">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h3>Kalender Kegiatan</h3>
+
+                            <p>
+                                Jadwal kegiatan dan absensi
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                    <div id="staffCalendar"></div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+            STAF ACTIVITIES
+            ================================================= -->
+
+            <section id="page-staf-activities" class="page">
+
+                <div class="section-card">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h3>Kegiatan</h3>
+
+                            <p>
+                                Daftar kegiatan NEV
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                    <div class="grid-3">
+
+                        <div class="activity-card">
+
+                            <div class="activity-icon">
+                                <i class="fa-solid fa-users"></i>
+                            </div>
+
+                            <h4>Rapat Rutin</h4>
+
+                            <p>
+                                Kegiatan rapat rutin organisasi.
+                            </p>
+
+                        </div>
+
+                        <div class="activity-card">
+
+                            <div class="activity-icon">
+                                <i class="fa-solid fa-laptop-code"></i>
+                            </div>
+
+                            <h4>Ngoprek</h4>
+
+                            <p>
+                                Kegiatan teknis berdasarkan divisi.
+                            </p>
+
+                        </div>
+
+                        <div class="activity-card">
+
+                            <div class="activity-icon">
+                                <i class="fa-solid fa-list-check"></i>
+                            </div>
+
+                            <h4>Kepanitiaan</h4>
+
+                            <p>
+                                Kegiatan kepanitiaan NEV.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+            STAF - IZIN / SAKIT
+            ================================================= -->
+
+            <section id="page-staf-permit" class="page">
+
+                <div class="qr-layout">
+
+                    <div class="section-card">
+
+                        <div class="section-header">
+
+                            <div>
+
+                                <h3>
+                                    <i class="fa-solid fa-file-medical"></i>
+                                    Ajukan Izin / Sakit
+                                </h3>
+
+                                <p>
+                                    Wajib melampirkan foto bukti (surat izin/
+                                    keterangan sakit, dll). Pengajuan akan
+                                    menunggu persetujuan HRD/Koor KP. Hanya
+                                    kegiatan HARI INI yang dapat diajukan.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+
+                        <form onsubmit="submitPermit(event)">
+
+                            <div class="form-group">
+
+                                <label>Kegiatan *</label>
+
+                                <select
+                                    id="permitSession"
+                                    class="form-control"
+                                    required>
+
+                                    <option value="">
+                                        Pilih kegiatan
+                                    </option>
+
+                                </select>
+
+                                <p
+                                    id="permitNoSessionHint"
+                                    class="hidden"
+                                    style="font-size:11px;color:#b91c1c;margin-top:6px;">
+                                    Tidak ada kegiatan hari ini yang dapat diajukan izin/sakit.
+                                </p>
+
+                            </div>
+
+
+                            <div class="form-group">
+
+                                <label>Jenis *</label>
+
+                                <select
+                                    id="permitType"
+                                    class="form-control"
+                                    required>
+
+                                    <option value="Izin">Izin</option>
+                                    <option value="Sakit">Sakit</option>
+
+                                </select>
+
+                            </div>
+
+
+                            <div class="form-group">
+
+                                <label>Alasan *</label>
+
+                                <textarea
+                                    id="permitReason"
+                                    class="form-control"
+                                    rows="3"
+                                    placeholder="Jelaskan alasan izin/sakit Anda..."
+                                    required></textarea>
+
+                            </div>
+
+
+                            <div class="form-group">
+
+                                <label>Foto Bukti *</label>
+
+                                <input
+                                    id="permitPhotoInput"
+                                    class="form-control"
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    onchange="handlePermitPhotoInput(this)"
+                                    required>
+
+                                <img
+                                    id="permitPhotoPreview"
+                                    class="hidden"
+                                    style="max-width:100%;border-radius:12px;margin-top:10px;">
+
+                            </div>
+
+
+                            <button
+                                class="btn btn-primary btn-block">
+
+                                <i class="fa-solid fa-paper-plane"></i>
+                                Kirim Pengajuan
+
+                            </button>
+
+                        </form>
+
+                    </div>
+
+
+                    <div class="section-card">
+
+                        <div class="section-header">
+
+                            <div>
+                                <h3>Riwayat Pengajuan Saya</h3>
+                            </div>
+
+                        </div>
+
+                        <div id="permitHistoryTable"></div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+            HRD DASHBOARD
+            ================================================= -->
+
+            <section id="page-hrd-dashboard" class="page">
+
+                <div class="welcome">
+
+                    <h1>Dashboard HRD</h1>
+
+                    <p>
+                        Kelola seluruh data absensi NEV.
+                    </p>
+
+                </div>
+
+                <div class="stats">
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon">
+                            <i class="fa-solid fa-users"></i>
+                        </div>
+
+                        <h3 id="hrdTotalStaff">0</h3>
+
+                        <p>Total Staf</p>
+
+                    </div>
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon">
+                            <i class="fa-solid fa-circle-check"></i>
+                        </div>
+
+                        <h3 id="hrdHadir">0</h3>
+
+                        <p>Hadir</p>
+
+                    </div>
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon">
+                            <i class="fa-solid fa-clock"></i>
+                        </div>
+
+                        <h3 id="hrdIzinSakit">0</h3>
+
+                        <p>Izin / Sakit</p>
+
+                    </div>
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon">
+                            <i class="fa-solid fa-circle-xmark"></i>
+                        </div>
+
+                        <h3 id="hrdAlpha">0</h3>
+
+                        <p>Alpha</p>
+
+                    </div>
+
+                </div>
+
+
+                <div class="section-card">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h3>Absensi Terbaru</h3>
+
+                            <p>
+                                Aktivitas absensi terbaru
+                            </p>
+
+                        </div>
+
+                        <button
+                            class="btn btn-primary"
+                            onclick="showPage('hrd-qr')">
+
+                            <i class="fa-solid fa-qrcode"></i>
+                            Buat QR
+
+                        </button>
+
+                    </div>
+
+                    <div id="hrdRecentAttendance"></div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+            HRD CREATE QR
+            ================================================= -->
+
+            <section id="page-hrd-qr" class="page">
+
+                <div class="qr-layout">
+
+                    <div class="section-card">
+
+                        <div class="section-header">
+
+                            <div>
+
+                                <h3>
+                                    <i class="fa-solid fa-qrcode"></i>
+                                    Generate QR Absensi
+                                </h3>
+
+                                <p>
+                                    QR akan dibuat otomatis oleh
+                                    sistem berdasarkan data kegiatan.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+
+                        <form onsubmit="generateQR(event,'HRD')">
+
+                            <div class="grid-2">
+
+                                <div class="form-group">
+
+                                    <label>Kegiatan *</label>
+
+                                    <select
+                                        id="hrdActivity"
+                                        class="form-control"
+                                        onchange="toggleDivision('hrd')"
+                                        required>
+
+                                        <option value="">
+                                            Pilih kegiatan
+                                        </option>
+
+                                        <option value="Rapat Rutin">
+                                            Rapat Rutin
+                                        </option>
+
+                                        <option value="Ngoprek">
+                                            Ngoprek
+                                        </option>
+
+                                        <option value="Kepanitiaan">
+                                            Kepanitiaan
+                                        </option>
+
+                                    </select>
+
+                                </div>
+
+
+                                <div
+                                    id="hrdDivisionGroup"
+                                    class="form-group hidden">
+
+                                    <label>Divisi Ngoprek *</label>
+
+                                    <select
+                                        id="hrdDivision"
+                                        class="form-control">
+
+                                        <option value="">
+                                            Pilih divisi
+                                        </option>
+
+                                        <option>
+                                            Networking
+                                        </option>
+
+                                        <option>
+                                            Cyber
+                                        </option>
+
+                                        <option>
+                                            Sysadmin
+                                        </option>
+
+                                    </select>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="grid-2">
+
+                                <div class="form-group">
+
+                                    <label>Tanggal *</label>
+
+                                    <input
+                                        id="hrdDate"
+                                        type="date"
+                                        class="form-control"
+                                        required>
+
+                                </div>
+
+                                <div class="form-group">
+
+                                    <label>Lokasi</label>
+
+                                    <input
+                                        id="hrdLocation"
+                                        class="form-control"
+                                        placeholder="Contoh: Ruang NEV">
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="grid-2">
+
+                                <div class="form-group">
+
+                                    <label>Jam Mulai *</label>
+
+                                    <input
+                                        id="hrdStart"
+                                        type="time"
+                                        class="form-control"
+                                        required>
+
+                                </div>
+
+                                <div class="form-group">
+
+                                    <label>Jam Selesai *</label>
+
+                                    <input
+                                        id="hrdEnd"
+                                        type="time"
+                                        class="form-control"
+                                        required>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="form-group">
+
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                    <input type="checkbox" id="hrdGeoEnabled" onchange="toggleSessionGeofence('hrd')">
+                                    Perketat dengan Lokasi & Radius Khusus Kegiatan Ini
+                                </label>
+
+                                <p style="font-size:11px;color:#777;margin-top:4px;">
+                                    Jika diaktifkan, STAF wajib berada dalam radius titik ini saat
+                                    absen (menggantikan pengaturan Lokasi & Radius Kantor untuk
+                                    kegiatan ini saja).
+                                </p>
+
+                            </div>
+
+
+                            <div id="hrdGeoSection" class="hidden">
+
+                                <div class="office-map" id="hrdGeoMap"></div>
+
+                                <div class="grid-2">
+
+                                    <div class="form-group">
+                                        <label>Latitude</label>
+                                        <input id="hrdGeoLat" class="form-control" type="text" readonly value="-">
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Longitude</label>
+                                        <input id="hrdGeoLng" class="form-control" type="text" readonly value="-">
+                                    </div>
+
+                                </div>
+
+                                <div class="grid-2">
+
+                                    <div class="form-group">
+                                        <label>Radius (meter)</label>
+                                        <input
+                                            id="hrdGeoRadius"
+                                            class="form-control"
+                                            type="number"
+                                            min="10"
+                                            step="10"
+                                            value="100"
+                                            oninput="updateSessionRadiusPreview('hrd')">
+                                    </div>
+
+                                    <div class="form-group" style="display:flex;align-items:flex-end;">
+                                        <button
+                                            type="button"
+                                            class="btn btn-outline btn-block"
+                                            onclick="useMyLocationForSession('hrd')">
+                                            <i class="fa-solid fa-location-crosshairs"></i>
+                                            Gunakan Lokasi Saya
+                                        </button>
+                                    </div>
+
+                                </div>
+
+                                <p style="font-size:11px;color:#777;margin-bottom:15px;">
+                                    Klik pada peta atau geser marker untuk mengatur titik lokasi.
+                                </p>
+
+                            </div>
+
+
+                            <div class="form-group">
+
+                                <label>Catatan</label>
+
+                                <textarea
+                                    id="hrdNotes"
+                                    class="form-control"
+                                    rows="3"
+                                    placeholder="Catatan kegiatan..."></textarea>
+
+                            </div>
+
+
+                            <button
+                                class="btn btn-primary btn-block">
+
+                                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                Generate QR Otomatis
+
+                            </button>
+
+                        </form>
+
+                    </div>
+
+
+                    <div class="qr-preview">
+
+                        <h3>QR Absensi</h3>
+
+                        <p style="font-size:11px;color:#777;margin-top:5px;">
+                            QR yang telah dibuat akan muncul di sini.
+                        </p>
+
+                        <div id="hrdQrBox" class="qr-box">
+
+                            <div class="empty">
+                                <i class="fa-solid fa-qrcode"></i>
+                                <p>Belum ada QR</p>
+                            </div>
+
+                        </div>
+
+                        <div id="hrdQrDetails"></div>
+
+                        <div
+                            id="hrdQrActions"
+                            class="qr-actions hidden">
+
+                            <button
+                                class="btn btn-dark"
+                                onclick="downloadQR('hrd')">
+
+                                <i class="fa-solid fa-download"></i>
+                                Download
+
+                            </button>
+
+                            <button
+                                class="btn btn-outline"
+                                onclick="printQR('hrd')">
+
+                                <i class="fa-solid fa-print"></i>
+                                Print
+
+                            </button>
+
+                            <button
+                                class="btn btn-success"
+                                onclick="copyToken('hrd')">
+
+                                <i class="fa-solid fa-copy"></i>
+                                Copy Token
+
+                            </button>
+
+                            <button
+                                id="hrdToggleQRBtn"
+                                class="btn btn-warning"
+                                onclick="toggleCurrentQR('hrd')">
+
+                                Nonaktifkan
+
+                            </button>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="section-card">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h3>Session QR</h3>
+
+                            <p>
+                                QR yang pernah dibuat oleh HRD
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                    <div id="hrdQrSessions"></div>
+
+                </div>
+
+
+                <div class="section-card">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h3>Kehadiran Staf per Sesi</h3>
+
+                            <p>
+                                Lihat seluruh staf yang sudah maupun belum absen pada satu sesi QR, dan ubah statusnya secara manual.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                    <div class="form-group" style="max-width:420px;">
+
+                        <label>Pilih Sesi QR</label>
+
+                        <select
+                            id="hrdSessionAttendancePicker"
+                            class="form-control"
+                            onchange="renderSessionStaffStatus()">
+
+                            <option value="">Pilih sesi...</option>
+
+                        </select>
+
+                    </div>
+
+                    <div id="hrdSessionAttendanceTable"></div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+            KOOR KP DASHBOARD
+            ================================================= -->
+
+            <section id="page-koor-dashboard" class="page">
+
+                <div class="welcome">
+
+                    <h1>Dashboard Koor KP</h1>
+
+                    <p>
+                        Kelola QR dan absensi kegiatan Ngoprek.
+                    </p>
+
+                </div>
+
+                <div class="stats">
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon">
+                            <i class="fa-solid fa-qrcode"></i>
+                        </div>
+
+                        <h3 id="koorTotalQR">0</h3>
+
+                        <p>QR Ngoprek</p>
+
+                    </div>
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon">
+                            <i class="fa-solid fa-users"></i>
+                        </div>
+
+                        <h3 id="koorTotalHadir">0</h3>
+
+                        <p>Kehadiran</p>
+
+                    </div>
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon">
+                            <i class="fa-solid fa-network-wired"></i>
+                        </div>
+
+                        <h3 id="koorNetworking">0</h3>
+
+                        <p>Networking</p>
+
+                    </div>
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon">
+                            <i class="fa-solid fa-shield-halved"></i>
+                        </div>
+
+                        <h3 id="koorCyber">0</h3>
+
+                        <p>Cyber</p>
+
+                    </div>
+
+                </div>
+
+
+                <div class="section-card">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h3>Ngoprek</h3>
+
+                            <p>
+                                Buat QR berdasarkan divisi.
+                            </p>
+
+                        </div>
+
+                        <button
+                            class="btn btn-primary"
+                            onclick="showPage('koor-qr')">
+
+                            <i class="fa-solid fa-qrcode"></i>
+                            Buat QR Ngoprek
+
+                        </button>
+
+                    </div>
+
+                    <div class="grid-3">
+
+                        <div class="activity-card">
+
+                            <div class="activity-icon">
+                                <i class="fa-solid fa-network-wired"></i>
+                            </div>
+
+                            <h4>Networking</h4>
+
+                            <p>
+                                QR khusus kegiatan Ngoprek
+                                divisi Networking.
+                            </p>
+
+                        </div>
+
+                        <div class="activity-card">
+
+                            <div class="activity-icon">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+
+                            <h4>Cyber</h4>
+
+                            <p>
+                                QR khusus kegiatan Ngoprek
+                                divisi Cyber.
+                            </p>
+
+                        </div>
+
+                        <div class="activity-card">
+
+                            <div class="activity-icon">
+                                <i class="fa-solid fa-server"></i>
+                            </div>
+
+                            <h4>Sysadmin</h4>
+
+                            <p>
+                                QR khusus kegiatan Ngoprek
+                                divisi Sysadmin.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+            KOOR CREATE QR
+            ================================================= -->
+
+            <section id="page-koor-qr" class="page">
+
+                <div class="qr-layout">
+
+                    <div class="section-card">
+
+                        <div class="section-header">
+
+                            <div>
+
+                                <h3>
+                                    <i class="fa-solid fa-qrcode"></i>
+                                    Buat QR Ngoprek
+                                </h3>
+
+                                <p>
+                                    Koor KP hanya dapat membuat
+                                    QR untuk kegiatan Ngoprek.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+
+                        <form onsubmit="generateQR(event,'KOOR KP')">
+
+                            <div class="form-group">
+
+                                <label>Kegiatan</label>
+
+                                <input
+                                    class="form-control"
+                                    value="Ngoprek"
+                                    readonly>
+
+                            </div>
+
+
+                            <div class="form-group">
+
+                                <label>Divisi *</label>
+
+                                <select
+                                    id="koorDivision"
+                                    class="form-control"
+                                    required>
+
+                                    <option value="">
+                                        Pilih divisi
+                                    </option>
+
+                                    <option>
+                                        Networking
+                                    </option>
+
+                                    <option>
+                                        Cyber
+                                    </option>
+
+                                    <option>
+                                        Sysadmin
+                                    </option>
+
+                                </select>
+
+                            </div>
+
+
+                            <div class="grid-2">
+
+                                <div class="form-group">
+
+                                    <label>Tanggal *</label>
+
+                                    <input
+                                        id="koorDate"
+                                        type="date"
+                                        class="form-control"
+                                        required>
+
+                                </div>
+
+                                <div class="form-group">
+
+                                    <label>Lokasi</label>
+
+                                    <input
+                                        id="koorLocation"
+                                        class="form-control"
+                                        placeholder="Lokasi">
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="grid-2">
+
+                                <div class="form-group">
+
+                                    <label>Jam Mulai *</label>
+
+                                    <input
+                                        id="koorStart"
+                                        type="time"
+                                        class="form-control"
+                                        required>
+
+                                </div>
+
+                                <div class="form-group">
+
+                                    <label>Jam Selesai *</label>
+
+                                    <input
+                                        id="koorEnd"
+                                        type="time"
+                                        class="form-control"
+                                        required>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="form-group">
+
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                    <input type="checkbox" id="koorGeoEnabled" onchange="toggleSessionGeofence('koor')">
+                                    Perketat dengan Lokasi & Radius Khusus Kegiatan Ini
+                                </label>
+
+                                <p style="font-size:11px;color:#777;margin-top:4px;">
+                                    Jika diaktifkan, STAF wajib berada dalam radius titik ini saat
+                                    absen (menggantikan pengaturan Lokasi & Radius Kantor untuk
+                                    kegiatan ini saja).
+                                </p>
+
+                            </div>
+
+
+                            <div id="koorGeoSection" class="hidden">
+
+                                <div class="office-map" id="koorGeoMap"></div>
+
+                                <div class="grid-2">
+
+                                    <div class="form-group">
+                                        <label>Latitude</label>
+                                        <input id="koorGeoLat" class="form-control" type="text" readonly value="-">
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Longitude</label>
+                                        <input id="koorGeoLng" class="form-control" type="text" readonly value="-">
+                                    </div>
+
+                                </div>
+
+                                <div class="grid-2">
+
+                                    <div class="form-group">
+                                        <label>Radius (meter)</label>
+                                        <input
+                                            id="koorGeoRadius"
+                                            class="form-control"
+                                            type="number"
+                                            min="10"
+                                            step="10"
+                                            value="100"
+                                            oninput="updateSessionRadiusPreview('koor')">
+                                    </div>
+
+                                    <div class="form-group" style="display:flex;align-items:flex-end;">
+                                        <button
+                                            type="button"
+                                            class="btn btn-outline btn-block"
+                                            onclick="useMyLocationForSession('koor')">
+                                            <i class="fa-solid fa-location-crosshairs"></i>
+                                            Gunakan Lokasi Saya
+                                        </button>
+                                    </div>
+
+                                </div>
+
+                                <p style="font-size:11px;color:#777;margin-bottom:15px;">
+                                    Klik pada peta atau geser marker untuk mengatur titik lokasi.
+                                </p>
+
+                            </div>
+
+
+                            <div class="form-group">
+
+                                <label>Catatan</label>
+
+                                <textarea
+                                    id="koorNotes"
+                                    class="form-control"
+                                    rows="3"
+                                    placeholder="Catatan..."></textarea>
+
+                            </div>
+
+
+                            <button
+                                class="btn btn-primary btn-block">
+
+                                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                Generate QR Ngoprek
+
+                            </button>
+
+                        </form>
+
+                    </div>
+
+
+                    <div class="qr-preview">
+
+                        <h3>QR Ngoprek</h3>
+
+                        <p style="font-size:11px;color:#777;">
+                            QR otomatis sistem
+                        </p>
+
+                        <div id="koorQrBox" class="qr-box">
+
+                            <div class="empty">
+                                <i class="fa-solid fa-qrcode"></i>
+                                <p>Belum ada QR</p>
+                            </div>
+
+                        </div>
+
+                        <div id="koorQrDetails"></div>
+
+                        <div
+                            id="koorQrActions"
+                            class="qr-actions hidden">
+
+                            <button
+                                class="btn btn-dark"
+                                onclick="downloadQR('koor')">
+
+                                <i class="fa-solid fa-download"></i>
+                                Download
+
+                            </button>
+
+                            <button
+                                class="btn btn-outline"
+                                onclick="printQR('koor')">
+
+                                <i class="fa-solid fa-print"></i>
+                                Print
+
+                            </button>
+
+                            <button
+                                class="btn btn-success"
+                                onclick="copyToken('koor')">
+
+                                <i class="fa-solid fa-copy"></i>
+                                Copy Token
+
+                            </button>
+
+                            <button
+                                class="btn btn-warning"
+                                onclick="toggleCurrentQR('koor')">
+
+                                Nonaktifkan
+
+                            </button>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="section-card">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h3>QR Ngoprek</h3>
+
+                            <p>
+                                Session yang dibuat Koor KP
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                    <div id="koorQrSessions"></div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+            HRD REPORT
+            ================================================= -->
+
+            <section id="page-hrd-report" class="page">
+
+                <div class="section-card">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h3>Rekap Absensi</h3>
+
+                            <p>
+                                Laporan seluruh data absensi
+                            </p>
+
+                        </div>
+
+                        <div style="display:flex;gap:8px;">
+
+                            <button
+                                class="btn btn-success"
+                                onclick="exportExcel()">
+
+                                <i class="fa-solid fa-file-excel"></i>
+                                Excel
+
+                            </button>
+
+                            <button
+                                class="btn btn-danger"
+                                onclick="exportPDF()">
+
+                                <i class="fa-solid fa-file-pdf"></i>
+                                PDF
+
+                            </button>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="filter-grid">
+
+                        <div>
+
+                            <label style="font-size:10px;font-weight:700;">
+                                Tanggal
+                            </label>
+
+                            <input
+                                id="filterDate"
+                                type="date"
+                                class="form-control"
+                                onchange="renderHRDReport()">
+
+                        </div>
+
+                        <div>
+
+                            <label style="font-size:10px;font-weight:700;">
+                                Kegiatan
+                            </label>
+
+                            <select
+                                id="filterActivity"
+                                class="form-control"
+                                onchange="renderHRDReport()">
+
+                                <option value="">
+                                    Semua
+                                </option>
+
+                                <option>
+                                    Rapat Rutin
+                                </option>
+
+                                <option>
+                                    Ngoprek
+                                </option>
+
+                                <option>
+                                    Kepanitiaan
+                                </option>
+
+                            </select>
+
+                        </div>
+
+                        <div>
+
+                            <label style="font-size:10px;font-weight:700;">
+                                Divisi
+                            </label>
+
+                            <select
+                                id="filterDivision"
+                                class="form-control"
+                                onchange="renderHRDReport()">
+
+                                <option value="">
+                                    Semua
+                                </option>
+
+                                <option>
+                                    Networking
+                                </option>
+
+                                <option>
+                                    Cyber
+                                </option>
+
+                                <option>
+                                    Sysadmin
+                                </option>
+
+                            </select>
+
+                        </div>
+
+                        <div>
+
+                            <label style="font-size:10px;font-weight:700;">
+                                Status
+                            </label>
+
+                            <select
+                                id="filterStatus"
+                                class="form-control"
+                                onchange="renderHRDReport()">
+
+                                <option value="">
+                                    Semua
+                                </option>
+
+                                <option>Hadir</option>
+                                <option>Izin</option>
+                                <option>Sakit</option>
+                                <option>Alpha</option>
+
+                            </select>
+
+                        </div>
+
+                    </div>
+
+
+                    <div id="hrdReportTable"></div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+            LOKASI & RADIUS KANTOR (HRD) - Geofencing
+            ================================================= -->
+
+            <section id="page-hrd-location" class="page">
+
+                <div class="section-card">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h3>
+                                <i class="fa-solid fa-location-dot"></i>
+                                Lokasi &amp; Radius Kantor
+                            </h3>
+
+                            <p>
+                                Geser marker di peta ke posisi kantor, atur radius toleransi, lalu simpan.
+                                Staf hanya bisa absen jika posisinya berada di dalam radius ini.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="geofenceEnabled" onchange="toggleGeofenceEnabled()">
+                            Aktifkan validasi lokasi (geofencing) saat absen
+                        </label>
+                    </div>
+
+                    <div id="officeMap" class="office-map"></div>
+
+                    <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;margin-top:15px;">
+
+                        <div class="form-group">
+                            <label>Latitude</label>
+                            <input id="officeLat" class="form-control" type="text" readonly>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Longitude</label>
+                            <input id="officeLng" class="form-control" type="text" readonly>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Radius (meter)</label>
+                            <input id="officeRadius" class="form-control" type="number" min="10" step="10" value="100" oninput="updateOfficeRadiusPreview()">
+                        </div>
+
+                    </div>
+
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+
+                        <button class="btn btn-outline" onclick="useMyLocationAsOffice()">
+                            <i class="fa-solid fa-crosshairs"></i>
+                            Pakai Lokasi Saya Sekarang
+                        </button>
+
+                        <button class="btn btn-primary" onclick="saveOfficeLocation()">
+                            <i class="fa-solid fa-floppy-disk"></i>
+                            Simpan Lokasi & Radius
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+            HRD - PERSETUJUAN IZIN / SAKIT
+            ================================================= -->
+
+            <section id="page-hrd-permit" class="page">
+
+                <div class="section-card">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h3>
+                                <i class="fa-solid fa-file-medical"></i>
+                                Persetujuan Izin / Sakit
+                            </h3>
+
+                            <p>
+                                Tinjau bukti foto lalu setujui atau tolak
+                                pengajuan izin/sakit dari STAF.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                    <div id="hrdPermitTable"></div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+            MANAJEMEN AKUN (HRD & KOOR KP)
+            ================================================= -->
+
+            <section id="page-users" class="page">
+
+                <div class="section-card">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h3>Manajemen Akun</h3>
+
+                            <p>
+                                Lihat, kelola, atau hapus akun pengguna.
+                            </p>
+
+                        </div>
+
+                        <button
+                            id="btnTambahAkun"
+                            class="btn btn-primary"
+                            onclick="openRegister()">
+
+                            <i class="fa-solid fa-user-plus"></i>
+                            Tambah Akun
+
+                        </button>
+
+                    </div>
+
+                    <div id="usersTable"></div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+            KOOR ATTENDANCE
+            ================================================= -->
+
+            <section id="page-koor-attendance" class="page">
+
+                <div class="section-card">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h3>Absensi Ngoprek</h3>
+
+                            <p>
+                                Koor KP hanya dapat mengelola
+                                absensi Ngoprek.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                    <div id="koorAttendanceTable"></div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+            KOOR KP - PERSETUJUAN IZIN / SAKIT
+            ================================================= -->
+
+            <section id="page-koor-permit" class="page">
+
+                <div class="section-card">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h3>
+                                <i class="fa-solid fa-file-medical"></i>
+                                Persetujuan Izin / Sakit
+                            </h3>
+
+                            <p>
+                                Hanya menampilkan pengajuan untuk kegiatan
+                                Ngoprek yang Anda buat sendiri.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                    <div id="koorPermitTable"></div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+            SETTINGS
+            ================================================= -->
+
+            <section id="page-settings" class="page">
+
+                <div class="settings-grid">
+
+                    <div class="section-card">
+
+                        <div class="section-header">
+
+                            <div>
+
+                                <h3>Pengaturan Akun</h3>
+
+                                <p>
+                                    Informasi akun pengguna
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                        <div class="form-group">
+
+                            <label>Nama</label>
+
+                            <input
+                                id="settingName"
+                                class="form-control">
+
+                        </div>
+
+                        <div class="form-group">
+
+                            <label>Username / NIM</label>
+
+                            <input
+                                id="settingUsername"
+                                class="form-control"
+                                readonly>
+
+                        </div>
+
+                        <div class="form-group">
+
+                            <label>Role</label>
+
+                            <input
+                                id="settingRole"
+                                class="form-control"
+                                readonly>
+
+                        </div>
+
+                        <button
+                            class="btn btn-primary"
+                            onclick="saveSettings()">
+
+                            <i class="fa-solid fa-floppy-disk"></i>
+                            Simpan
+
+                        </button>
+
+                    </div>
+
+
+                    <div class="illustration">
+
+                        <div class="illustration-icon">
+                            <i class="fa-solid fa-user-gear"></i>
+                        </div>
+
+                        <h3>NEV Absenku</h3>
+
+                        <p style="color:#aaa;font-size:12px;margin-top:10px;line-height:1.6;">
+                            Sistem absensi digital untuk
+                            membantu pengelolaan kehadiran
+                            secara cepat dan terintegrasi.
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+        </div>
+
+    </main>
+
+</div>
+
+
+<!-- =========================================================
+REGISTER MODAL
+========================================================= -->
+
+<div id="registerModal" class="modal">
+
+    <div class="modal-box">
+
+        <div class="modal-header">
+
+            <h3>Registrasi Akun</h3>
+
+            <button
+                class="modal-close"
+                onclick="closeModal('registerModal')">
+
+                <i class="fa-solid fa-xmark"></i>
+
+            </button>
+
+        </div>
+
+        <form onsubmit="register(event)">
+
+            <div class="modal-body">
+
+                <div class="form-group">
+
+                    <label>Nama Lengkap *</label>
+
+                    <input
+                        id="registerName"
+                        class="form-control"
+                        required>
+
+                </div>
+
+                <div class="form-group">
+
+                    <label>Username / NIM *</label>
+
+                    <input
+                        id="registerUsername"
+                        class="form-control"
+                        required>
+
+                </div>
+
+                <div class="form-group">
+
+                    <label>Role *</label>
+
+                    <select
+                        id="registerRole"
+                        class="form-control"
+                        required
+                        onchange="toggleRegisterDivision()">
+
+                        <option value="STAF">
+                            STAF
+                        </option>
+
+                        <option value="KOOR KP">
+                            KOOR KP
+                        </option>
+
+                        <option value="HRD">
+                            HRD
+                        </option>
+
+                    </select>
+
+                </div>
+
+                <div class="form-group" id="registerDivisionGroup">
+
+                    <label>Divisi * (Khusus Staf & Koor KP)</label>
+
+                    <select
+                        id="registerDivision"
+                        class="form-control">
+
+                        <option value="">
+                            Pilih Divisi
+                        </option>
+
+                        <option value="Networking">
+                            Networking
+                        </option>
+
+                        <option value="Cyber">
+                            Cyber
+                        </option>
+
+                        <option value="Sysadmin">
+                            Sysadmin
+                        </option>
+
+                    </select>
+
+                </div>
+
+                <div class="form-group">
+
+                    <label>Password *</label>
+
+                    <input
+                        id="registerPassword"
+                        type="password"
+                        class="form-control"
+                        required>
+
+                </div>
+
+            </div>
+
+            <div class="modal-footer">
+
+                <button
+                    type="button"
+                    class="btn btn-outline"
+                    onclick="closeModal('registerModal')">
+
+                    Batal
+
+                </button>
+
+                <button
+                    class="btn btn-primary">
+
+                    <i class="fa-solid fa-user-plus"></i>
+                    Daftar
+
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+EDIT ATTENDANCE MODAL
+========================================================= -->
+
+<div id="editAttendanceModal" class="modal">
+
+    <div class="modal-box">
+
+        <div class="modal-header">
+
+            <h3>Edit Status Absensi</h3>
+
+            <button
+                class="modal-close"
+                onclick="closeModal('editAttendanceModal')">
+
+                <i class="fa-solid fa-xmark"></i>
+
+            </button>
+
+        </div>
+
+        <div class="modal-body">
+
+            <input
+                id="editAttendanceId"
+                type="hidden">
+
+            <input
+                id="editAttendanceSessionId"
+                type="hidden">
+
+            <input
+                id="editAttendanceUserId"
+                type="hidden">
+
+            <div id="editAttendanceInfo"
+                 style="background:#f7f7f7;padding:14px;border-radius:10px;margin-bottom:18px;">
+            </div>
+
+            <div class="form-group">
+
+                <label>Status</label>
+
+                <select
+                    id="editAttendanceStatus"
+                    class="form-control">
+
+                    <option>Hadir</option>
+                    <option>Izin</option>
+                    <option>Sakit</option>
+                    <option>Alpha</option>
+
+                </select>
+
+            </div>
+
+        </div>
+
+        <div class="modal-footer">
+
+            <button
+                class="btn btn-outline"
+                onclick="closeModal('editAttendanceModal')">
+
+                Batal
+
+            </button>
+
+            <button
+                class="btn btn-primary"
+                onclick="saveAttendanceEdit()">
+
+                Simpan
+
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- Modal Selfie & Verifikasi Lokasi (Geofencing) -->
+<div id="selfieModal" class="modal">
+
+    <div class="modal-box">
+
+        <div class="modal-header">
+
+            <h3>Verifikasi Lokasi &amp; Selfie</h3>
+
+            <button
+                class="modal-close"
+                onclick="closeSelfieModal()">
+
+                <i class="fa-solid fa-xmark"></i>
+
+            </button>
+
+        </div>
+
+        <div class="modal-body">
+
+            <div id="selfieLocationStatus" class="scanner-status">
+                Mendapatkan lokasi...
+            </div>
+
+            <div class="selfie-frame">
+                <video id="selfieVideo" autoplay playsinline muted></video>
+                <img id="selfiePreview" class="hidden">
+            </div>
+
+            <canvas id="selfieCanvas" class="hidden"></canvas>
+
+        </div>
+
+        <div class="modal-footer">
+
+            <button
+                id="selfieCaptureBtn"
+                class="btn btn-primary"
+                onclick="captureSelfie()">
+
+                <i class="fa-solid fa-camera"></i>
+                Ambil Foto
+
+            </button>
+
+            <button
+                id="selfieRetakeBtn"
+                class="btn btn-outline hidden"
+                onclick="retakeSelfie()">
+
+                <i class="fa-solid fa-rotate-left"></i>
+                Ulangi
+
+            </button>
+
+            <button
+                id="selfieSubmitBtn"
+                class="btn btn-success hidden"
+                onclick="submitAttendanceWithSelfie()">
+
+                <i class="fa-solid fa-check"></i>
+                Kirim Absensi
+
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<div id="toastContainer" class="toast-container"></div>
+
+
+<script>
+
+/* =========================================================
+DATABASE LOCALSTORAGE
+========================================================= */
+
+const DB = {
+    users:"nev_users",
+    sessions:"nev_sessions",
+    attendance:"nev_attendance",
+    settings:"nev_settings",
+    permits:"nev_permits"
+};
+
+function load(key, fallback=[]){
+    try{
+        const data = localStorage.getItem(key);
+        return data ? JSON.parse(data) : fallback;
+    }catch(e){
+        return fallback;
+    }
+}
+
+function save(key,data){
+    localStorage.setItem(key,JSON.stringify(data));
+}
+
+
+/* =========================================================
+DEMO DATA
+========================================================= */
+
+function initializeDatabase(){
+
+    if(!localStorage.getItem(DB.users)){
+        save(DB.users,[
+            {
+                id:"U001",
+                name:"Denis Adityan Rohmansyah",
+                username:"24101001",
+                password:"123456",
+                role:"STAF",
+                division:"Networking"
+            },
+            {
+                id:"U002",
+                name:"Admin HRD",
+                username:"HRD001",
+                password:"123456",
+                role:"HRD",
+                division:null
+            },
+            {
+                id:"U003",
+                name:"Koor KP NEV",
+                username:"KOORKP001",
+                password:"123456",
+                role:"KOOR KP",
+                division:"Networking"
+            },
+            {
+                id:"U004",
+                name:"Andi Staff",
+                username:"24101002",
+                password:"123456",
+                role:"STAF",
+                division:"Cyber"
+            },
+            {
+                id:"U005",
+                name:"Budi Staff",
+                username:"24101003",
+                password:"123456",
+                role:"STAF",
+                division:"Sysadmin"
+            }
+        ]);
+    }
+
+    if(!localStorage.getItem(DB.sessions)){
+        save(DB.sessions,[]);
+    }
+
+    if(!localStorage.getItem(DB.settings)){
+        save(DB.settings,{
+            officeLat:null, officeLng:null, radius:100, geofenceEnabled:false
+        });
+    }
+
+    if(!localStorage.getItem(DB.attendance)){
+        save(DB.attendance,[]);
+    }
+}
+
+
+/* =========================================================
+STATE
+========================================================= */
+
+let currentUser = null;
+let loginRole = "STAF";
+let currentQR = { hrd:null, koor:null };
+let html5QrCode = null;
+
+
+/* =========================================================
+INIT
+========================================================= */
+
+/* initializeDatabase() sekarang dipanggil oleh cloud-sync.js, setelah
+   data terbaru selesai diambil dari Google Sheets (lihat cloud-sync.js). */
+
+document.addEventListener("DOMContentLoaded",()=>{
+    setDefaultDates();
+    updateCurrentDate();
+    setInterval(updateCurrentDate,30000);
+});
+
+function setDefaultDates(){
+    const today = new Date().toISOString().split("T")[0];
+    const ids = ["hrdDate", "koorDate"];
+    ids.forEach(id=>{
+        const el = document.getElementById(id);
+        if(el) el.value = today;
+    });
+}
+
+
+/* =========================================================
+LOGIN
+========================================================= */
+
+function selectLoginRole(role,button){
+    loginRole = role;
+    document.querySelectorAll(".role-btn").forEach(btn=>btn.classList.remove("active"));
+    button.classList.add("active");
+}
+
+function login(event){
+    event.preventDefault();
+    const username = document.getElementById("loginUsername").value.trim();
+    const password = document.getElementById("loginPassword").value;
+    const users = load(DB.users);
+
+    const user = users.find(u=>
+        u.username === username &&
+        u.password === password &&
+        u.role === loginRole
+    );
+
+    if(!user){
+        toast("Username, password, atau role tidak sesuai.", "error");
+        return;
+    }
+
+    currentUser = user;
+    localStorage.setItem("nev_current_user", JSON.stringify(user));
+    document.getElementById("loginScreen").classList.add("hidden");
+    document.getElementById("app").classList.remove("hidden");
+    
+    buildSidebar();
+    updateUserUI();
+
+    if(user.role==="STAF") showPage("staf-dashboard");
+    else if(user.role==="HRD") showPage("hrd-dashboard");
+    else if(user.role==="KOOR KP") showPage("koor-dashboard");
+
+    renderAll();
+}
+
+function logout(){
+    stopScanner();
+    currentUser=null;
+    localStorage.removeItem("nev_current_user");
+    document.getElementById("app").classList.add("hidden");
+    document.getElementById("loginScreen").classList.remove("hidden");
+    document.getElementById("loginUsername").value="";
+    document.getElementById("loginPassword").value="";
+}
+
+
+/* =========================================================
+SIDEBAR
+========================================================= */
+
+function buildSidebar(){
+    const menu = document.getElementById("sidebarMenu");
+    let html="";
+
+    if(currentUser.role==="STAF"){
+        html+=menuTitle("MENU UTAMA");
+        html+=menuItem("staf-dashboard", "fa-house", "Dashboard");
+        html+=menuItem("staf-scan", "fa-qrcode", "Scan QR Absensi");
+        html+=menuItem("staf-calendar", "fa-calendar-days", "Kalender");
+        html+=menuItem("staf-history", "fa-clock-rotate-left", "Riwayat Absensi");
+        html+=menuItem("staf-permit", "fa-file-medical", "Izin/Sakit");
+        html+=menuItem("staf-activities", "fa-list-check", "Kegiatan");
+    }
+
+    if(currentUser.role==="HRD"){
+        html+=menuTitle("HRD");
+        html+=menuItem("hrd-dashboard", "fa-chart-line", "Dashboard");
+        html+=menuItem("hrd-qr", "fa-qrcode", "Buat QR Absensi");
+        html+=menuItem("hrd-report", "fa-table-list", "Rekap Absensi");
+        html+=menuItem("hrd-permit", "fa-file-medical", "Persetujuan Izin/Sakit");
+        html+=menuItem("hrd-location", "fa-location-dot", "Lokasi & Radius");
+        html+=menuItem("users", "fa-users-gear", "Manajemen Akun");
+    }
+
+    if(currentUser.role==="KOOR KP"){
+        html+=menuTitle("KOOR KP");
+        html+=menuItem("koor-dashboard", "fa-house", "Dashboard");
+        html+=menuItem("koor-qr", "fa-qrcode", "Buat QR Ngoprek");
+        html+=menuItem("koor-attendance", "fa-clipboard-check", "Absensi Ngoprek");
+        html+=menuItem("koor-permit", "fa-file-medical", "Persetujuan Izin/Sakit");
+        html+=menuItem("users", "fa-users-gear", "Manajemen Akun");
+    }
+
+    html+=menuTitle("AKUN");
+    html+=menuItem("settings", "fa-user-gear", "Pengaturan");
+
+    menu.innerHTML=html;
+}
+
+function menuTitle(title){
+    return `<div class="menu-title">${title}</div>`;
+}
+
+function menuItem(page,icon,label){
+    return `<div class="menu-item" data-page="${page}" onclick="showPage('${page}')"><i class="fa-solid ${icon}"></i><span>${label}</span></div>`;
+}
+
+
+/* =========================================================
+PAGE ACCESS CONTROL
+========================================================= */
+
+function showPage(page){
+    if(!currentUser) return;
+
+    const allowed = {
+        "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "staf-activities", "settings"],
+        "HRD":["hrd-dashboard", "hrd-qr", "hrd-report", "hrd-permit", "hrd-location", "users", "settings"],
+        "KOOR KP":["koor-dashboard", "koor-qr", "koor-attendance", "koor-permit", "users", "settings"]
+    };
+
+    if(!allowed[currentUser.role].includes(page)){
+        toast("Anda tidak memiliki akses ke halaman ini.", "error");
+        return;
+    }
+
+    document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+    const target = document.getElementById("page-"+page);
+    if(!target) return;
+    target.classList.add("active");
+
+    document.querySelectorAll(".menu-item").forEach(item=>{
+        item.classList.toggle("active", item.dataset.page===page);
+    });
+
+    const titles={
+        "staf-dashboard":"Dashboard",
+        "staf-scan":"Scan QR Absensi",
+        "staf-calendar":"Kalender",
+        "staf-history":"Riwayat Absensi",
+        "staf-permit":"Izin/Sakit",
+        "staf-activities":"Kegiatan",
+        "hrd-dashboard":"Dashboard HRD",
+        "hrd-qr":"Buat QR Absensi",
+        "hrd-report":"Rekap Absensi",
+        "hrd-permit":"Persetujuan Izin/Sakit",
+        "hrd-location":"Lokasi & Radius Kantor",
+        "users":"Manajemen Akun",
+        "koor-dashboard":"Dashboard Koor KP",
+        "koor-qr":"Buat QR Ngoprek",
+        "koor-attendance":"Absensi Ngoprek",
+        "koor-permit":"Persetujuan Izin/Sakit",
+        "settings":"Pengaturan"
+    };
+
+    document.getElementById("pageTitle").textContent=titles[page] || "NEV Absenku";
+    document.getElementById("pageSubtitle").textContent=currentUser.role+" • NEV Absenku";
+    document.getElementById("sidebar").classList.remove("open");
+
+    if(page==="staf-dashboard") renderStafDashboard();
+    if(page==="staf-history") renderStafHistory();
+    if(page==="staf-calendar") renderCalendar();
+    if(page==="staf-permit"){ populatePermitSessionOptions(); renderPermitHistory(); }
+    if(page==="hrd-dashboard") renderHRDDashboard();
+    if(page==="hrd-qr"){ renderQRSessionList("hrd"); populateSessionAttendancePicker(); }
+    if(page==="hrd-report") renderHRDReport();
+    if(page==="hrd-permit") renderPermitApproval("hrd");
+    if(page==="hrd-location") setTimeout(initOfficeMap, 50);
+    if(page==="users") renderUsers();
+    if(page==="koor-dashboard") renderKoorDashboard();
+    if(page==="koor-qr") renderQRSessionList("koor");
+    if(page==="koor-attendance") renderKoorAttendance();
+    if(page==="koor-permit") renderPermitApproval("koor");
+    if(page==="settings") renderSettings();
+}
+
+
+/* =========================================================
+USER UI
+========================================================= */
+
+function updateUserUI(){
+    const name=currentUser.name;
+    document.getElementById("sidebarName").textContent=name;
+    document.getElementById("sidebarRole").textContent=currentUser.role;
+    document.getElementById("sidebarAvatar").textContent=name.charAt(0).toUpperCase();
+    const welcome = document.getElementById("welcomeName");
+    if(welcome) welcome.textContent=name.split(" ")[0];
+}
+
+
+/* =========================================================
+QR GENERATION
+========================================================= */
+
+function generateQR(event,creatorRole){
+    event.preventDefault();
+    let activity, division, date, start, end, location, notes;
+    const geoRole = creatorRole==="HRD" ? "hrd" : "koor";
+
+    if(creatorRole==="HRD"){
+        activity=document.getElementById("hrdActivity").value;
+        division=document.getElementById("hrdDivision").value;
+        date=document.getElementById("hrdDate").value;
+        start=document.getElementById("hrdStart").value;
+        end=document.getElementById("hrdEnd").value;
+        location=document.getElementById("hrdLocation").value;
+        notes=document.getElementById("hrdNotes").value;
+        if(activity==="Ngoprek" && !division){
+            toast("Divisi wajib dipilih untuk kegiatan Ngoprek.", "error");
+            return;
+        }
+    }else{
+        activity="Ngoprek";
+        division=document.getElementById("koorDivision").value;
+        date=document.getElementById("koorDate").value;
+        start=document.getElementById("koorStart").value;
+        end=document.getElementById("koorEnd").value;
+        location=document.getElementById("koorLocation").value;
+        notes=document.getElementById("koorNotes").value;
+        if(!division){
+            toast("Divisi Ngoprek wajib dipilih.", "error");
+            return;
+        }
+    }
+
+    if(start>=end){
+        toast("Jam selesai harus lebih besar dari jam mulai.", "error");
+        return;
+    }
+
+    // Lokasi & radius khusus kegiatan ini (opsional, memperketat absensi).
+    let geoEnabled=false, geoLat=null, geoLng=null, geoRadius=null;
+    const geoCheckbox=document.getElementById(`${geoRole}GeoEnabled`);
+    if(geoCheckbox && geoCheckbox.checked){
+        const latVal=document.getElementById(`${geoRole}GeoLat`).value;
+        const lngVal=document.getElementById(`${geoRole}GeoLng`).value;
+        const lat=parseFloat(latVal), lng=parseFloat(lngVal);
+        if(isNaN(lat) || isNaN(lng)){
+            toast("Tentukan titik lokasi khusus di peta terlebih dahulu, atau matikan opsi tersebut.", "error");
+            return;
+        }
+        geoEnabled=true;
+        geoLat=lat;
+        geoLng=lng;
+        geoRadius=parseFloat(document.getElementById(`${geoRole}GeoRadius`).value) || 100;
+    }
+
+    const session={
+        id: "SESSION-"+Date.now(),
+        activity, division: division || "-", date, start, end,
+        location: location || "-", notes: notes || "-",
+        creatorId: currentUser.id, creatorName: currentUser.name, creatorRole,
+        active:true, createdAt: new Date().toISOString(),
+        geoEnabled, geoLat, geoLng, geoRadius
+    };
+    session.token = encodeSessionToken(session);
+
+    const sessions=load(DB.sessions);
+    sessions.push(session);
+    save(DB.sessions,sessions);
+    currentQR[creatorRole==="HRD" ? "hrd" : "koor"] = session;
+
+    renderGeneratedQR(creatorRole==="HRD" ? "hrd" : "koor", session);
+    if(typeof resetSessionGeoForm==="function") resetSessionGeoForm(geoRole);
+    renderAll();
+    toast("QR berhasil dibuat otomatis.", "success");
+}
+
+/*
+ * Token QR sekarang membawa (encode) data sesi itu sendiri, bukan hanya kode acak.
+ * Ini penting karena aplikasi ini menyimpan data di localStorage, yang TIDAK
+ * dibagi antar perangkat/browser. Tanpa perubahan ini, token yang dibuat di
+ * perangkat HRD/Koor KP tidak akan pernah "dikenali" di perangkat STAF lain,
+ * karena localStorage milik STAF memang tidak pernah menyimpannya.
+ * Dengan data sesi ikut disisipkan ke dalam token, perangkat mana pun yang
+ * memindai/menginput token bisa membaca ulang datanya langsung dari token itu.
+ */
+function createUniqueToken(activity,division){
+    const prefix="NEV-ABS";
+    const date=new Date().toISOString().slice(0,10).replaceAll("-","");
+    const act=activity.replaceAll(" ","").substring(0,4).toUpperCase();
+    const div=(division || "ALL").replaceAll(" ","").substring(0,4).toUpperCase();
+    const random=Math.random().toString(36).substring(2,8).toUpperCase();
+    return `${prefix}-${date}-${act}-${div}-${random}`;
+}
+
+function encodeSessionToken(session){
+    const payload={
+        id:session.id, activity:session.activity, division:session.division,
+        date:session.date, start:session.start, end:session.end,
+        location:session.location, notes:session.notes,
+        creatorId:session.creatorId, creatorName:session.creatorName, creatorRole:session.creatorRole,
+        geoEnabled:session.geoEnabled || false, geoLat:session.geoLat ?? null,
+        geoLng:session.geoLng ?? null, geoRadius:session.geoRadius ?? null
+    };
+    try{
+        const json=JSON.stringify(payload);
+        const b64=btoa(unescape(encodeURIComponent(json)))
+            .replaceAll("+","-").replaceAll("/","_").replaceAll("=","");
+        return `NEV-ABS-${b64}`;
+    }catch(e){
+        return createUniqueToken(session.activity, session.division);
+    }
+}
+
+function decodeSessionToken(token){
+    if(!token || !token.startsWith("NEV-ABS-")) return null;
+    try{
+        let b64=token.slice("NEV-ABS-".length).replaceAll("-","+").replaceAll("_","/");
+        while(b64.length % 4) b64+="=";
+        const json=decodeURIComponent(escape(atob(b64)));
+        const data=JSON.parse(json);
+        if(!data || !data.id || !data.activity || !data.date || !data.start || !data.end) return null;
+        return data;
+    }catch(e){
+        return null;
+    }
+}
+
+
+/* =========================================================
+RENDER QR
+========================================================= */
+
+function renderGeneratedQR(type,session){
+    const box = document.getElementById(type==="hrd" ? "hrdQrBox" : "koorQrBox");
+    const details = document.getElementById(type==="hrd" ? "hrdQrDetails" : "koorQrDetails");
+    const actions = document.getElementById(type==="hrd" ? "hrdQrActions" : "koorQrActions");
+
+    box.innerHTML="";
+    const qr=document.createElement("div");
+    box.appendChild(qr);
+
+    new QRCode(qr,{
+        text:session.token,
+        width:250, height:250,
+        colorDark:"#000000", colorLight:"#ffffff",
+        correctLevel:QRCode.CorrectLevel.H
+    });
+
+    details.innerHTML=`
+        <div class="qr-info">
+            <div class="qr-info-row"><span>Kegiatan</span><span>${escapeHTML(session.activity)}</span></div>
+            <div class="qr-info-row"><span>Divisi</span><span>${escapeHTML(session.division)}</span></div>
+            <div class="qr-info-row"><span>Tanggal</span><span>${escapeHTML(session.date)}</span></div>
+            <div class="qr-info-row"><span>Jam</span><span>${session.start} - ${session.end}</span></div>
+            <div class="qr-info-row"><span>Lokasi</span><span>${escapeHTML(session.location)}</span></div>
+            <div class="qr-info-row"><span>Lokasi & Radius Khusus</span><span>${session.geoEnabled ? `Aktif (±${session.geoRadius} m)` : "Tidak aktif (ikuti kantor)"}</span></div>
+            <div style="margin-top:12px;">
+                <div style="font-size:10px;color:#777;margin-bottom:5px;">TOKEN SESSION</div>
+                <div class="token">${escapeHTML(session.token)}</div>
+            </div>
+        </div>
+    `;
+
+    actions.classList.remove("hidden");
+    const toggle = type==="hrd" ? document.getElementById("hrdToggleQRBtn") : document.querySelector("#koorQrActions .btn-warning");
+    if(toggle){
+        toggle.textContent= session.active ? "Nonaktifkan" : "Aktifkan";
+    }
+}
+
+
+/* =========================================================
+QR VALIDATION
+========================================================= */
+
+function processAttendance(token){
+    if(currentUser?.role!=="STAF"){
+        toast("Hanya STAF yang dapat melakukan absensi.", "error"); return;
+    }
+
+    token=(token || "").replace(/\s+/g,"").trim();
+    if(!token){
+        toast("Token QR belum diisi.", "error"); return;
+    }
+
+    const sessions=load(DB.sessions);
+    let session=sessions.find(s=>s.token===token);
+
+    // Jika token tidak ada di penyimpanan lokal perangkat ini (misalnya QR dibuat
+    // di perangkat HRD/Koor KP yang berbeda), coba baca ulang data sesi langsung
+    // dari isi token itu sendiri, lalu simpan salinannya secara lokal.
+    if(!session){
+        const decoded=decodeSessionToken(token);
+        if(decoded){
+            session={ ...decoded, token, active:true };
+            sessions.push(session);
+            save(DB.sessions,sessions);
+        }
+    }
+
+    if(!session){
+        toast("QR tidak dikenali.", "error");
+        updateScannerStatus("QR tidak ditemukan di sistem.", "error");
+        return;
+    }
+    
+    if(!session.active){
+        toast("QR sudah dinonaktifkan.", "error"); return;
+    }
+
+    const now=new Date();
+    const currentDate=now.toISOString().slice(0,10);
+    const currentTime=now.toTimeString().slice(0,5);
+
+    if(currentDate !== session.date){
+        toast("QR belum atau sudah melewati tanggal kegiatan.", "error"); return;
+    }
+
+    if(currentTime < session.start || currentTime > session.end){
+        toast(`Absensi hanya dapat dilakukan pukul ${session.start} - ${session.end}.`, "error");
+        updateScannerStatus(`QR ditemukan, tetapi saat ini bukan waktu absensi. Jadwal: ${session.start} - ${session.end}.`, "error");
+        return;
+    }
+
+    const attendance=load(DB.attendance);
+    const duplicate=attendance.find(a=> a.sessionId===session.id && a.userId===currentUser.id);
+    if(duplicate){
+        toast("Anda sudah melakukan absensi pada kegiatan ini.", "error");
+        updateScannerStatus("Absensi sudah tercatat sebelumnya.", "error");
+        return;
+    }
+
+    // Token & jadwal valid. Hentikan kamera scanner (kalau aktif) lalu lanjut ke
+    // langkah verifikasi lokasi (geofencing) dan selfie sebelum absensi disimpan.
+    stopScanner();
+    updateScannerStatus(`QR valid: ${session.activity}. Lanjutkan verifikasi lokasi & selfie.`, "success");
+    beginAttendanceCapture(session, token);
+}
+
+function finalizeAttendance(session, token, location, photo){
+    const attendance=load(DB.attendance);
+    const duplicate=attendance.find(a=> a.sessionId===session.id && a.userId===currentUser.id);
+    if(duplicate){
+        toast("Anda sudah melakukan absensi pada kegiatan ini.", "error");
+        return;
+    }
+
+    const record={
+        id: "ATT-"+Date.now(), sessionId: session.id, token: session.token,
+        userId: currentUser.id, userName: currentUser.name, username: currentUser.username,
+        activity: session.activity, division: session.division, date: session.date,
+        checkIn: new Date().toISOString(), status: "Hadir",
+        creatorId: session.creatorId, creatorRole: session.creatorRole,
+        lat: location ? location.lat : null,
+        lng: location ? location.lng : null,
+        photo: photo || null
+    };
+
+    attendance.push(record);
+    save(DB.attendance,attendance);
+
+    toast(`Absensi ${session.activity} berhasil.`, "success");
+    updateScannerStatus(`Berhasil hadir: ${session.activity}${session.division!=="-" ? " • "+session.division : ""}`, "success");
+    const manualInput=document.getElementById("manualToken");
+    if(manualInput) manualInput.value="";
+    renderAll();
+}
+
+
+/* =========================================================
+SCANNER
+========================================================= */
+
+function startScanner(){
+    if(currentUser?.role!=="STAF"){
+        toast("Fitur scanner hanya tersedia untuk STAF.", "error"); return;
+    }
+    if(html5QrCode){
+        toast("Scanner sudah aktif.", "error"); return;
+    }
+
+    // Browser HANYA mengizinkan akses kamera (getUserMedia) di "secure context":
+    // yaitu halaman HTTPS, atau halaman yang dibuka lewat "localhost".
+    // Membuka lewat alamat IP polos seperti http://192.168.x.x akan SELALU
+    // gagal mengakses kamera walau izin kamera sudah pernah diberikan.
+    if(!window.isSecureContext){
+        const msg="Kamera diblokir browser karena halaman ini dibuka lewat HTTP biasa (bukan HTTPS/localhost). Buka aplikasi lewat alamat https:// (misalnya pakai reverse proxy/hosting dengan sertifikat SSL), atau lewat 'localhost' pada perangkat yang menjalankan server.";
+        updateScannerStatus(msg, "error");
+        toast("Kamera tidak bisa diakses: koneksi tidak aman (bukan HTTPS).", "error");
+        return;
+    }
+
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+        updateScannerStatus("Browser ini tidak mendukung akses kamera (getUserMedia tidak tersedia).", "error");
+        toast("Browser tidak mendukung kamera.", "error");
+        return;
+    }
+
+    html5QrCode = new Html5Qrcode("reader");
+    html5QrCode.start({facingMode:"environment"}, {fps:10, qrbox:{width:250, height:250}},
+        decodedText=>{ processAttendance(decodedText); },
+        errorMessage=>{}
+    ).then(()=>{
+        updateScannerStatus("Kamera aktif. Arahkan kamera ke QR.", "normal");
+    }).catch(error=>{
+        html5QrCode=null;
+        console.error("Gagal membuka kamera:", error);
+        let reason="Pastikan izin kamera sudah diaktifkan untuk situs ini.";
+        if(error?.name==="NotAllowedError") reason="Izin kamera ditolak. Aktifkan izin kamera untuk situs ini di pengaturan browser, lalu muat ulang halaman.";
+        else if(error?.name==="NotFoundError") reason="Tidak ada kamera yang terdeteksi di perangkat ini.";
+        else if(error?.name==="NotReadableError") reason="Kamera sedang dipakai aplikasi/tab lain. Tutup aplikasi lain yang memakai kamera lalu coba lagi.";
+        else if(error?.name==="OverconstrainedError") reason="Kamera belakang tidak ditemukan, mencoba kamera lain mungkin diperlukan.";
+        updateScannerStatus("Kamera tidak dapat digunakan. "+reason, "error");
+        toast("Gagal membuka kamera.", "error");
+    });
+}
+
+function stopScanner(){
+    if(!html5QrCode) return;
+    html5QrCode.stop().then(()=>{
+        html5QrCode.clear();
+        html5QrCode=null;
+        updateScannerStatus("Scanner dihentikan.", "normal");
+    }).catch(()=>{ html5QrCode=null; });
+}
+
+function updateScannerStatus(message,type){
+    const el=document.getElementById("scannerStatus");
+    if(!el)return;
+    el.textContent=message;
+    if(type==="success"){
+        el.style.background="#dcfce7"; el.style.color="#15803d";
+    }else if(type==="error"){
+        el.style.background="#fee2e2"; el.style.color="#b91c1c";
+    }else{
+        el.style.background="#f7f7f7"; el.style.color="#555";
+    }
+}
+
+
+/* =========================================================
+QR DOWNLOAD & PRINT
+========================================================= */
+
+function getQRCanvas(type){
+    const box = document.getElementById(type==="hrd" ? "hrdQrBox" : "koorQrBox");
+    return box.querySelector("canvas");
+}
+
+function downloadQR(type){
+    const canvas=getQRCanvas(type);
+    if(!canvas){ toast("QR belum tersedia.", "error"); return; }
+    const session=currentQR[type];
+    if(!session) return;
+    const link=document.createElement("a");
+    link.download = `NEV-Absenku-${session.activity}-${session.date}.png`;
+    link.href=canvas.toDataURL("image/png");
+    link.click();
+    toast("QR berhasil di-download.", "success");
+}
+
+function printQR(type){
+    const canvas=getQRCanvas(type);
+    if(!canvas){ toast("QR belum tersedia.", "error"); return; }
+    const session=currentQR[type];
+    if(!session)return;
+
+    const image=canvas.toDataURL("image/png");
+    const printWindow=window.open("","_blank","width=700,height=800");
+
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html><head><title>QR NEV Absenku</title>
+        <style>
+            body{font-family:Arial,sans-serif;text-align:center;padding:40px;}
+            img{width:300px;height:300px;margin:25px;}
+            .token{margin:20px auto;padding:10px;background:#eee;max-width:500px;word-break:break-all;}
+        </style></head>
+        <body>
+            <h1>NEV Absenku</h1>
+            <h2>${escapeHTML(session.activity)}</h2>
+            <p>${escapeHTML(session.division)}</p>
+            <p>${session.date} • ${session.start} - ${session.end}</p>
+            <img src="${image}">
+            <div class="token">${escapeHTML(session.token)}</div>
+            <p>Scan QR menggunakan aplikasi NEV Absenku.</p>
+        </body></html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(()=>{ printWindow.print(); },500);
+}
+
+function copyToken(type){
+    const session=currentQR[type];
+    if(!session)return;
+    navigator.clipboard.writeText(session.token).then(()=>{
+        toast("Token berhasil disalin.", "success");
+    });
+}
+
+function toggleCurrentQR(type){
+    const session=currentQR[type];
+    if(!session)return;
+    const sessions=load(DB.sessions);
+    const target=sessions.find(s=>s.id===session.id);
+    if(!target)return;
+
+    target.active=!target.active;
+    save(DB.sessions,sessions);
+    currentQR[type]=target;
+
+    renderGeneratedQR(type, target);
+    renderQRSessionList(type);
+    toast(target.active ? "QR diaktifkan." : "QR dinonaktifkan.", "success");
+}
+
+
+/* =========================================================
+QR SESSION LIST
+========================================================= */
+
+function renderQRSessionList(type){
+    const container = document.getElementById(type==="hrd" ? "hrdQrSessions" : "koorQrSessions");
+    if(!container)return;
+    let sessions=load(DB.sessions);
+
+    if(type==="hrd"){
+        sessions=sessions.filter(s=>s.creatorRole==="HRD");
+    }else{
+        sessions=sessions.filter(s=>s.creatorRole==="KOOR KP" && s.activity==="Ngoprek");
+    }
+
+    if(!sessions.length){
+        container.innerHTML=`<div class="empty"><i class="fa-solid fa-qrcode"></i><p>Belum ada session QR.</p></div>`;
+        return;
+    }
+
+    sessions.sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt));
+    
+    container.innerHTML=`
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr><th>Kegiatan</th><th>Divisi</th><th>Tanggal</th><th>Waktu</th><th>Pembuat</th><th>Lokasi</th><th>Status</th><th>Aksi</th></tr>
+                </thead>
+                <tbody>
+                    ${sessions.map(s=>`
+                        <tr>
+                            <td><strong>${escapeHTML(s.activity)}</strong></td>
+                            <td>${escapeHTML(s.division)}</td>
+                            <td>${s.date}</td>
+                            <td>${s.start} - ${s.end}</td>
+                            <td>${escapeHTML(s.creatorName)}</td>
+                            <td>${s.geoEnabled ? `<span class="badge badge-active" title="Radius ${s.geoRadius} m"><i class="fa-solid fa-location-dot"></i> ${s.geoRadius}m</span>` : `<span style="color:#999;font-size:12px;">Kantor</span>`}</td>
+                            <td><span class="badge ${s.active ? "badge-active" : "badge-inactive"}">${s.active ? "Aktif" : "Nonaktif"}</span></td>
+                            <td>
+                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="loadSessionToQR('${s.id}','${type}')">
+                                    <i class="fa-solid fa-qrcode"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `).join("")}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function loadSessionToQR(id,type){
+    const sessions=load(DB.sessions);
+    const session=sessions.find(s=>s.id===id);
+    if(!session)return;
+    currentQR[type]=session;
+    renderGeneratedQR(type, session);
+    toast("QR session ditampilkan.", "success");
+}
+
+
+/* =========================================================
+STAFF ATTENDANCE PER SESSION (HRD)
+========================================================= */
+
+function populateSessionAttendancePicker(){
+    if(currentUser?.role!=="HRD")return;
+    const select=document.getElementById("hrdSessionAttendancePicker");
+    if(!select)return;
+
+    const sessions=load(DB.sessions).filter(s=>s.creatorRole==="HRD")
+        .sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt));
+
+    const previousValue=select.value;
+    select.innerHTML=`<option value="">Pilih sesi...</option>` + sessions.map(s=>
+        `<option value="${s.id}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${s.date} (${s.start}-${s.end})</option>`
+    ).join("");
+
+    // Pertahankan pilihan sebelumnya, atau otomatis pilih QR yang sedang tampil di layar.
+    if(sessions.some(s=>s.id===previousValue)){
+        select.value=previousValue;
+    }else if(currentQR.hrd && sessions.some(s=>s.id===currentQR.hrd.id)){
+        select.value=currentQR.hrd.id;
+    }
+
+    renderSessionStaffStatus();
+}
+
+function renderSessionStaffStatus(){
+    if(currentUser?.role!=="HRD")return;
+    const container=document.getElementById("hrdSessionAttendanceTable");
+    if(!container)return;
+
+    const sessionId=document.getElementById("hrdSessionAttendancePicker")?.value;
+    if(!sessionId){
+        container.innerHTML=emptyHTML("fa-user-clock", "Pilih sesi QR untuk melihat daftar kehadiran staf.");
+        return;
+    }
+
+    const sessions=load(DB.sessions);
+    const session=sessions.find(s=>s.id===sessionId);
+    if(!session){
+        container.innerHTML=emptyHTML("fa-triangle-exclamation", "Sesi tidak ditemukan.");
+        return;
+    }
+
+    const users=load(DB.users);
+    // Sesi khusus satu divisi (misalnya Ngoprek) hanya berlaku untuk staf divisi itu;
+    // sesi umum (division "-") berlaku untuk seluruh staf.
+    const relevantStaff = session.division && session.division!=="-"
+        ? users.filter(u=>u.role==="STAF" && u.division===session.division)
+        : users.filter(u=>u.role==="STAF");
+
+    if(!relevantStaff.length){
+        container.innerHTML=emptyHTML("fa-users-slash", "Tidak ada staf yang relevan untuk sesi ini.");
+        return;
+    }
+
+    const attendance=load(DB.attendance).filter(a=>a.sessionId===session.id);
+    const hadirCount=relevantStaff.filter(u=> attendance.find(a=>a.userId===u.id)).length;
+
+    container.innerHTML=`
+        <p style="font-size:12px;color:#777;margin-bottom:10px;">
+            ${hadirCount} dari ${relevantStaff.length} staf sudah tercatat pada sesi ini.
+        </p>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr><th>Nama</th><th>Username/NIM</th><th>Divisi</th><th>Jam Absen</th><th>Status</th><th>Aksi</th></tr>
+                </thead>
+                <tbody>
+                    ${relevantStaff.map(u=>{
+                        const record=attendance.find(a=>a.userId===u.id);
+                        return `
+                        <tr>
+                            <td>${escapeHTML(u.name)}</td>
+                            <td>${escapeHTML(u.username)}</td>
+                            <td>${escapeHTML(u.division || "-")}</td>
+                            <td>${record ? formatTime(record.checkIn) : "-"}</td>
+                            <td>${record ? statusBadge(record.status) : `<span class="badge badge-inactive">Belum Hadir</span>`}</td>
+                            <td>
+                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="openSessionAttendanceEdit('${session.id}','${u.id}')">
+                                    <i class="fa-solid fa-pen"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        `;
+                    }).join("")}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function openSessionAttendanceEdit(sessionId,userId){
+    if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
+        toast("Anda tidak dapat mengubah status absensi.", "error"); return;
+    }
+    const sessions=load(DB.sessions);
+    const session=sessions.find(s=>s.id===sessionId);
+    const users=load(DB.users);
+    const staff=users.find(u=>u.id===userId);
+    if(!session || !staff)return;
+
+    if(currentUser.role==="KOOR KP" && (session.creatorId!==currentUser.id || session.activity!=="Ngoprek")){
+        toast("Koor KP hanya dapat mengubah absensi Ngoprek yang dibuatnya.", "error"); return;
+    }
+
+    const attendance=load(DB.attendance);
+    const record=attendance.find(a=>a.sessionId===sessionId && a.userId===userId);
+
+    document.getElementById("editAttendanceId").value = record ? record.id : "";
+    document.getElementById("editAttendanceSessionId").value = sessionId;
+    document.getElementById("editAttendanceUserId").value = userId;
+    document.getElementById("editAttendanceStatus").value = record ? record.status : "Alpha";
+    document.getElementById("editAttendanceInfo").innerHTML=`
+        <strong>${escapeHTML(staff.name)}</strong><br>
+        <span style="font-size:11px;color:#777;">
+            ${escapeHTML(session.activity)} • ${escapeHTML(session.division)} • ${session.date}
+            ${!record ? " • Belum pernah absen (akan dibuat catatan baru)" : ""}
+        </span>
+    `;
+    document.getElementById("editAttendanceModal").classList.add("show");
+}
+
+
+/* =========================================================
+ATTENDANCE TABLE
+========================================================= */
+
+function renderStafHistory(){
+    const attendance=load(DB.attendance).filter(a=>a.userId===currentUser.id)
+        .sort((a,b)=> new Date(b.checkIn) - new Date(a.checkIn));
+    const container=document.getElementById("stafHistoryTable");
+
+    if(!attendance.length){
+        container.innerHTML=emptyHTML("fa-clock-rotate-left", "Belum ada riwayat absensi.");
+        return;
+    }
+    container.innerHTML=attendanceTable(attendance,false);
+}
+
+function attendanceTable(data,canEdit){
+    return `
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nama</th><th>Kegiatan</th><th>Divisi</th><th>Tanggal</th><th>Jam</th><th>Status</th><th>Foto/Lokasi</th>
+                        ${canEdit ? "<th>Aksi</th>" : ""}
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.map(a=>`
+                        <tr>
+                            <td>${escapeHTML(a.userName)}</td>
+                            <td>${escapeHTML(a.activity)}</td>
+                            <td>${escapeHTML(a.division)}</td>
+                            <td>${a.date}</td>
+                            <td>${formatTime(a.checkIn)}</td>
+                            <td>${statusBadge(a.status)}</td>
+                            <td>${attendanceProofCell(a)}</td>
+                            ${canEdit ? `<td>
+                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="openEditAttendance('${a.id}')">
+                                    <i class="fa-solid fa-pen"></i>
+                                </button>
+                            </td>` : ""}
+                        </tr>
+                    `).join("")}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function attendanceProofCell(a){
+    const thumb = a.photo
+        ? `<img src="${a.photo}" class="proof-thumb" onclick="viewProofPhoto('${a.id}')" alt="Selfie">`
+        : `<span style="color:#aaa;font-size:11px;">-</span>`;
+    let locBadge = "";
+    if(a.lat!=null && a.lng!=null){
+        const settings=typeof getSettings==="function" ? getSettings() : null;
+        if(settings && settings.geofenceEnabled && settings.officeLat!=null && settings.officeLng!=null && typeof haversineDistance==="function"){
+            const distance=haversineDistance(a.lat,a.lng,settings.officeLat,settings.officeLng);
+            const inside = distance<=settings.radius;
+            locBadge = `<span class="badge ${inside ? "badge-active" : "badge-inactive"}" style="margin-left:6px;" title="±${Math.round(distance)} m dari kantor">${inside ? "Dalam radius" : "Luar radius"}</span>`;
+        }
+    }
+    return `<div style="display:flex;align-items:center;gap:4px;">${thumb}${locBadge}</div>`;
+}
+
+function viewProofPhoto(id){
+    const attendance=load(DB.attendance);
+    const record=attendance.find(a=>a.id===id);
+    if(!record || !record.photo){ toast("Foto tidak tersedia.", "error"); return; }
+    const win=window.open("","_blank","width=420,height=520");
+    win.document.write(`
+        <!DOCTYPE html><html><head><title>Foto Absensi - ${escapeHTML(record.userName)}</title>
+        <style>body{font-family:Arial,sans-serif;text-align:center;padding:20px;background:#111;color:#fff;}
+        img{max-width:100%;border-radius:12px;margin-top:10px;}</style></head>
+        <body>
+            <h3>${escapeHTML(record.userName)}</h3>
+            <p>${escapeHTML(record.activity)} • ${record.date} • ${formatTime(record.checkIn)}</p>
+            <img src="${record.photo}">
+        </body></html>
+    `);
+    win.document.close();
+}
+
+
+/* =========================================================
+HRD REPORT & DASHBOARD
+========================================================= */
+
+function renderHRDReport(){
+    if(currentUser?.role!=="HRD")return;
+    let data=load(DB.attendance);
+    const date=document.getElementById("filterDate").value;
+    const activity=document.getElementById("filterActivity").value;
+    const division=document.getElementById("filterDivision").value;
+    const status=document.getElementById("filterStatus").value;
+
+    if(date) data=data.filter(a=>a.date===date);
+    if(activity) data=data.filter(a=>a.activity===activity);
+    if(division) data=data.filter(a=>a.division===division);
+    if(status) data=data.filter(a=>a.status===status);
+
+    const container=document.getElementById("hrdReportTable");
+    if(!data.length){
+        container.innerHTML=emptyHTML("fa-table-list", "Tidak ada data sesuai filter."); return;
+    }
+    container.innerHTML=attendanceTable(data,true);
+}
+
+function renderHRDDashboard(){
+    const users=load(DB.users);
+    const attendance=load(DB.attendance);
+    const staff=users.filter(u=>u.role==="STAF");
+    
+    document.getElementById("hrdTotalStaff").textContent=staff.length;
+    document.getElementById("hrdHadir").textContent=attendance.filter(a=>a.status==="Hadir").length;
+    document.getElementById("hrdIzinSakit").textContent=attendance.filter(a=>a.status==="Izin" || a.status==="Sakit").length;
+    document.getElementById("hrdAlpha").textContent=attendance.filter(a=>a.status==="Alpha").length;
+
+    const recent=[...attendance].sort((a,b)=> new Date(b.checkIn) - new Date(a.checkIn)).slice(0,8);
+    const container=document.getElementById("hrdRecentAttendance");
+    if(!recent.length) container.innerHTML=emptyHTML("fa-clipboard", "Belum ada absensi.");
+    else container.innerHTML=attendanceTable(recent,false);
+}
+
+
+/* =========================================================
+STAF DASHBOARD & KOOR DASHBOARD
+========================================================= */
+
+function renderStafDashboard(){
+    const attendance=load(DB.attendance).filter(a=>a.userId===currentUser.id);
+    document.getElementById("stafTotalHadir").textContent=attendance.filter(a=>a.status==="Hadir").length;
+    document.getElementById("stafTotalIzin").textContent=attendance.filter(a=>a.status==="Izin").length;
+    document.getElementById("stafTotalSakit").textContent=attendance.filter(a=>a.status==="Sakit").length;
+    document.getElementById("stafTotalAlpha").textContent=attendance.filter(a=>a.status==="Alpha").length;
+
+    const recent=[...attendance].sort((a,b)=> new Date(b.checkIn) - new Date(a.checkIn)).slice(0,5);
+    const container=document.getElementById("stafRecentAttendance");
+    container.innerHTML=recent.length ? attendanceTable(recent,false) : emptyHTML("fa-clock", "Belum ada absensi.");
+}
+
+function renderKoorDashboard(){
+    const sessions=load(DB.sessions).filter(s=> s.creatorId===currentUser.id && s.activity==="Ngoprek");
+    const attendance=load(DB.attendance).filter(a=> a.creatorId===currentUser.id && a.activity==="Ngoprek");
+    
+    document.getElementById("koorTotalQR").textContent=sessions.length;
+    document.getElementById("koorTotalHadir").textContent=attendance.filter(a=>a.status==="Hadir").length;
+    document.getElementById("koorNetworking").textContent=attendance.filter(a=>a.division==="Networking").length;
+    document.getElementById("koorCyber").textContent=attendance.filter(a=>a.division==="Cyber").length;
+}
+
+function renderKoorAttendance(){
+    if(currentUser?.role!=="KOOR KP")return;
+    const attendance=load(DB.attendance).filter(a=> a.creatorId===currentUser.id && a.activity==="Ngoprek");
+    const container=document.getElementById("koorAttendanceTable");
+
+    if(!attendance.length){
+        container.innerHTML=emptyHTML("fa-clipboard-check", "Belum ada absensi Ngoprek."); return;
+    }
+    container.innerHTML=attendanceTable(attendance,true);
+}
+
+
+/* =========================================================
+EDIT ATTENDANCE
+========================================================= */
+
+function openEditAttendance(id){
+    const attendance=load(DB.attendance);
+    const record=attendance.find(a=>a.id===id);
+    if(!record)return;
+
+    if(currentUser.role==="STAF"){
+        toast("STAF tidak dapat mengubah status absensi.", "error"); return;
+    }
+    if(currentUser.role==="KOOR KP" && (record.creatorId!==currentUser.id || record.activity!=="Ngoprek")){
+        toast("Koor KP hanya dapat mengubah absensi Ngoprek yang dibuatnya.", "error"); return;
+    }
+
+    document.getElementById("editAttendanceId").value=id;
+    document.getElementById("editAttendanceSessionId").value="";
+    document.getElementById("editAttendanceUserId").value="";
+    document.getElementById("editAttendanceStatus").value=record.status;
+    document.getElementById("editAttendanceInfo").innerHTML=`
+        <strong>${escapeHTML(record.userName)}</strong><br>
+        <span style="font-size:11px;color:#777;">
+            ${escapeHTML(record.activity)} • ${escapeHTML(record.division)} • ${record.date}
+        </span>
+    `;
+    document.getElementById("editAttendanceModal").classList.add("show");
+}
+
+function saveAttendanceEdit(){
+    const id=document.getElementById("editAttendanceId").value;
+    const status=document.getElementById("editAttendanceStatus").value;
+    const sessionId=document.getElementById("editAttendanceSessionId")?.value;
+    const userId=document.getElementById("editAttendanceUserId")?.value;
+    const attendance=load(DB.attendance);
+    let record = id ? attendance.find(a=>a.id===id) : null;
+
+    if(record){
+        if(currentUser.role==="KOOR KP" && (record.creatorId!==currentUser.id || record.activity!=="Ngoprek")){
+            toast("Akses ditolak.", "error"); return;
+        }
+        record.status=status;
+    } else if(sessionId && userId){
+        // Staf belum pernah absen pada sesi ini -> HRD/Koor KP menandai statusnya secara manual.
+        const sessions=load(DB.sessions);
+        const session=sessions.find(s=>s.id===sessionId);
+        const users=load(DB.users);
+        const staff=users.find(u=>u.id===userId);
+        if(!session || !staff){ closeModal("editAttendanceModal"); return; }
+
+        if(currentUser.role==="KOOR KP" && (session.creatorId!==currentUser.id || session.activity!=="Ngoprek")){
+            toast("Akses ditolak.", "error"); return;
+        }
+
+        const duplicate=attendance.find(a=>a.sessionId===session.id && a.userId===staff.id);
+        if(duplicate){
+            duplicate.status=status;
+        }else{
+            attendance.push({
+                id: "ATT-"+Date.now(), sessionId: session.id, token: session.token,
+                userId: staff.id, userName: staff.name, username: staff.username,
+                activity: session.activity, division: session.division, date: session.date,
+                checkIn: new Date().toISOString(), status,
+                creatorId: session.creatorId, creatorRole: session.creatorRole,
+                markedManuallyBy: currentUser.id
+            });
+        }
+    } else {
+        closeModal("editAttendanceModal"); return;
+    }
+
+    save(DB.attendance,attendance);
+    closeModal("editAttendanceModal");
+    renderAll();
+    renderSessionStaffStatus();
+    toast("Status absensi berhasil diperbarui.", "success");
+}
+
+
+/* =========================================================
+USERS (HRD & KOOR KP)
+========================================================= */
+
+function renderUsers(){
+    if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP") return;
+    
+    const users=load(DB.users);
+    let displayUsers = [];
+    
+    // HRD dapat melihat semua (atau selain dirinya sendiri)
+    if(currentUser.role==="HRD") {
+        document.getElementById("btnTambahAkun").style.display = "inline-flex";
+        displayUsers = users;
+    } 
+    // KOOR KP hanya dapat melihat staf di divisinya
+    else if(currentUser.role==="KOOR KP") {
+        document.getElementById("btnTambahAkun").style.display = "none";
+        displayUsers = users.filter(u => u.role === "STAF" && u.division === currentUser.division);
+    }
+
+    const container=document.getElementById("usersTable");
+
+    if(!displayUsers.length){
+        container.innerHTML=emptyHTML("fa-users-slash", "Belum ada data pengguna yang ditampilkan.");
+        return;
+    }
+
+    container.innerHTML=`
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nama</th>
+                        <th>Username / NIM</th>
+                        <th>Role</th>
+                        <th>Divisi</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${displayUsers.map(u=>`
+                        <tr>
+                            <td>${escapeHTML(u.name)}</td>
+                            <td>${escapeHTML(u.username)}</td>
+                            <td><span class="badge badge-active">${escapeHTML(u.role)}</span></td>
+                            <td>${escapeHTML(u.division || "-")}</td>
+                            <td>
+                                ${currentUser.role === 'HRD' ? `
+                                <button class="btn btn-outline" style="padding:7px 9px; margin-right: 5px;" onclick="editUser('${u.id}')">
+                                    <i class="fa-solid fa-pen"></i>
+                                </button>
+                                ` : ''}
+                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteUser('${u.id}')">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `).join("")}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function editUser(id){
+    if(currentUser.role!=="HRD"){
+        toast("Hanya HRD yang dapat mengedit akun.", "error"); return;
+    }
+    const users=load(DB.users);
+    const user=users.find(u=>u.id===id);
+    if(!user)return;
+
+    const name=prompt("Nama:", user.name);
+    if(name===null)return;
+    const password=prompt("Password baru:", user.password);
+    if(password===null)return;
+
+    let division = user.division;
+    if(user.role !== "HRD") {
+        const div = prompt("Divisi (Networking/Cyber/Sysadmin):", user.division);
+        if(div !== null) division = div;
+    }
+
+    user.name=name;
+    user.password=password;
+    if(user.role !== "HRD") user.division = division;
+
+    save(DB.users,users);
+    renderUsers();
+    toast("Akun berhasil diperbarui.", "success");
+}
+
+function deleteUser(id){
+    if(!confirm("Yakin ingin menghapus akun ini?")) return;
+    let users=load(DB.users);
+    const user=users.find(u=>u.id===id);
+    if(!user)return;
+
+    if(currentUser.role === "KOOR KP") {
+        if(user.role !== "STAF" || user.division !== currentUser.division){
+            toast("Akses ditolak. Anda hanya dapat menghapus Staf di divisi Anda.", "error");
+            return;
+        }
+    } else if (currentUser.role !== "HRD") {
+        toast("Akses ditolak.", "error");
+        return;
+    }
+
+    users = users.filter(u => u.id !== id);
+    save(DB.users, users);
+    renderUsers();
+    toast("Akun berhasil dihapus.", "success");
+}
+
+
+/* =========================================================
+REGISTRATION
+========================================================= */
+
+function toggleRegisterDivision(){
+    const role = document.getElementById("registerRole").value;
+    const divGroup = document.getElementById("registerDivisionGroup");
+    const divSelect = document.getElementById("registerDivision");
+    
+    if(role === "HRD"){
+        divGroup.classList.add("hidden");
+        divSelect.required = false;
+        divSelect.value = "";
+    } else {
+        divGroup.classList.remove("hidden");
+        divSelect.required = true;
+    }
+}
+
+function openRegister(){
+    toggleRegisterDivision();
+    document.getElementById("registerModal").classList.add("show");
+}
+
+function register(event){
+    event.preventDefault();
+    const name=document.getElementById("registerName").value.trim();
+    const username=document.getElementById("registerUsername").value.trim();
+    const role=document.getElementById("registerRole").value;
+    const password=document.getElementById("registerPassword").value;
+    let division=document.getElementById("registerDivision").value;
+
+    if(role !== "HRD" && !division) {
+        toast("Silakan pilih divisi untuk Staf / Koor KP.", "error"); return;
+    }
+    if(role === "HRD") division = null;
+
+    const users=load(DB.users);
+    if(users.some(u=>u.username===username)){
+        toast("Username/NIM sudah digunakan.", "error"); return;
+    }
+
+    users.push({
+        id: "U-"+Date.now(),
+        name, username, password, role, division
+    });
+
+    save(DB.users,users);
+    closeModal("registerModal");
+    document.querySelector("#registerModal form").reset();
+    toast("Akun berhasil dibuat.", "success");
+    
+    if(currentUser && currentUser.role === "HRD") renderUsers();
+}
+
+
+/* =========================================================
+CALENDAR
+========================================================= */
+
+function renderCalendar(){
+    const sessions=load(DB.sessions).sort((a,b)=> a.date.localeCompare(b.date));
+    const container=document.getElementById("staffCalendar");
+    if(!sessions.length){
+        container.innerHTML=emptyHTML("fa-calendar", "Belum ada jadwal kegiatan."); return;
+    }
+    container.innerHTML=`<div class="grid-3">
+        ${sessions.map(s=>`
+            <div class="activity-card">
+                <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px;">
+                    <div class="activity-icon" style="margin:0;"><i class="fa-solid fa-calendar-check"></i></div>
+                    ${s.active ? `<span class="badge badge-active">Aktif</span>` : `<span class="badge badge-inactive">Nonaktif</span>`}
+                </div>
+                <h4>${escapeHTML(s.activity)}</h4><p>${escapeHTML(s.division)}</p>
+                <p style="margin-top:8px;"><strong>${s.date}</strong><br>${s.start} -${s.end}</p>
+                <p>${escapeHTML(s.location)}</p>
+            </div>
+        `).join("")}</div>`;
+}
+
+
+/* =========================================================
+IZIN / SAKIT (PENGAJUAN & PERSETUJUAN)
+-----------------------------------------------------------
+STAF mengajukan Izin/Sakit untuk satu kegiatan tertentu, WAJIB
+melampirkan foto bukti (surat izin/keterangan sakit, dll).
+Pengajuan berstatus "Menunggu" sampai disetujui atau ditolak
+oleh HRD (bebas kegiatan apa pun) atau Koor KP (khusus kegiatan
+Ngoprek yang ia buat sendiri, sama seperti aturan edit absensi
+manual). Setelah disetujui, otomatis dibuatkan/diperbarui catatan
+absensi berstatus Izin/Sakit lengkap dengan foto buktinya.
+========================================================= */
+
+let pendingPermitPhoto = null;
+
+function populatePermitSessionOptions(){
+    const select = document.getElementById("permitSession");
+    if(!select) return;
+
+    const today = new Date().toISOString().split("T")[0];
+    const sessions = load(DB.sessions).sort((a,b)=> b.date.localeCompare(a.date));
+    const attendance = load(DB.attendance);
+    const permits = load(DB.permits);
+
+    // Hanya kegiatan HARI INI yang bisa diajukan izin/sakit (mempermudah staf,
+    // tidak perlu bingung memilih di antara kegiatan-kegiatan lama). Selain itu,
+    // sembunyikan kegiatan yang sudah punya catatan absensi (mis. sudah "Hadir")
+    // atau sudah punya pengajuan Izin/Sakit yang masih berjalan (bukan yang ditolak).
+    const options = sessions.filter(s=>{
+        if(s.date !== today) return false;
+        const hasAttendance = attendance.some(a=> a.sessionId===s.id && a.userId===currentUser.id);
+        const hasActivePermit = permits.some(p=> p.sessionId===s.id && p.userId===currentUser.id && p.status!=="Ditolak");
+        return !hasAttendance && !hasActivePermit;
+    });
+
+    select.innerHTML = `<option value="">Pilih kegiatan</option>` +
+        options.map(s=> `<option value="${s.id}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${s.date}</option>`).join("");
+
+    const hint = document.getElementById("permitNoSessionHint");
+    if(hint) hint.classList.toggle("hidden", options.length>0);
+}
+
+function handlePermitPhotoInput(input){
+    const file = input.files && input.files[0];
+    if(!file) return;
+
+    const reader = new FileReader();
+    reader.onload = e=>{
+        pendingPermitPhoto = e.target.result;
+        const preview = document.getElementById("permitPhotoPreview");
+        preview.src = pendingPermitPhoto;
+        preview.classList.remove("hidden");
+    };
+    reader.readAsDataURL(file);
+}
+
+function resetPermitForm(){
+    const form = document.getElementById("permitSession")?.closest("form");
+    if(form) form.reset();
+    const preview = document.getElementById("permitPhotoPreview");
+    if(preview){ preview.classList.add("hidden"); preview.src=""; }
+    pendingPermitPhoto = null;
+    populatePermitSessionOptions();
+}
+
+/* Versi dasar (localStorage saja). Jika cloud-sync.js dimuat & sudah
+   dikonfigurasi, fungsi ini akan DITIMPA supaya foto diunggah ke
+   Google Drive dulu sebelum pengajuan tersimpan (lihat cloud-sync.js). */
+function submitPermit(event){
+    event.preventDefault();
+
+    const sessionId = document.getElementById("permitSession").value;
+    const type = document.getElementById("permitType").value;
+    const reason = document.getElementById("permitReason").value.trim();
+
+    if(!sessionId){ toast("Pilih kegiatan terlebih dahulu.", "error"); return; }
+    if(!reason){ toast("Alasan wajib diisi.", "error"); return; }
+    if(!pendingPermitPhoto){ toast("Lampirkan foto bukti terlebih dahulu.", "error"); return; }
+
+    const sessions = load(DB.sessions);
+    const session = sessions.find(s=>s.id===sessionId);
+    if(!session){ toast("Kegiatan tidak ditemukan.", "error"); return; }
+
+    const permit = buildPermitRecord(session, type, reason, pendingPermitPhoto);
+    const permits = load(DB.permits);
+    permits.push(permit);
+    save(DB.permits, permits);
+
+    resetPermitForm();
+    renderPermitHistory();
+    toast(`Pengajuan ${type} berhasil dikirim, menunggu persetujuan.`, "success");
+}
+
+function buildPermitRecord(session, type, reason, photo){
+    return {
+        id: "PERMIT-"+Date.now(),
+        sessionId: session.id, sessionActivity: session.activity, sessionDivision: session.division,
+        sessionDate: session.date, sessionLocation: session.location,
+        sessionCreatorId: session.creatorId, sessionCreatorRole: session.creatorRole,
+        userId: currentUser.id, userName: currentUser.name, username: currentUser.username,
+        type, reason, photo,
+        status: "Menunggu",
+        submittedAt: new Date().toISOString(),
+        reviewedBy: null, reviewedByName: null, reviewedAt: null, reviewNote: null
+    };
+}
+
+function permitStatusBadge(status){
+    const map={"Menunggu":"badge-izin", "Disetujui":"badge-hadir", "Ditolak":"badge-alpha"};
+    return `<span class="badge ${map[status] || "badge-inactive"}">${escapeHTML(status)}</span>`;
+}
+
+function permitProofCell(p){
+    return p.photo
+        ? `<img src="${p.photo}" class="proof-thumb" onclick="viewPermitPhoto('${p.id}')" alt="Bukti">`
+        : `<span style="color:#aaa;font-size:11px;">-</span>`;
+}
+
+function renderPermitHistory(){
+    const container = document.getElementById("permitHistoryTable");
+    if(!container) return;
+
+    const permits = load(DB.permits).filter(p=>p.userId===currentUser.id)
+        .sort((a,b)=> new Date(b.submittedAt) - new Date(a.submittedAt));
+
+    if(!permits.length){
+        container.innerHTML = emptyHTML("fa-file-medical", "Belum ada pengajuan izin/sakit.");
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr><th>Kegiatan</th><th>Tanggal</th><th>Jenis</th><th>Alasan</th><th>Bukti</th><th>Status</th><th>Catatan Peninjau</th></tr>
+                </thead>
+                <tbody>
+                    ${permits.map(p=>`
+                        <tr>
+                            <td><strong>${escapeHTML(p.sessionActivity)}</strong><br><span style="font-size:11px;color:#777;">${escapeHTML(p.sessionDivision)}</span></td>
+                            <td>${p.sessionDate}</td>
+                            <td>${escapeHTML(p.type)}</td>
+                            <td style="max-width:200px;white-space:normal;">${escapeHTML(p.reason)}</td>
+                            <td>${permitProofCell(p)}</td>
+                            <td>${permitStatusBadge(p.status)}</td>
+                            <td style="font-size:11px;color:#777;">${p.reviewedByName ? `${escapeHTML(p.reviewedByName)}${p.reviewNote ? `: ${escapeHTML(p.reviewNote)}` : ""}` : "-"}</td>
+                        </tr>
+                    `).join("")}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function renderPermitApproval(role){
+    const container = document.getElementById(role==="hrd" ? "hrdPermitTable" : "koorPermitTable");
+    if(!container) return;
+
+    let permits = load(DB.permits).sort((a,b)=> new Date(b.submittedAt) - new Date(a.submittedAt));
+
+    if(role==="koor"){
+        // Koor KP hanya melihat pengajuan untuk kegiatan Ngoprek yang ia buat sendiri
+        // (sama seperti aturan akses edit absensi manual Ngoprek).
+        permits = permits.filter(p=> p.sessionActivity==="Ngoprek" && p.sessionCreatorId===currentUser.id);
+    }
+
+    if(!permits.length){
+        container.innerHTML = emptyHTML("fa-file-medical", "Belum ada pengajuan izin/sakit.");
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr><th>Nama</th><th>Kegiatan</th><th>Tanggal</th><th>Jenis</th><th>Alasan</th><th>Bukti</th><th>Status</th><th>Aksi</th></tr>
+                </thead>
+                <tbody>
+                    ${permits.map(p=>`
+                        <tr>
+                            <td><strong>${escapeHTML(p.userName)}</strong></td>
+                            <td>${escapeHTML(p.sessionActivity)}<br><span style="font-size:11px;color:#777;">${escapeHTML(p.sessionDivision)}</span></td>
+                            <td>${p.sessionDate}</td>
+                            <td>${escapeHTML(p.type)}</td>
+                            <td style="max-width:200px;white-space:normal;">${escapeHTML(p.reason)}</td>
+                            <td>${permitProofCell(p)}</td>
+                            <td>${permitStatusBadge(p.status)}</td>
+                            <td>
+                                ${p.status==="Menunggu" ? `
+                                    <div style="display:flex;gap:6px;">
+                                        <button class="btn btn-primary" style="padding:7px 9px;" onclick="approvePermit('${p.id}')" title="Setujui">
+                                            <i class="fa-solid fa-check"></i>
+                                        </button>
+                                        <button class="btn btn-outline" style="padding:7px 9px;" onclick="rejectPermit('${p.id}')" title="Tolak">
+                                            <i class="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                ` : `<span style="font-size:11px;color:#777;">${p.reviewedByName ? "oleh "+escapeHTML(p.reviewedByName) : "-"}</span>`}
+                            </td>
+                        </tr>
+                    `).join("")}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function canReviewPermit(permit){
+    if(currentUser.role==="HRD") return true;
+    if(currentUser.role==="KOOR KP") return permit.sessionActivity==="Ngoprek" && permit.sessionCreatorId===currentUser.id;
+    return false;
+}
+
+function approvePermit(id){
+    const permits = load(DB.permits);
+    const permit = permits.find(p=>p.id===id);
+    if(!permit){ toast("Pengajuan tidak ditemukan.", "error"); return; }
+    if(!canReviewPermit(permit)){ toast("Akses ditolak.", "error"); return; }
+    if(permit.status!=="Menunggu"){ toast("Pengajuan ini sudah diproses.", "error"); return; }
+
+    permit.status = "Disetujui";
+    permit.reviewedBy = currentUser.id;
+    permit.reviewedByName = currentUser.name;
+    permit.reviewedAt = new Date().toISOString();
+    save(DB.permits, permits);
+
+    // Buat/perbarui catatan absensi supaya muncul di Rekap Absensi lengkap dengan bukti fotonya.
+    const attendance = load(DB.attendance);
+    let record = attendance.find(a=> a.sessionId===permit.sessionId && a.userId===permit.userId);
+    if(record){
+        record.status = permit.type;
+        record.photo = permit.photo;
+        record.permitId = permit.id;
+    }else{
+        attendance.push({
+            id: "ATT-"+Date.now(), sessionId: permit.sessionId, token: null,
+            userId: permit.userId, userName: permit.userName, username: permit.username,
+            activity: permit.sessionActivity, division: permit.sessionDivision, date: permit.sessionDate,
+            checkIn: new Date().toISOString(), status: permit.type,
+            creatorId: permit.sessionCreatorId, creatorRole: permit.sessionCreatorRole,
+            lat: null, lng: null, photo: permit.photo,
+            permitId: permit.id, approvedFromPermit: true
+        });
+    }
+    save(DB.attendance, attendance);
+
+    renderPermitApproval(currentUser.role==="HRD" ? "hrd" : "koor");
+    renderAll();
+    toast(`Pengajuan ${permit.type} dari ${permit.userName} disetujui.`, "success");
+}
+
+function rejectPermit(id){
+    const permits = load(DB.permits);
+    const permit = permits.find(p=>p.id===id);
+    if(!permit){ toast("Pengajuan tidak ditemukan.", "error"); return; }
+    if(!canReviewPermit(permit)){ toast("Akses ditolak.", "error"); return; }
+    if(permit.status!=="Menunggu"){ toast("Pengajuan ini sudah diproses.", "error"); return; }
+
+    const note = prompt("Alasan penolakan (opsional):", "") || "";
+
+    permit.status = "Ditolak";
+    permit.reviewedBy = currentUser.id;
+    permit.reviewedByName = currentUser.name;
+    permit.reviewedAt = new Date().toISOString();
+    permit.reviewNote = note.trim() || null;
+    save(DB.permits, permits);
+
+    renderPermitApproval(currentUser.role==="HRD" ? "hrd" : "koor");
+    toast(`Pengajuan ${permit.type} dari ${permit.userName} ditolak.`, "success");
+}
+
+function viewPermitPhoto(id){
+    const permits = load(DB.permits);
+    const permit = permits.find(p=>p.id===id);
+    if(!permit || !permit.photo){ toast("Foto tidak tersedia.", "error"); return; }
+    const win = window.open("", "_blank", "width=420,height=520");
+    win.document.write(`
+        <!DOCTYPE html><html><head><title>Bukti ${escapeHTML(permit.type)} - ${escapeHTML(permit.userName)}</title>
+        <style>body{font-family:Arial,sans-serif;text-align:center;padding:20px;background:#111;color:#fff;}
+        img{max-width:100%;border-radius:12px;margin-top:10px;}</style></head>
+        <body>
+            <h3>${escapeHTML(permit.userName)} — ${escapeHTML(permit.type)}</h3>
+            <p>${escapeHTML(permit.sessionActivity)} • ${permit.sessionDate}</p>
+            <p style="font-size:13px;color:#ccc;">${escapeHTML(permit.reason)}</p>
+            <img src="${permit.photo}">
+        </body></html>
+    `);
+    win.document.close();
+}
+
+
+/* =========================================================
+SETTINGS
+========================================================= */
+
+function renderSettings(){
+    document.getElementById("settingName").value=currentUser.name;
+    document.getElementById("settingUsername").value=currentUser.username;
+    document.getElementById("settingRole").value=currentUser.role;
+}
+
+function saveSettings(){
+    const name=document.getElementById("settingName").value.trim();
+    if(!name){ toast("Nama tidak boleh kosong.", "error"); return; }
+    
+    const users=load(DB.users);
+    const user=users.find(u=>u.id===currentUser.id);
+    if(!user)return;
+
+    user.name=name;
+    currentUser.name=name;
+    save(DB.users,users);
+    localStorage.setItem("nev_current_user", JSON.stringify(currentUser));
+    
+    updateUserUI();
+    toast("Pengaturan berhasil disimpan.", "success");
+}
+
+
+/* =========================================================
+EXPORT EXCEL
+========================================================= */
+
+function exportExcel(){
+    if(currentUser.role!=="HRD"){ toast("Hanya HRD yang dapat export data.", "error"); return; }
+    let data=load(DB.attendance);
+    const date=document.getElementById("filterDate").value;
+    const activity=document.getElementById("filterActivity").value;
+    const division=document.getElementById("filterDivision").value;
+    const status=document.getElementById("filterStatus").value;
+
+    if(date) data=data.filter(a=>a.date===date);
+    if(activity) data=data.filter(a=>a.activity===activity);
+    if(division) data=data.filter(a=>a.division===division);
+    if(status) data=data.filter(a=>a.status===status);
+
+    const rows=data.map(a=>({
+        "Nama":a.userName, "Username/NIM":a.username, "Kegiatan":a.activity,
+        "Divisi":a.division, "Tanggal":a.date, "Jam":formatTime(a.checkIn),
+        "Status":a.status, "Pembuat QR":a.creatorName, "Role Pembuat":a.creatorRole
+    }));
+
+    const worksheet=XLSX.utils.json_to_sheet(rows);
+    const workbook=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Absensi");
+    XLSX.writeFile(workbook, "NEV-Absenku-Rekap.xlsx");
+    toast("File Excel berhasil dibuat.", "success");
+}
+
+
+/* =========================================================
+EXPORT PDF
+========================================================= */
+
+function exportPDF(){
+    if(currentUser.role!=="HRD"){ toast("Hanya HRD yang dapat export PDF.", "error"); return; }
+    let data=load(DB.attendance);
+    const date=document.getElementById("filterDate").value;
+    const activity=document.getElementById("filterActivity").value;
+    const division=document.getElementById("filterDivision").value;
+    const status=document.getElementById("filterStatus").value;
+
+    if(date) data=data.filter(a=>a.date===date);
+    if(activity) data=data.filter(a=>a.activity===activity);
+    if(division) data=data.filter(a=>a.division===division);
+    if(status) data=data.filter(a=>a.status===status);
+
+    const { jsPDF } = window.jspdf;
+    const doc=new jsPDF("landscape");
+    doc.setFontSize(18);
+    doc.text("NEV Absenku - Rekap Absensi", 14, 15);
+    doc.setFontSize(9);
+    doc.text("Dicetak: "+new Date().toLocaleString("id-ID"), 14, 22);
+    
+    doc.autoTable({
+        startY:28,
+        head:[["Nama", "NIM", "Kegiatan", "Divisi", "Tanggal", "Jam", "Status"]],
+        body:data.map(a=>[a.userName, a.username, a.activity, a.division, a.date, formatTime(a.checkIn), a.status])
+    });
+
+    doc.save("NEV-Absenku-Rekap.pdf");
+    toast("PDF berhasil dibuat.", "success");
+}
+
+
+/* =========================================================
+HELPERS
+========================================================= */
+
+function formatTime(dateString){
+    try{
+        return new Date(dateString).toLocaleTimeString("id-ID", {hour:"2-digit", minute:"2-digit"});
+    }catch(e){ return "-"; }
+}
+
+function statusBadge(status){
+    const map={"Hadir":"badge-hadir", "Izin":"badge-izin", "Sakit":"badge-sakit", "Alpha":"badge-alpha"};
+    return `<span class="badge ${map[status] || "badge-inactive"}">${escapeHTML(status)}</span>`;
+}
+
+function emptyHTML(icon,message){
+    return `<div class="empty"><i class="fa-solid ${icon}"></i><p>${message}</p></div>`;
+}
+
+function escapeHTML(value){
+    return String(value ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+}
+
+function toast(message,type="normal"){
+    const container=document.getElementById("toastContainer");
+    const el=document.createElement("div");
+    el.className=`toast ${type}`;
+    el.innerHTML=`<i class="fa-solid ${type==="success" ? "fa-circle-check" : type==="error" ? "fa-circle-exclamation" : "fa-info-circle"}"></i> &nbsp; ${escapeHTML(message)}`;
+    container.appendChild(el);
+    setTimeout(()=>{ el.remove(); },4000);
+}
+
+function closeModal(id){
+    document.getElementById(id).classList.remove("show");
+}
+
+function toggleDivision(type){
+    const activity=document.getElementById("hrdActivity").value;
+    const group=document.getElementById("hrdDivisionGroup");
+    if(activity==="Ngoprek"){
+        group.classList.remove("hidden");
+    }else{
+        group.classList.add("hidden");
+        document.getElementById("hrdDivision").value="";
+    }
+}
+
+function toggleSidebar(){
+    document.getElementById("sidebar").classList.toggle("open");
+}
+
+function updateCurrentDate(){
+    const el=document.getElementById("currentDate");
+    if(!el)return;
+    el.textContent=new Date().toLocaleDateString("id-ID", {weekday:"long", day:"numeric", month:"long", year:"numeric"});
+}
+
+function renderAll(){
+    if(!currentUser)return;
+    if(currentUser.role==="STAF"){
+        renderStafDashboard(); renderStafHistory(); renderCalendar();
+    }
+    if(currentUser.role==="HRD"){
+        renderHRDDashboard(); renderHRDReport(); renderUsers(); renderQRSessionList("hrd"); populateSessionAttendancePicker();
+    }
+    if(currentUser.role==="KOOR KP"){
+        renderKoorDashboard(); renderKoorAttendance(); renderQRSessionList("koor"); renderUsers();
+    }
+}
+
+/* Diubah dari IIFE menjadi fungsi biasa supaya dapat dipanggil oleh
+   cloud-sync.js SETELAH data akun terbaru selesai disinkronkan dari
+   Google Sheets (supaya sesi lama tidak memakai data users yang basi). */
+function restoreLogin(){
+    const saved=localStorage.getItem("nev_current_user");
+    if(!saved)return;
+    try{
+        const user=JSON.parse(saved);
+        const users=load(DB.users);
+        const valid=users.find(u=>u.id===user.id);
+        if(!valid)return;
+
+        currentUser=valid;
+        document.getElementById("loginScreen").classList.add("hidden");
+        document.getElementById("app").classList.remove("hidden");
+        buildSidebar();
+        updateUserUI();
+
+        if(currentUser.role==="STAF") showPage("staf-dashboard");
+        if(currentUser.role==="HRD") showPage("hrd-dashboard");
+        if(currentUser.role==="KOOR KP") showPage("koor-dashboard");
+        renderAll();
+    }catch(e){
+        localStorage.removeItem("nev_current_user");
+    }
+}
+
+</script>
+
+<!-- File tambahan: fitur lokasi (geofencing) & selfie capture -->
+<script src="geo-selfie.js"></script>
+
+<!-- File tambahan: sinkronisasi terpusat ke Google Sheets & Google Drive -->
+<script src="cloud-sync.js"></script>
+
+</body>
+</html>
