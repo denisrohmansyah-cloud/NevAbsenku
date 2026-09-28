@@ -4473,28 +4473,42 @@ function attendanceTable(data,canEdit){
         </div>
     `;
 }
-function normalizePhotoUrl(url){
-  if(!url) return "";
-
+function getDriveFileId(url){
+  if(!url) return null;
   const value = String(url).trim();
+  if(value.startsWith("data:")) return null;
 
-  // Ambil ID file dari berbagai format URL Google Drive
+  // Format ...?id=FILE_ID  atau  ...&id=FILE_ID
   let match = value.match(/[?&]id=([^&]+)/);
 
-  // Jika format /file/d/FILE_ID/
-  if(!match){
-    match = value.match(/\/file\/d\/([^/]+)/);
-  }
+  // Format .../file/d/FILE_ID/...
+  if(!match) match = value.match(/\/file\/d\/([^/?]+)/);
 
-  if(match && match[1]){
-    return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1000`;
-  }
+  return match && match[1] ? match[1] : null;
+}
 
+/* Foto dari Google Drive: link "uc?export=view" sering gagal dimuat di <img>
+   (diblokir/redirect oleh Google). Endpoint "thumbnail" jauh lebih andal untuk
+   file yang dibagikan "siapa saja yang punya link". Aman dipanggil berulang
+   (idempoten) dan tidak menyentuh foto base64 lokal. */
+function normalizePhotoUrl(url, size){
+  if(!url) return "";
+  const value = String(url).trim();
+  const id = getDriveFileId(value);
+  if(id) return `https://drive.google.com/thumbnail?id=${id}&sz=w${size || 1000}`;
   return value;
 }
+
+/* Tanggal hari ini menurut WIB (format YYYY-MM-DD), bukan UTC. */
+function getTodayWIB(){
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta", year:"numeric", month:"2-digit", day:"2-digit"
+  }).format(new Date());
+}
+
 function attendanceProofCell(a){
   const thumb = a.photo
-    ? `<img src="${normalizePhotoUrl(a.photo)}" class="proof-thumb" onclick="viewProofPhoto('${a.id}')" alt="Selfie">`
+    ? photoThumbHTML(a.photo, `viewProofPhoto('${a.id}')`, "Selfie")
     : `<span style="color:#aaa;font-size:11px;">-</span>`;
     let locBadge = "";
     if(a.lat!=null && a.lng!=null){
@@ -4508,114 +4522,100 @@ function attendanceProofCell(a){
     return `<div style="display:flex;align-items:center;gap:4px;">${thumb}${locBadge}</div>`;
 }
 
-function viewProofPhoto(id){
-    const attendance = load(DB.attendance);
-    const record = attendance.find(a => a.id === id);
+/* ---------- Tampilan foto (thumbnail, fallback, & lightbox) ----------
+   Foto dari Google Drive kadang gagal dimuat lewat satu jenis link saja, jadi
+   dicoba beberapa bentuk link berurutan. Foto diperbesar DI DALAM halaman (bukan
+   popup) supaya memakai kondisi yang sama dengan thumbnail yang sudah berhasil. */
 
+function photoCandidates(url){
+    const id = getDriveFileId(url);
+    if(!id) return [String(url || "")];
+    return [
+        `https://drive.google.com/thumbnail?id=${id}&sz=w1600`,
+        `https://drive.google.com/thumbnail?id=${id}&sz=w1000`,
+        `https://lh3.googleusercontent.com/d/${id}=w1600`,
+        `https://drive.google.com/uc?export=view&id=${id}`
+    ];
+}
+
+function photoFallback(img){
+    const list = photoCandidates(img.dataset.orig || "");
+    const next = (parseInt(img.dataset.idx || "0", 10)) + 1;
+    if(next < list.length){
+        img.dataset.idx = String(next);
+        img.src = list[next];
+    }
+}
+
+function photoThumbHTML(photo, onclick, alt){
+    const src = normalizePhotoUrl(photo);
+    const fb = getDriveFileId(photo)
+        ? ` data-orig="${escapeHTML(photo)}" data-idx="1" onerror="photoFallback(this)"`
+        : "";
+    return `<img src="${src}" class="proof-thumb"${fb} onclick="${onclick}" alt="${alt}">`;
+}
+
+function closePhotoLightbox(){
+    const el = document.getElementById("photoLightbox");
+    if(el) el.remove();
+}
+
+document.addEventListener("keydown", e=>{
+    if(e.key === "Escape") closePhotoLightbox();
+});
+
+function showPhotoLightbox(title, subtitle, note, photo){
+    closePhotoLightbox();
+
+    const list = photoCandidates(photo);
+    const id = getDriveFileId(photo);
+    const driveLink = id ? `https://drive.google.com/file/d/${id}/view` : "";
+
+    const overlay = document.createElement("div");
+    overlay.id = "photoLightbox";
+    overlay.style.cssText = "position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:16px;";
+    overlay.innerHTML = `
+        <div style="max-width:720px;width:100%;max-height:100%;overflow:auto;text-align:center;color:#fff;">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:6px;">
+                <button type="button" onclick="closePhotoLightbox()"
+                    style="background:#fff;color:#111;border:0;border-radius:999px;width:36px;height:36px;font-size:18px;cursor:pointer;">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <h3 style="margin:0 0 6px;">${escapeHTML(title || "")}</h3>
+            <p style="margin:0 0 6px;color:#ccc;">${escapeHTML(subtitle || "")}</p>
+            ${note ? `<p style="margin:0 0 12px;color:#aaa;font-size:13px;">${escapeHTML(note)}</p>` : ""}
+            <img id="photoLightboxImg" alt="Bukti foto"
+                 style="display:block;margin:0 auto;max-width:100%;max-height:68vh;object-fit:contain;border-radius:12px;background:#222;">
+            <div id="photoLightboxError"
+                 style="display:none;padding:18px;border-radius:10px;background:#2a2a2a;color:#ff8080;">
+                Foto tidak dapat dimuat.
+                ${driveLink ? `<br><a href="${escapeHTML(driveLink)}" target="_blank" rel="noopener" style="color:#7db7ff;">Buka langsung di Google Drive</a>` : ""}
+            </div>
+        </div>
+    `;
+    overlay.addEventListener("click", e=>{ if(e.target === overlay) closePhotoLightbox(); });
+    document.body.appendChild(overlay);
+
+    const img = overlay.querySelector("#photoLightboxImg");
+    const err = overlay.querySelector("#photoLightboxError");
+    let i = 0;
+    img.onerror = ()=>{
+        i++;
+        if(i < list.length){ img.src = list[i]; }
+        else { img.style.display = "none"; err.style.display = "block"; }
+    };
+    img.src = list[0];
+}
+
+function viewProofPhoto(id){
+    const record = load(DB.attendance).find(a => a.id === id);
     if(!record || !record.photo){
         toast("Foto tidak tersedia.", "error");
         return;
     }
-
-    const win = window.open("", "_blank", "width=700,height=800");
-
-    if(!win){
-        toast("Popup diblokir browser. Izinkan popup untuk website ini.", "error");
-        return;
-    }
-
-    const photoUrl = record.photo;
-
-    win.document.write(`
-        <!DOCTYPE html>
-        <html lang="id">
-        <head>
-            <meta charset="UTF-8">
-            <title>Foto Absensi - ${escapeHTML(record.userName || "")}</title>
-            <style>
-                *{
-                    box-sizing:border-box;
-                }
-
-                body{
-                    margin:0;
-                    padding:20px;
-                    min-height:100vh;
-                    display:flex;
-                    flex-direction:column;
-                    align-items:center;
-                    justify-content:center;
-                    background:#111;
-                    color:#fff;
-                    font-family:Arial,sans-serif;
-                }
-
-                h3{
-                    margin:0 0 8px;
-                    text-align:center;
-                }
-
-                p{
-                    margin:0 0 15px;
-                    color:#ccc;
-                    text-align:center;
-                }
-
-                .photo-container{
-                    width:100%;
-                    max-width:650px;
-                    display:flex;
-                    justify-content:center;
-                    align-items:center;
-                }
-
-                img{
-                    display:block;
-                    max-width:100%;
-                    max-height:70vh;
-                    object-fit:contain;
-                    border-radius:12px;
-                    background:#222;
-                }
-
-                .error{
-                    padding:20px;
-                    border-radius:10px;
-                    background:#2a2a2a;
-                    color:#ff7777;
-                    text-align:center;
-                }
-            </style>
-        </head>
-
-        <body>
-            <h3>${escapeHTML(record.userName || "")}</h3>
-
-            <p>
-                ${escapeHTML(record.activity || "")}
-                ${record.date ? " • " + escapeHTML(record.date) : ""}
-                ${record.checkIn ? " • " + escapeHTML(formatTime(record.checkIn)) : ""}
-            </p>
-
-            <div class="photo-container">
-                <img
-                    src="${escapeHTML(photoUrl)}"
-                    alt="Bukti foto absensi"
-                    onerror="
-                        this.style.display='none';
-                        document.getElementById('photoError').style.display='block';
-                    "
-                >
-
-                <div id="photoError" class="error" style="display:none;">
-                    Foto tidak dapat dimuat.
-                </div>
-            </div>
-        </body>
-        </html>
-    `);
-
-    win.document.close();
+    const sub = [record.activity, record.date, record.checkIn ? formatTime(record.checkIn) : ""].filter(Boolean).join(" • ");
+    showPhotoLightbox(record.userName, sub, "", record.photo);
 }
 
 
@@ -4992,7 +4992,7 @@ function populatePermitSessionOptions(){
     const select = document.getElementById("permitSession");
     if(!select) return;
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = getTodayWIB();
     const sessions = load(DB.sessions).sort((a,b)=> b.date.localeCompare(a.date));
     const attendance = load(DB.attendance);
     const permits = load(DB.permits);
@@ -5015,18 +5015,44 @@ function populatePermitSessionOptions(){
     if(hint) hint.classList.toggle("hidden", options.length>0);
 }
 
-function handlePermitPhotoInput(input){
+/* Perkecil foto (sisi terpanjang maks. maxDim px, JPEG) sebelum diunggah.
+   Foto kamera HP bisa 3-8 MB; ukuran sebesar itu sering gagal/lambat di jaringan seluler. */
+function compressImageFile(file, maxDim, quality){
+    return new Promise((resolve, reject)=>{
+        const reader = new FileReader();
+        reader.onerror = ()=> reject(new Error("Gagal membaca file."));
+        reader.onload = e=>{
+            const img = new Image();
+            img.onerror = ()=> reject(new Error("File bukan gambar yang valid."));
+            img.onload = ()=>{
+                const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+                const w = Math.round(img.width * scale);
+                const h = Math.round(img.height * scale);
+                const canvas = document.createElement("canvas");
+                canvas.width = w; canvas.height = h;
+                canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+                resolve(canvas.toDataURL("image/jpeg", quality));
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+async function handlePermitPhotoInput(input){
     const file = input.files && input.files[0];
     if(!file) return;
 
-    const reader = new FileReader();
-    reader.onload = e=>{
-        pendingPermitPhoto = e.target.result;
+    try{
+        pendingPermitPhoto = await compressImageFile(file, 1280, 0.75);
         const preview = document.getElementById("permitPhotoPreview");
         preview.src = pendingPermitPhoto;
         preview.classList.remove("hidden");
-    };
-    reader.readAsDataURL(file);
+    }catch(err){
+        pendingPermitPhoto = null;
+        input.value = "";
+        toast(err.message || "Gagal memproses foto.", "error");
+    }
 }
 
 function resetPermitForm(){
@@ -5087,7 +5113,7 @@ function permitStatusBadge(status){
 
 function permitProofCell(p){
     return p.photo
-        ? `<img src="${p.photo}" class="proof-thumb" onclick="viewPermitPhoto('${p.id}')" alt="Bukti">`
+        ? photoThumbHTML(p.photo, `viewPermitPhoto('${p.id}')`, "Bukti")
         : `<span style="color:#aaa;font-size:11px;">-</span>`;
 }
 
@@ -5245,22 +5271,14 @@ function rejectPermit(id){
 }
 
 function viewPermitPhoto(id){
-    const permits = load(DB.permits);
-    const permit = permits.find(p=>p.id===id);
+    const permit = load(DB.permits).find(p=>p.id===id);
     if(!permit || !permit.photo){ toast("Foto tidak tersedia.", "error"); return; }
-    const win = window.open("", "_blank", "width=420,height=520");
-    win.document.write(`
-        <!DOCTYPE html><html><head><title>Bukti ${escapeHTML(permit.type)} - ${escapeHTML(permit.userName)}</title>
-        <style>body{font-family:Arial,sans-serif;text-align:center;padding:20px;background:#111;color:#fff;}
-        img{max-width:100%;border-radius:12px;margin-top:10px;}</style></head>
-        <body>
-            <h3>${escapeHTML(permit.userName)} — ${escapeHTML(permit.type)}</h3>
-            <p>${escapeHTML(permit.sessionActivity)} • ${permit.sessionDate}</p>
-            <p style="font-size:13px;color:#ccc;">${escapeHTML(permit.reason)}</p>
-            <img src="${permit.photo}">
-        </body></html>
-    `);
-    win.document.close();
+    showPhotoLightbox(
+        `${permit.userName} — ${permit.type}`,
+        `${permit.sessionActivity} • ${permit.sessionDate}`,
+        permit.reason,
+        permit.photo
+    );
 }
 
 
