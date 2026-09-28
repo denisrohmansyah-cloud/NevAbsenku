@@ -39,8 +39,9 @@ const SHEET_SESSIONS = "Sessions";
 const SHEET_ATTENDANCE = "Attendance";
 const SHEET_SETTINGS = "Settings";
 const SHEET_PERMITS = "Permits";
-const DRIVE_FOLDER_NAME = "NEV Absenku - Foto Selfie";
-const PERMIT_DRIVE_FOLDER_NAME = "NEV Absenku - Bukti Izin Sakit";
+const DRIVE_FOLDER_ID = "1-lQ2rFrCRYYqbmimYBtzReBEaG5hJVgr";
+const PERMIT_DRIVE_FOLDER_ID = "1-9QaGXdIUrMT-BhhT8FvB3smfpwHq4vb";
+const PRESENCE_DRIVE_FOLDER_ID = "1hpI3e8x4XonyO8wXJWdnnblo0KeKJFuF";
 
 const HEADERS = {
   Users: ["id", "name", "username", "password", "role", "division"],
