@@ -4509,20 +4509,112 @@ function attendanceProofCell(a){
 }
 
 function viewProofPhoto(id){
-    const attendance=load(DB.attendance);
-    const record=attendance.find(a=>a.id===id);
-    if(!record || !record.photo){ toast("Foto tidak tersedia.", "error"); return; }
-    const win=window.open("","_blank","width=420,height=520");
+    const attendance = load(DB.attendance);
+    const record = attendance.find(a => a.id === id);
+
+    if(!record || !record.photo){
+        toast("Foto tidak tersedia.", "error");
+        return;
+    }
+
+    const win = window.open("", "_blank", "width=700,height=800");
+
+    if(!win){
+        toast("Popup diblokir browser. Izinkan popup untuk website ini.", "error");
+        return;
+    }
+
+    const photoUrl = record.photo;
+
     win.document.write(`
-        <!DOCTYPE html><html><head><title>Foto Absensi - ${escapeHTML(record.userName)}</title>
-        <style>body{font-family:Arial,sans-serif;text-align:center;padding:20px;background:#111;color:#fff;}
-        img{max-width:100%;border-radius:12px;margin-top:10px;}</style></head>
+        <!DOCTYPE html>
+        <html lang="id">
+        <head>
+            <meta charset="UTF-8">
+            <title>Foto Absensi - ${escapeHTML(record.userName || "")}</title>
+            <style>
+                *{
+                    box-sizing:border-box;
+                }
+
+                body{
+                    margin:0;
+                    padding:20px;
+                    min-height:100vh;
+                    display:flex;
+                    flex-direction:column;
+                    align-items:center;
+                    justify-content:center;
+                    background:#111;
+                    color:#fff;
+                    font-family:Arial,sans-serif;
+                }
+
+                h3{
+                    margin:0 0 8px;
+                    text-align:center;
+                }
+
+                p{
+                    margin:0 0 15px;
+                    color:#ccc;
+                    text-align:center;
+                }
+
+                .photo-container{
+                    width:100%;
+                    max-width:650px;
+                    display:flex;
+                    justify-content:center;
+                    align-items:center;
+                }
+
+                img{
+                    display:block;
+                    max-width:100%;
+                    max-height:70vh;
+                    object-fit:contain;
+                    border-radius:12px;
+                    background:#222;
+                }
+
+                .error{
+                    padding:20px;
+                    border-radius:10px;
+                    background:#2a2a2a;
+                    color:#ff7777;
+                    text-align:center;
+                }
+            </style>
+        </head>
+
         <body>
-            <h3>${escapeHTML(record.userName)}</h3>
-            <p>${escapeHTML(record.activity)} • ${record.date} • ${formatTime(record.checkIn)}</p>
-            <img src="${record.photo}">
-        </body></html>
+            <h3>${escapeHTML(record.userName || "")}</h3>
+
+            <p>
+                ${escapeHTML(record.activity || "")}
+                ${record.date ? " • " + escapeHTML(record.date) : ""}
+                ${record.checkIn ? " • " + escapeHTML(formatTime(record.checkIn)) : ""}
+            </p>
+
+            <div class="photo-container">
+                <img
+                    src="${escapeHTML(photoUrl)}"
+                    alt="Bukti foto absensi"
+                    onerror="
+                        this.style.display='none';
+                        document.getElementById('photoError').style.display='block';
+                    "
+                >
+
+                <div id="photoError" class="error" style="display:none;">
+                    Foto tidak dapat dimuat.
+                </div>
+            </div>
+        </body>
+        </html>
     `);
+
     win.document.close();
 }
 
