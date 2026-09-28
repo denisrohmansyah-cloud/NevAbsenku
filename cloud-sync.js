@@ -34,7 +34,7 @@
    memakai localStorage saja (tidak ada yang rusak).
 ========================================================= */
 
-const CLOUD_SCRIPT_URL = "PASTE_URL_WEB_APP_APPS_SCRIPT_DI_SINI";
+const CLOUD_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby5iQt8AxuGmH6Xup3QvLOU1Op8VxnM9vxt4eqBVTmn0lMSTpfvtdYBXSPVOs1fx3lDKQ/exec";
 
 // Spreadsheet acuan (hanya untuk referensi/README — Apps Script yang
 // benar-benar membaca/menulis ke sini harus di-bind ke spreadsheet ini):
