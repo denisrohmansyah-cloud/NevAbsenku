@@ -3623,11 +3623,11 @@ function login(event){
     const password = document.getElementById("loginPassword").value;
     const users = load(DB.users);
 
-    const user = users.find(u=>
-        u.username === username &&
-        u.password === password &&
-        u.role === loginRole
-    );
+    const user = users.find(u =>
+    String(u.username).trim() === String(username).trim() &&
+    String(u.password).trim() === String(password).trim() &&
+    String(u.role).trim().toUpperCase() === String(loginRole).trim().toUpperCase()
+);
 
     if(!user){
         toast("Username, password, atau role tidak sesuai.", "error");
