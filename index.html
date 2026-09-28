@@ -3982,30 +3982,36 @@ function processAttendance(token){
         toast("Token QR belum diisi.", "error"); return;
     }
 
-    const sessions=load(DB.sessions);
-    let session=sessions.find(s=>s.token===token);
+    const sessions = load(DB.sessions);
 
-    // Jika token tidak ada di penyimpanan lokal perangkat ini (misalnya QR dibuat
-    // di perangkat HRD/Koor KP yang berbeda), coba baca ulang data sesi langsung
-    // dari isi token itu sendiri, lalu simpan salinannya secara lokal.
-    if(!session){
-        const decoded=decodeSessionToken(token);
-        if(decoded){
-            session={ ...decoded, token, active:true };
+let session = sessions.find(s =>
+    String(s.token || "").trim() === token
+);
+
+if(!session){
+    const decoded = decodeSessionToken(token);
+
+    if(decoded){
+        session = {
+            ...decoded,
+            token: token,
+            active: true
+        };
+
+        // Simpan hanya jika belum ada token yang sama
+        const existingIndex = sessions.findIndex(s =>
+            String(s.token || "").trim() === token
+        );
+
+        if(existingIndex >= 0){
+            sessions[existingIndex] = session;
+        }else{
             sessions.push(session);
-            save(DB.sessions,sessions);
         }
-    }
 
-    if(!session){
-        toast("QR tidak dikenali.", "error");
-        updateScannerStatus("QR tidak ditemukan di sistem.", "error");
-        return;
+        save(DB.sessions, sessions);
     }
-    
-    if(!session.active){
-        toast("QR sudah dinonaktifkan.", "error"); return;
-    }
+}
 
     const now = new Date();
 
