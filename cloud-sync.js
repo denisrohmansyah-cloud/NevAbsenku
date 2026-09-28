@@ -53,6 +53,15 @@ const CLOUD_ACTION_BY_KEY = {
 let cloudPollTimer = null;
 let cloudSyncBusy = false;
 
+// Diagnostik sinkronisasi (ditampilkan sebagai lencana di pojok kiri bawah)
+const EXPECTED_SERVER_VERSION = "merge-v2";
+let cloudServerVersion = null;
+let cloudLastSyncAt = null;
+let cloudLastError = null;
+let cloudUnsynced = 0;        // jumlah data lokal yang belum ada di server
+let cloudFlushing = false;
+let cloudLastFlushAt = 0;
+
 
 /* =========================================================
 OVERRIDE save() — setiap perubahan lokal ikut dikirim ke cloud
@@ -65,9 +74,20 @@ const _localSave = save; // simpan referensi fungsi save() versi localStorage as
 // sempat berjalan, sehingga _localSave malah menyalin dirinya sendiri dan
 // menyebabkan infinite recursion saat dipanggil.
 save = function(key, data){
+    sanitizeList(key, data); // pastikan tanggal/jam tidak pernah berbentuk ISO (…T17:00:00.000Z)
     _localSave(key, data);
     pushToCloud(key, data);
 };
+
+function sanitizeList(key, data){
+    if(!Array.isArray(data)) return;
+    data.forEach(o=>{
+        if(!o) return;
+        if(key === DB.sessions){ o.date = fixDateField(o.date); o.start = fixTimeField(o.start); o.end = fixTimeField(o.end); }
+        if(key === DB.attendance){ o.date = fixDateField(o.date); }
+        if(key === DB.permits){ o.sessionDate = fixDateField(o.sessionDate); }
+    });
+}
 
 function pushToCloud(key, data){
     if(!cloudSyncEnabled) return;
@@ -177,16 +197,58 @@ async function fetchCloudAll(){
         if(!json || !json.ok) throw new Error((json && json.error) || "Respons tidak valid");
         sanitizeCloudData(json);
 
+        // Data yang ada di perangkat ini tetapi BELUM ada di server (mis. absensi
+        // yang gagal terkirim) jangan ikut terhapus: simpan & kirim ulang otomatis.
+        const serverAtt = json.attendance || [];
+        const serverPer = json.permits || [];
+        const attIds = new Set(serverAtt.map(a=>a.id));
+        const attKeys = new Set(serverAtt.map(a=> a.sessionId + "|" + a.userId));
+        const perIds = new Set(serverPer.map(p=>p.id));
+        const unsyncedAtt = (load(DB.attendance) || []).filter(a=> a && a.id && !attIds.has(a.id) && !attKeys.has(a.sessionId + "|" + a.userId));
+        const unsyncedPer = (load(DB.permits) || []).filter(p=> p && p.id && !perIds.has(p.id));
+
         _localSave(DB.users, json.users || []);
         _localSave(DB.sessions, json.sessions || []);
-        _localSave(DB.attendance, json.attendance || []);
+        _localSave(DB.attendance, serverAtt.concat(unsyncedAtt));
         _localSave(DB.settings, json.settings || { officeLat:null, officeLng:null, radius:100, geofenceEnabled:false });
-        _localSave(DB.permits, json.permits || []);
+        _localSave(DB.permits, serverPer.concat(unsyncedPer));
+
+        cloudUnsynced = unsyncedAtt.length + unsyncedPer.length;
+        if(cloudUnsynced) flushUnsynced(unsyncedAtt, unsyncedPer);
+
+        cloudServerVersion = json.version || null;
+        cloudLastSyncAt = new Date();
+        cloudLastError = null;
+        updateCloudBadge();
         return true;
     }catch(err){
         console.error("Gagal mengambil data dari Google Sheets:", err);
+        cloudLastError = String((err && err.message) || err);
+        updateCloudBadge();
         return false;
     }
+}
+
+/** Kirim ulang data lokal yang belum tersimpan di server (aman diulang: server menolak duplikat). */
+async function flushUnsynced(att, per){
+    if(cloudFlushing || Date.now() - cloudLastFlushAt < 30000) return;
+    cloudFlushing = true;
+    cloudLastFlushAt = Date.now();
+    updateCloudBadge();
+    try{
+        for(const r of att){
+            try{ await cloudPost("addAttendance", r, 1); }
+            catch(e){ console.error("Kirim ulang absensi gagal:", e); }
+        }
+        for(const p of per){
+            try{ await cloudPost("addPermit", p, 1); }
+            catch(e){ console.error("Kirim ulang pengajuan gagal:", e); }
+        }
+    }finally{
+        cloudFlushing = false;
+    }
+    const ok = await fetchCloudAll();
+    if(ok && currentUser) renderAll();
 }
 
 function startCloudPolling(){
@@ -198,11 +260,57 @@ function startCloudPolling(){
     }, 8000);
 
     // Segarkan segera saat aplikasi dibuka kembali (HP dibuka dari layar kunci / pindah tab).
+    window.addEventListener("focus", ()=>{ if(!cloudSyncBusy) manualCloudRefresh(true); });
+
     document.addEventListener("visibilitychange", async ()=>{
         if(document.visibilityState !== "visible" || cloudSyncBusy) return;
         const ok = await fetchCloudAll();
         if(ok && currentUser) renderAll();
     });
+}
+
+
+/* =========================================================
+LENCANA STATUS SINKRONISASI (pojok kiri bawah)
+Ketuk untuk menyegarkan data dari Google Sheets sekarang juga.
+========================================================= */
+
+function updateCloudBadge(){
+    let el = document.getElementById("cloudBadge");
+    if(typeof currentUser === "undefined" || !currentUser){ if(el) el.remove(); return; }
+
+    if(!el){
+        el = document.createElement("button");
+        el.id = "cloudBadge";
+        el.type = "button";
+        el.style.cssText = "position:fixed;left:12px;bottom:12px;z-index:9999;border:0;border-radius:999px;padding:8px 14px;font:600 12px Inter,sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);max-width:calc(100vw - 24px);";
+        el.onclick = ()=> manualCloudRefresh(false);
+        document.body.appendChild(el);
+    }
+
+    let text, bg, fg = "#fff";
+    if(!cloudSyncEnabled){
+        text = "⚠ MODE OFFLINE: CLOUD_SCRIPT_URL di cloud-sync.js belum diisi — data TIDAK terkirim ke HRD"; bg = "#c62828";
+    }else if(cloudUnsynced > 0){
+        text = "⏳ " + cloudUnsynced + " data belum terkirim ke server — sedang dikirim ulang…"; bg = "#ef6c00";
+    }else if(cloudLastError){
+        text = "⚠ Gagal sinkron — ketuk untuk coba lagi"; bg = "#c62828";
+    }else if(cloudServerVersion !== EXPECTED_SERVER_VERSION){
+        text = "⚠ Code.gs di server masih versi lama — Deploy ulang (New version)"; bg = "#ef6c00";
+    }else{
+        const t = cloudLastSyncAt ? cloudLastSyncAt.toLocaleTimeString("id-ID") : "-";
+        text = "☁ Tersinkron " + t + " · ketuk untuk segarkan"; bg = "#2e7d32";
+    }
+    el.textContent = text;
+    el.style.background = bg;
+    el.style.color = fg;
+}
+
+async function manualCloudRefresh(silent){
+    if(!cloudSyncEnabled || cloudSyncBusy) return;
+    const ok = await fetchCloudAll();
+    if(ok && currentUser) renderAll();
+    if(!silent) toast(ok ? "Data berhasil disegarkan dari Google Sheets." : "Gagal mengambil data dari Google Sheets.", ok ? "success" : "error");
 }
 
 
@@ -234,8 +342,8 @@ async function finalizeAttendance(session, token, location, photo){
     if(!cloudSyncEnabled){
         attendance.push(record);
         save(DB.attendance, attendance);
-        toast(`Absensi ${session.activity} berhasil.`, "success");
-        updateScannerStatus(`Berhasil hadir: ${session.activity}${session.division!=="-" ? " • "+session.division : ""}`, "success");
+        toast("Absensi hanya tersimpan di perangkat ini (mode offline) — BELUM terkirim ke HRD.", "error");
+        updateScannerStatus(`Tersimpan lokal saja: ${session.activity}. Belum terkirim ke server.`, "error");
         const manualInput = document.getElementById("manualToken");
         if(manualInput) manualInput.value = "";
         renderAll();
@@ -249,11 +357,20 @@ async function finalizeAttendance(session, token, location, photo){
         const json = await cloudPost("addAttendance", record);
 
         const saved = json.record || record; // record.photo sudah berupa link Drive dari server
-        const list = load(DB.attendance);
-        list.push(saved);
-        _localSave(DB.attendance, list); // cache lokal saja, sudah tersimpan di server
 
-        toast(`Absensi ${session.activity} berhasil & tersimpan di Google Sheets.`, "success");
+        // Verifikasi: tarik ulang dari Google Sheets & pastikan barisnya benar-benar ada.
+        const refreshed = await fetchCloudAll();
+        const list = load(DB.attendance);
+        const found = list.some(a=> a.id===saved.id || (a.sessionId===saved.sessionId && a.userId===saved.userId));
+        if(refreshed && !found){
+            throw new Error("absensi terkirim tetapi belum terbaca di Google Sheets. Pastikan Code.gs sudah di-deploy ulang (New version)");
+        }
+        if(!found){
+            list.push(saved);
+            _localSave(DB.attendance, list); // fetch gagal: simpan di cache lokal saja
+        }
+
+        toast(`Absensi ${session.activity} berhasil & terverifikasi di Google Sheets.`, "success");
         updateScannerStatus(`Berhasil hadir: ${session.activity}${session.division!=="-" ? " • "+session.division : ""}`, "success");
         const manualInput = document.getElementById("manualToken");
         if(manualInput) manualInput.value = "";
@@ -384,4 +501,5 @@ async function bootWithCloud(){
     startCloudPolling();
 }
 
+setInterval(updateCloudBadge, 2000);
 bootWithCloud();
