@@ -3,45 +3,42 @@
  * NEV ABSENKU — Backend Terpusat (Google Sheets + Google Drive)
  * =========================================================
  * Tempel seluruh isi file ini ke Apps Script yang TERIKAT (bound)
- * pada Spreadsheet berikut, lalu deploy sebagai Web App:
- * https://docs.google.com/spreadsheets/d/1E-JqBubHJAl_ym7Z3_FHoNBRh5FIjTL_Mh1pqOMkY_A/edit
+ * pada Spreadsheet Anda, lalu Deploy sebagai Web App:
+ *   Execute as: Me   |   Who has access: Anyone
  *
- * CARA PASANG:
- * 1. Buka Spreadsheet di atas → menu Extensions/Ekstensi →
- *    Apps Script.
- * 2. Hapus kode contoh (myFunction) di editor, ganti dengan
- *    SELURUH isi file Code.gs ini.
- * 3. Klik Deploy → New deployment.
- *      - Select type: Web app
- *      - Description: bebas, mis. "NEV Absenku API"
- *      - Execute as: Me
- *      - Who has access: Anyone
- *    Klik Deploy, lalu izinkan (Authorize) akses yang diminta
- *    (Sheets & Drive milik Anda sendiri).
- * 4. Salin "Web app URL" yang muncul (diakhiri /exec).
- * 5. Tempel URL itu ke variabel CLOUD_SCRIPT_URL di file
- *    cloud-sync.js pada aplikasi web-nya.
- * 6. Sheet "Users", "Sessions", "Attendance", "Settings" akan
- *    dibuat otomatis (beserta header) saat pertama kali diakses.
- *    Folder Drive "NEV Absenku - Foto Selfie" juga dibuat
- *    otomatis untuk menyimpan foto.
+ * SETELAH MENGUBAH KODE: Deploy -> Manage deployments -> ikon pensil ->
+ * Version: "New version" -> Deploy. (Sekadar menyimpan kode TIDAK
+ * memperbarui URL /exec yang sedang berjalan.)
  *
  * CATATAN KEAMANAN:
- * Web App ini diakses TANPA login (supaya bisa dipanggil dari
- * HP staf mana pun tanpa akun Google). Artinya siapa pun yang
- * tahu URL Web App-nya bisa membaca/menulis data. Jaga URL ini
- * agar tidak disebar sembarangan (sama seperti menjaga token QR).
+ * Web App diakses tanpa login (agar staf tanpa akun Google bisa absen).
+ * Siapa pun yang tahu URL /exec bisa membaca/menulis data. Jaga URL-nya.
  * =========================================================
  */
+
+/* ---------- Folder Google Drive tujuan foto ----------
+ * ID diambil dari link folder: drive.google.com/drive/folders/<ID>
+ * PENTING: bagikan tiap folder sebagai "Siapa saja yang memiliki link -> Viewer"
+ * agar file di dalamnya bisa tampil di aplikasi (file baru mewarisi izin folder).
+ */
+const FOLDER_IDS = {
+  selfie: "1-lQ2rFrCRYYqbmimYBtzReBEaG5hJVgr",   // NEV Absenku_Foto Selfie  -> selfie saat absen
+  permit: "1-9QaGXdIUrMT-BhhT8FvB3smfpwHq4vb",   // NEV Absenku_Bukti Izin Sakit -> bukti izin/sakit
+  presensi: "1hpI3e8x4XonyO8wXJWdnnblo0KeKJFuF"  // NEV Absenku_Foto Presensi -> (belum dipakai; tukar ID di atas jika ingin selfie absen masuk ke sini)
+};
+
+// Cadangan bila folder ID di atas tidak bisa diakses: dibuat otomatis dengan nama ini.
+const FALLBACK_FOLDER_NAMES = {
+  selfie: "NEV Absenku - Foto Selfie",
+  permit: "NEV Absenku - Bukti Izin Sakit",
+  presensi: "NEV Absenku - Foto Presensi"
+};
 
 const SHEET_USERS = "Users";
 const SHEET_SESSIONS = "Sessions";
 const SHEET_ATTENDANCE = "Attendance";
 const SHEET_SETTINGS = "Settings";
 const SHEET_PERMITS = "Permits";
-const DRIVE_FOLDER_ID = "1-lQ2rFrCRYYqbmimYBtzReBEaG5hJVgr";
-const PERMIT_DRIVE_FOLDER_ID = "1-9QaGXdIUrMT-BhhT8FvB3smfpwHq4vb";
-const PRESENCE_DRIVE_FOLDER_ID = "1hpI3e8x4XonyO8wXJWdnnblo0KeKJFuF";
 
 const HEADERS = {
   Users: ["id", "name", "username", "password", "role", "division"],
@@ -58,42 +55,75 @@ const HEADERS = {
             "reviewedBy", "reviewedByName", "reviewedAt", "reviewNote"]
 };
 
+const NUMERIC_COLS = ["lat", "lng", "geoLat", "geoLng", "geoRadius", "officeLat", "officeLng", "radius"];
+const BOOL_COLS = ["active", "geofenceEnabled", "geoEnabled", "approvedFromPermit"];
+const DATE_COLS = ["date", "sessionDate"];
+const TIME_COLS = ["start", "end"];
+
 
 /* =========================================================
 UTIL: SHEET <-> ARRAY OF OBJECTS
+Semua sel ditulis sebagai TEKS polos ("@") supaya Google Sheets tidak
+mengubah "2026-09-28" / "08:00" / "123456" menjadi tanggal/jam/angka.
 ========================================================= */
+
+function tz_(){ return SpreadsheetApp.getActive().getSpreadsheetTimeZone(); }
 
 function getSheet_(name){
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(name);
-  if(!sheet){
-    sheet = ss.insertSheet(name);
-  }
-  if(sheet.getLastRow() === 0){
-    sheet.appendRow(HEADERS[name]);
+  if(!sheet) sheet = ss.insertSheet(name);
+
+  const headers = HEADERS[name];
+  const current = sheet.getLastRow() > 0
+    ? sheet.getRange(1, 1, 1, headers.length).getValues()[0]
+    : [];
+  if(current.join("|") !== headers.join("|")){
+    sheet.getRange(1, 1, 1, headers.length).setNumberFormat("@").setValues([headers]);
     sheet.setFrozenRows(1);
   }
   return sheet;
 }
 
+function toCell_(v){
+  if(v === undefined || v === null) return "";
+  return String(v);
+}
+
+// Sel yang terlanjur menjadi Date (data lama) dikembalikan ke teks.
+function dateCellToString_(h, d){
+  if(DATE_COLS.indexOf(h) >= 0) return Utilities.formatDate(d, tz_(), "yyyy-MM-dd");
+  if(TIME_COLS.indexOf(h) >= 0){
+    // Nilai jam murni datang sebagai tanggal 1899; hitung menit sejak tengah malam.
+    const base = new Date(1899, 11, 30, 0, 0, 0);
+    const total = Math.round((d.getTime() - base.getTime()) / 60000) % 1440;
+    const t = (total + 1440) % 1440;
+    return ("0" + Math.floor(t / 60)).slice(-2) + ":" + ("0" + (t % 60)).slice(-2);
+  }
+  return d.toISOString();
+}
+
+function fromCell_(h, v){
+  if(v instanceof Date) v = dateCellToString_(h, v);
+  if(BOOL_COLS.indexOf(h) >= 0) return v === true || String(v).toLowerCase() === "true";
+  if(v === "" || v === null || v === undefined) return null;
+  if(NUMERIC_COLS.indexOf(h) >= 0){
+    const n = Number(v);
+    return isNaN(n) ? null : n;
+  }
+  return typeof v === "number" ? String(v) : v;
+}
+
 function sheetToObjects_(name){
   const sheet = getSheet_(name);
-  const values = sheet.getDataRange().getValues();
-  if(values.length < 2) return [];
-  const headers = values[0];
-  return values.slice(1)
+  if(sheet.getLastRow() < 2) return [];
+  const headers = HEADERS[name];
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  return values
     .filter(row => row.some(cell => cell !== "" && cell !== null))
     .map(row=>{
       const obj = {};
-      headers.forEach((h, i)=>{
-        let v = row[i];
-        if(h === "active" || h === "geofenceEnabled" || h === "geoEnabled" || h === "approvedFromPermit"){
-          v = (v === true || v === "TRUE" || v === "true");
-        } else if(v === ""){
-          v = null;
-        }
-        obj[h] = v;
-      });
+      headers.forEach((h, i)=>{ obj[h] = fromCell_(h, row[i]); });
       return obj;
     });
 }
@@ -101,75 +131,96 @@ function sheetToObjects_(name){
 function objectsToSheet_(name, list){
   const sheet = getSheet_(name);
   const headers = HEADERS[name];
-  sheet.clearContents();
-  sheet.appendRow(headers);
-  sheet.setFrozenRows(1);
-  if(list && list.length){
-    const rows = list.map(obj => headers.map(h => (obj[h] === undefined || obj[h] === null) ? "" : obj[h]));
-    sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+  if(sheet.getLastRow() >= 2){
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).clearContent();
   }
+  if(list && list.length){
+    const rows = list.map(obj => headers.map(h => toCell_(obj[h])));
+    ensureRows_(sheet, rows.length + 1);
+    const range = sheet.getRange(2, 1, rows.length, headers.length);
+    range.setNumberFormat("@");
+    range.setValues(rows);
+  }
+}
+
+function ensureRows_(sheet, needed){
+  const max = sheet.getMaxRows();
+  if(max < needed) sheet.insertRowsAfter(max, needed - max);
+}
+
+function appendObject_(name, obj){
+  const sheet = getSheet_(name);
+  const headers = HEADERS[name];
+  const row = [headers.map(h => toCell_(obj[h]))];
+  ensureRows_(sheet, sheet.getLastRow() + 1);
+  const range = sheet.getRange(sheet.getLastRow() + 1, 1, 1, headers.length);
+  range.setNumberFormat("@");
+  range.setValues(row);
 }
 
 function settingsToObject_(){
   const sheet = getSheet_(SHEET_SETTINGS);
-  const values = sheet.getDataRange().getValues();
   const headers = HEADERS.Settings;
-  if(values.length < 2){
+  if(sheet.getLastRow() < 2){
     return { officeLat: null, officeLng: null, radius: 100, geofenceEnabled: false };
   }
-  const row = values[1];
+  const row = sheet.getRange(2, 1, 1, headers.length).getValues()[0];
   const obj = {};
-  headers.forEach((h, i)=>{
-    let v = row[i];
-    if(h === "geofenceEnabled") v = (v === true || v === "TRUE" || v === "true");
-    if((h === "officeLat" || h === "officeLng" || h === "radius") && v === "") v = null;
-    obj[h] = v;
-  });
+  headers.forEach((h, i)=>{ obj[h] = fromCell_(h, row[i]); });
   return obj;
 }
 
 function objectToSettingsSheet_(obj){
-  const sheet = getSheet_(SHEET_SETTINGS);
-  const headers = HEADERS.Settings;
-  sheet.clearContents();
-  sheet.appendRow(headers);
-  sheet.setFrozenRows(1);
-  sheet.appendRow(headers.map(h => (obj[h] === undefined || obj[h] === null) ? "" : obj[h]));
+  objectsToSheet_(SHEET_SETTINGS, [obj || {}]);
 }
 
 
 /* =========================================================
-UTIL: SIMPAN FOTO SELFIE KE GOOGLE DRIVE
+UTIL: SIMPAN FOTO KE GOOGLE DRIVE
 ========================================================= */
 
-function getOrCreatePhotoFolder_(folderName){
-  const folders = DriveApp.getFoldersByName(folderName);
-  if(folders.hasNext()) return folders.next();
-  return DriveApp.createFolder(folderName);
+function getPhotoFolder_(kind){
+  try{
+    return DriveApp.getFolderById(FOLDER_IDS[kind]);
+  }catch(err){
+    const name = FALLBACK_FOLDER_NAMES[kind];
+    const folders = DriveApp.getFoldersByName(name);
+    return folders.hasNext() ? folders.next() : DriveApp.createFolder(name);
+  }
 }
 
-function savePhotoToDrive_(base64DataUrl, fileNameHint, folderName){
+function savePhotoToDrive_(base64DataUrl, fileNameHint, kind){
   if(!base64DataUrl) return null;
   const match = String(base64DataUrl).match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
   const mime = match ? match[1] : "image/jpeg";
-  const rawBase64 = match ? match[2] : base64DataUrl;
+  const raw = match ? match[2] : base64DataUrl;
   const ext = (mime.split("/")[1] || "jpg").replace("jpeg", "jpg");
-
   const safeName = String(fileNameHint || "photo").replace(/[^a-zA-Z0-9_-]/g, "_");
-  const blob = Utilities.newBlob(Utilities.base64Decode(rawBase64), mime, `${safeName}.${ext}`);
 
-  const folder = getOrCreatePhotoFolder_(folderName || DRIVE_FOLDER_NAME);
-  const file = folder.createFile(blob);
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  const blob = Utilities.newBlob(Utilities.base64Decode(raw), mime, safeName + "." + ext);
+  const file = getPhotoFolder_(kind).createFile(blob);
 
-  // Format link yang bisa langsung dipakai sebagai <img src="...">
-  return `https://drive.google.com/uc?export=view&id=${file.getId()}`;
+  // Izin file mewarisi folder. Coba buka akses link juga, tapi jangan gagalkan
+  // penyimpanan bila kebijakan akun/domain melarang berbagi publik.
+  try{
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  }catch(err){
+    console.warn("setSharing dilewati: " + err);
+  }
+
+  return "https://drive.google.com/file/d/" + file.getId() + "/view";
 }
 
 
 /* =========================================================
-RESPONSE HELPER
+HELPER: LOCK, RESPONSE
 ========================================================= */
+
+function withLock_(fn){
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try{ return fn(); } finally { lock.releaseLock(); }
+}
 
 function jsonResponse_(obj){
   return ContentService
@@ -179,14 +230,12 @@ function jsonResponse_(obj){
 
 
 /* =========================================================
-doGet — AMBIL SEMUA DATA (dipanggil saat aplikasi dibuka)
-?action=getAll
+doGet — ?action=getAll
 ========================================================= */
 
 function doGet(e){
   try{
     const action = (e.parameter && e.parameter.action) || "getAll";
-
     if(action === "getAll"){
       return jsonResponse_({
         ok: true,
@@ -197,7 +246,6 @@ function doGet(e){
         permits: sheetToObjects_(SHEET_PERMITS)
       });
     }
-
     return jsonResponse_({ ok: false, error: "Action tidak dikenali: " + action });
   }catch(err){
     return jsonResponse_({ ok: false, error: String(err) });
@@ -206,14 +254,32 @@ function doGet(e){
 
 
 /* =========================================================
-doPost — SIMPAN PERUBAHAN
-Body JSON: { action: "...", data: ... }
+doPost — Body JSON: { action, data }
 ========================================================= */
 
-function doPost(e){
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000); // hindari tabrakan tulis saat banyak orang absen bersamaan
+// Tambah 1 baris (absensi / pengajuan). Foto diunggah DI LUAR kunci supaya
+// banyak staf yang absen bersamaan tidak saling menunggu; aman diulang (idempoten).
+function addRecord_(sheetName, record, photoKind, isDuplicate){
+  const existing = sheetToObjects_(sheetName).filter(isDuplicate)[0];
+  if(existing) return { ok: true, record: existing, duplicate: true };
 
+  if(record.photo && String(record.photo).indexOf("data:") === 0){
+    record.photo = savePhotoToDrive_(
+      record.photo,
+      (record.username || "user") + "_" + (record.date || record.sessionDate || "") + "_" + (record.id || Date.now()),
+      photoKind
+    );
+  }
+
+  return withLock_(function(){
+    const again = sheetToObjects_(sheetName).filter(isDuplicate)[0];
+    if(again) return { ok: true, record: again, duplicate: true };
+    appendObject_(sheetName, record);
+    return { ok: true, record: record };
+  });
+}
+
+function doPost(e){
   try{
     const body = JSON.parse(e.postData.contents);
     const action = body.action;
@@ -221,61 +287,37 @@ function doPost(e){
     switch(action){
 
       case "saveUsers":
-        objectsToSheet_(SHEET_USERS, body.data);
+        withLock_(() => objectsToSheet_(SHEET_USERS, body.data));
         return jsonResponse_({ ok: true });
 
       case "saveSessions":
-        objectsToSheet_(SHEET_SESSIONS, body.data);
+        withLock_(() => objectsToSheet_(SHEET_SESSIONS, body.data));
         return jsonResponse_({ ok: true });
 
       case "saveSettings":
-        objectToSettingsSheet_(body.data);
+        withLock_(() => objectToSettingsSheet_(body.data));
         return jsonResponse_({ ok: true });
 
       case "saveAttendance":
-        // Overwrite penuh (dipakai saat HRD/Koor mengedit status kehadiran).
-        // Field "photo" di sini seharusnya sudah berupa link Drive, bukan base64.
-        objectsToSheet_(SHEET_ATTENDANCE, body.data);
+        // Field "photo" di sini sudah berupa link Drive (bukan base64).
+        withLock_(() => objectsToSheet_(SHEET_ATTENDANCE, body.data));
         return jsonResponse_({ ok: true });
 
       case "savePermits":
-        // Overwrite penuh (dipakai saat HRD/Koor menyetujui/menolak pengajuan).
-        // Field "photo" di sini seharusnya sudah berupa link Drive, bukan base64.
-        objectsToSheet_(SHEET_PERMITS, body.data);
+        withLock_(() => objectsToSheet_(SHEET_PERMITS, body.data));
         return jsonResponse_({ ok: true });
 
-      case "addPermit": {
-        // Dipakai saat STAF mengajukan Izin/Sakit: foto bukti (base64) diunggah
-        // ke Drive dulu, baru satu baris pengajuan ditambahkan ke sheet Permits.
-        const record = body.data;
-        if(record.photo && String(record.photo).startsWith("data:")){
-          record.photo = savePhotoToDrive_(
-            record.photo,
-            `${record.username || "user"}_${record.sessionDate || ""}_${record.id || Date.now()}`,
-            PERMIT_DRIVE_FOLDER_NAME
-          );
-        }
-        const list = sheetToObjects_(SHEET_PERMITS);
-        list.push(record);
-        objectsToSheet_(SHEET_PERMITS, list);
-        return jsonResponse_({ ok: true, record: record });
+      case "addAttendance": {
+        const rec = body.data;
+        return jsonResponse_(addRecord_(SHEET_ATTENDANCE, rec, "selfie",
+          r => r.id === rec.id || (r.sessionId === rec.sessionId && r.userId === rec.userId)));
       }
 
-      case "addAttendance": {
-        // Dipakai saat STAF absen: foto (base64) diunggah ke Drive dulu,
-        // baru satu baris absensi ditambahkan ke sheet Attendance.
-        const record = body.data;
-        if(record.photo && String(record.photo).startsWith("data:")){
-          record.photo = savePhotoToDrive_(
-            record.photo,
-            `${record.username || "user"}_${record.date || ""}_${record.id || Date.now()}`,
-            DRIVE_FOLDER_NAME
-          );
-        }
-        const list = sheetToObjects_(SHEET_ATTENDANCE);
-        list.push(record);
-        objectsToSheet_(SHEET_ATTENDANCE, list);
-        return jsonResponse_({ ok: true, record: record });
+      case "addPermit": {
+        const rec = body.data;
+        return jsonResponse_(addRecord_(SHEET_PERMITS, rec, "permit",
+          r => r.id === rec.id ||
+               (r.sessionId === rec.sessionId && r.userId === rec.userId && r.status !== "Ditolak")));
       }
 
       default:
@@ -283,7 +325,5 @@ function doPost(e){
     }
   }catch(err){
     return jsonResponse_({ ok: false, error: String(err) });
-  }finally{
-    lock.releaseLock();
   }
 }

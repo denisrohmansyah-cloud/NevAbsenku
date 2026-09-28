@@ -90,6 +90,26 @@ Anda:
 - Jika koneksi ke Google terputus, aplikasi tetap bisa dipakai dengan
   data cache lokal (localStorage) sebagai cadangan sementara.
 
+## Pembaruan: Folder Drive sendiri, foto stabil, tanggal tidak rusak
+
+**Folder Drive** kini memakai folder yang Anda buat (ID diatur di bagian atas `Code.gs`, konstanta `FOLDER_IDS`):
+- `NEV Absenku_Foto Selfie` → selfie saat absen
+- `NEV Absenku_Bukti Izin Sakit` → bukti izin/sakit
+- `NEV Absenku_Foto Presensi` → belum dipakai (tukar ID `selfie`/`presensi` di `Code.gs` bila ingin selfie absen masuk ke sini)
+
+**Wajib:** bagikan ketiga folder sebagai *Siapa saja yang memiliki link → Viewer*. File baru mewarisi izin folder, sehingga foto tampil juga di HP staf / browser yang tidak login akun pemilik. Bila folder tidak bisa diakses, script otomatis membuat folder cadangan bernama lama.
+
+**Yang diperbaiki:**
+1. Foto diperbesar kini tampil di dalam halaman (bukan popup) dengan beberapa link cadangan Drive.
+2. Tanggal/jam yang berubah jadi `2026-09-27T17:00:00.000Z`: Google Sheets mengubah teks menjadi tanggal. Sekarang semua sel ditulis sebagai teks polos, dan data lama dinormalkan otomatis saat dibaca.
+3. Simpan absensi lebih andal: selfie diperkecil (±720 px), upload tidak memblokir staf lain, otomatis dicoba ulang sekali, dan pesan error menyebutkan penyebabnya.
+4. Absensi/pengajuan ganda (misal karena dicoba ulang) ditolak server dengan aman.
+
+**Cara memperbarui** (semua langkah wajib):
+1. Ganti `index.html`, `geo-selfie.js`, `cloud-sync.js` di hosting (GitHub Pages).
+2. Tempel ulang seluruh `Code.gs` di Apps Script, lalu **Deploy → Manage deployments → pensil → New version → Deploy**. Bila Google meminta izin baru, setujui.
+3. Buka aplikasi dengan refresh keras (Ctrl+Shift+R / hapus cache di HP).
+
 ## Catatan keamanan (penting)
 
 Web App Apps Script ini diakses **tanpa login Google** dari sisi HP

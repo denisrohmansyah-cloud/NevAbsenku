@@ -416,8 +416,12 @@ function captureSelfie(){
         return;
     }
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    // Perkecil ke lebar maks. 720 px: cukup jelas sebagai bukti, tapi ukurannya
+    // jauh lebih kecil (puluhan KB) sehingga upload tidak gagal di jaringan HP yang lambat.
+    const MAX_W = 720;
+    const scale = Math.min(1, MAX_W / video.videoWidth);
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
     const ctx = canvas.getContext("2d");
     // Cermin gambar supaya hasil foto natural seperti yang dilihat di preview.
     ctx.translate(canvas.width, 0);

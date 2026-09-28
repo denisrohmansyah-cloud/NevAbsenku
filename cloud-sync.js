@@ -34,7 +34,7 @@
    memakai localStorage saja (tidak ada yang rusak).
 ========================================================= */
 
-const CLOUD_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby5iQt8AxuGmH6Xup3QvLOU1Op8VxnM9vxt4eqBVTmn0lMSTpfvtdYBXSPVOs1fx3lDKQ/exec";
+const CLOUD_SCRIPT_URL = "PASTE_URL_WEB_APP_APPS_SCRIPT_DI_SINI";
 
 // Spreadsheet acuan (hanya untuk referensi/README — Apps Script yang
 // benar-benar membaca/menulis ke sini harus di-bind ke spreadsheet ini):
@@ -86,6 +86,86 @@ function pushToCloud(key, data){
 
 
 /* =========================================================
+KIRIM KE APPS SCRIPT (dengan percobaan ulang & pesan error jelas)
+Aman diulang: server menolak duplikat (id/sesi+user yang sama).
+========================================================= */
+
+async function cloudPost(action, data, retries){
+    const maxRetry = retries ?? 1;
+    let lastErr;
+
+    for(let attempt=0; attempt<=maxRetry; attempt++){
+        try{
+            const res = await fetch(CLOUD_SCRIPT_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify({ action, data })
+            });
+            const text = await res.text();
+
+            let json;
+            try{ json = JSON.parse(text); }
+            catch(e){ throw new Error("Respons server bukan JSON (periksa deploy Apps Script & izin akses 'Anyone')."); }
+
+            if(!json.ok){
+                const serverErr = new Error(json.error || "Server menolak permintaan.");
+                serverErr.fatal = true; // error dari server tidak akan sembuh dengan mengulang
+                throw serverErr;
+            }
+            return json;
+        }catch(err){
+            lastErr = err;
+            if(err.fatal) break;
+            if(attempt < maxRetry) await new Promise(r=> setTimeout(r, 1500));
+        }
+    }
+    throw lastErr;
+}
+
+function friendlyCloudError(err){
+    const msg = String((err && err.message) || err || "");
+    if(/failed to fetch|networkerror|load failed|network request failed/i.test(msg)){
+        return "koneksi ke Google terputus atau terlalu lambat";
+    }
+    return msg.slice(0, 160) || "kesalahan tidak diketahui";
+}
+
+
+/* =========================================================
+PEMBERSIH DATA DARI GOOGLE SHEETS
+Sheets bisa mengubah teks "2026-09-28" / "08:00" menjadi Date, sehingga
+kembali sebagai "2026-09-27T17:00:00.000Z". Dinormalkan lagi ke WIB.
+========================================================= */
+
+const _wibDate = new Intl.DateTimeFormat("en-CA", { timeZone:"Asia/Jakarta", year:"numeric", month:"2-digit", day:"2-digit" });
+const _wibTime = new Intl.DateTimeFormat("en-GB", { timeZone:"Asia/Jakarta", hour:"2-digit", minute:"2-digit", hourCycle:"h23" });
+const _isoDateTime = /^\d{4}-\d{2}-\d{2}T/;
+
+function fixDateField(v){
+    if(typeof v === "string" && _isoDateTime.test(v)){
+        const d = new Date(v);
+        if(!isNaN(d)) return _wibDate.format(d);
+    }
+    return v;
+}
+
+function fixTimeField(v){
+    if(typeof v === "string" && _isoDateTime.test(v)){
+        const d = new Date(v);
+        if(!isNaN(d)) return _wibTime.format(d);
+    }
+    return v;
+}
+
+function sanitizeCloudData(json){
+    (json.sessions || []).forEach(s=>{ s.date = fixDateField(s.date); s.start = fixTimeField(s.start); s.end = fixTimeField(s.end); });
+    (json.attendance || []).forEach(a=>{ a.date = fixDateField(a.date); });
+    (json.permits || []).forEach(p=>{ p.sessionDate = fixDateField(p.sessionDate); });
+    return json;
+}
+
+
+/* =========================================================
 AMBIL SEMUA DATA TERBARU DARI GOOGLE SHEETS
 ========================================================= */
 
@@ -95,6 +175,7 @@ async function fetchCloudAll(){
         const res = await fetch(`${CLOUD_SCRIPT_URL}?action=getAll`);
         const json = await res.json();
         if(!json || !json.ok) throw new Error((json && json.error) || "Respons tidak valid");
+        sanitizeCloudData(json);
 
         _localSave(DB.users, json.users || []);
         _localSave(DB.sessions, json.sessions || []);
@@ -158,13 +239,7 @@ async function finalizeAttendance(session, token, location, photo){
     toast("Mengunggah foto & menyimpan absensi ke Google Sheets...", "normal");
 
     try{
-        const res = await fetch(CLOUD_SCRIPT_URL, {
-            method: "POST",
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({ action: "addAttendance", data: record })
-        });
-        const json = await res.json();
-        if(!json || !json.ok) throw new Error((json && json.error) || "Gagal menyimpan ke server");
+        const json = await cloudPost("addAttendance", record);
 
         const saved = json.record || record; // record.photo sudah berupa link Drive dari server
         const list = load(DB.attendance);
@@ -178,7 +253,7 @@ async function finalizeAttendance(session, token, location, photo){
         renderAll();
     }catch(err){
         console.error("Gagal menyimpan absensi ke Google Sheets:", err);
-        toast("Gagal menyimpan absensi ke Google Sheets. Periksa koneksi lalu coba lagi.", "error");
+        toast(`Gagal menyimpan absensi: ${friendlyCloudError(err)}. Silakan coba lagi.`, "error");
     }finally{
         cloudSyncBusy = false;
     }
@@ -222,13 +297,7 @@ async function submitPermit(event){
     toast("Mengunggah foto bukti & mengirim pengajuan ke Google Sheets...", "normal");
 
     try{
-        const res = await fetch(CLOUD_SCRIPT_URL, {
-            method: "POST",
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({ action: "addPermit", data: permit })
-        });
-        const json = await res.json();
-        if(!json || !json.ok) throw new Error((json && json.error) || "Gagal menyimpan ke server");
+        const json = await cloudPost("addPermit", permit);
 
         const saved = json.record || permit; // record.photo sudah berupa link Drive dari server
         const list = load(DB.permits);
@@ -240,7 +309,7 @@ async function submitPermit(event){
         toast(`Pengajuan ${type} berhasil dikirim & tersimpan di Google Sheets.`, "success");
     }catch(err){
         console.error("Gagal mengirim pengajuan izin/sakit ke Google Sheets:", err);
-        toast("Gagal mengirim pengajuan. Periksa koneksi lalu coba lagi.", "error");
+        toast(`Gagal mengirim pengajuan: ${friendlyCloudError(err)}. Silakan coba lagi.`, "error");
     }finally{
         cloudSyncBusy = false;
     }
