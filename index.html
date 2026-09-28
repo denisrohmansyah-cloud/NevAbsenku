@@ -3617,36 +3617,57 @@ function selectLoginRole(role,button){
     button.classList.add("active");
 }
 
-function login(event){
-    event.preventDefault();
-    const username = document.getElementById("loginUsername").value.trim();
-    const password = document.getElementById("loginPassword").value;
-    const users = load(DB.users);
+async function login(event){
+  event.preventDefault();
 
-    const user = users.find(u =>
-    String(u.username).trim() === String(username).trim() &&
-    String(u.password).trim() === String(password).trim() &&
-    String(u.role).trim().toUpperCase() === String(loginRole).trim().toUpperCase()
-);
+  const username = document.getElementById("loginUsername").value.trim();
+  const password = document.getElementById("loginPassword").value;
 
-    if(!user){
-        toast("Username, password, atau role tidak sesuai.", "error");
-        return;
+  try{
+    const result = await cloudPost("login", {
+      username: username,
+      password: password,
+      role: loginRole
+    }, 1);
+
+    if(!result || !result.ok || !result.user){
+      toast(
+        result?.error || "Username, password, atau role tidak sesuai.",
+        "error"
+      );
+      return;
     }
 
-    currentUser = user;
-    localStorage.setItem("nev_current_user", JSON.stringify(user));
+    currentUser = result.user;
+
+    localStorage.setItem(
+      "nev_current_user",
+      JSON.stringify(currentUser)
+    );
+
     document.getElementById("loginScreen").classList.add("hidden");
     document.getElementById("app").classList.remove("hidden");
-    
+
     buildSidebar();
     updateUserUI();
 
-    if(user.role==="STAF") showPage("staf-dashboard");
-    else if(user.role==="HRD") showPage("hrd-dashboard");
-    else if(user.role==="KOOR KP") showPage("koor-dashboard");
+    if(currentUser.role === "STAF"){
+      showPage("staf-dashboard");
+    }
+    else if(currentUser.role === "HRD"){
+      showPage("hrd-dashboard");
+    }
+    else if(currentUser.role === "KOOR KP"){
+      showPage("koor-dashboard");
+    }
 
-    renderAll();
+  }catch(err){
+    console.error("Login error:", err);
+    toast(
+      "Gagal terhubung ke server. Silakan coba lagi.",
+      "error"
+    );
+  }
 }
 
 function logout(){
