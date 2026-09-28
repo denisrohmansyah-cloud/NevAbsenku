@@ -4478,16 +4478,16 @@ function normalizePhotoUrl(url){
 
   const value = String(url).trim();
 
-  // Jika sudah menggunakan URL usercontent, biarkan
-  if(value.includes("drive.usercontent.google.com")){
-    return value;
+  // Ambil ID file dari berbagai format URL Google Drive
+  let match = value.match(/[?&]id=([^&]+)/);
+
+  // Jika format /file/d/FILE_ID/
+  if(!match){
+    match = value.match(/\/file\/d\/([^/]+)/);
   }
 
-  // Konversi URL Google Drive lama menjadi URL yang bisa ditampilkan
-  const match = value.match(/[?&]id=([^&]+)/);
-
   if(match && match[1]){
-    return `https://drive.usercontent.google.com/download?id=${match[1]}&export=view&authuser=0`;
+    return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1000`;
   }
 
   return value;
