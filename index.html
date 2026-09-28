@@ -4473,12 +4473,29 @@ function attendanceTable(data,canEdit){
         </div>
     `;
 }
+function normalizePhotoUrl(url){
+  if(!url) return "";
 
+  const value = String(url).trim();
+
+  // Jika sudah menggunakan URL usercontent, biarkan
+  if(value.includes("drive.usercontent.google.com")){
+    return value;
+  }
+
+  // Konversi URL Google Drive lama menjadi URL yang bisa ditampilkan
+  const match = value.match(/[?&]id=([^&]+)/);
+
+  if(match && match[1]){
+    return `https://drive.usercontent.google.com/download?id=${match[1]}&export=view&authuser=0`;
+  }
+
+  return value;
+}
 function attendanceProofCell(a){
-    const thumb = a.photo
-        ? `<img src="${a.photo}" class="proof-thumb" onclick="viewProofPhoto('${a.id}')" alt="Selfie">`
-        : `<span style="color:#aaa;font-size:11px;">-</span>`;
-    let locBadge = "";
+  const thumb = a.photo
+    ? `<img src="${normalizePhotoUrl(a.photo)}" class="proof-thumb" onclick="viewProofPhoto('${a.id}')" alt="Selfie">`
+    : `<span style="color:#aaa;font-size:11px;">-</span>`;
     if(a.lat!=null && a.lng!=null){
         const settings=typeof getSettings==="function" ? getSettings() : null;
         if(settings && settings.geofenceEnabled && settings.officeLat!=null && settings.officeLng!=null && typeof haversineDistance==="function"){
