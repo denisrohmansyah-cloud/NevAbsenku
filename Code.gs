@@ -34,6 +34,8 @@ const FALLBACK_FOLDER_NAMES = {
   presensi: "NEV Absenku - Foto Presensi"
 };
 
+const CODE_VERSION = "merge-v2"; // dipakai aplikasi untuk mendeteksi apakah deploy Code.gs sudah terbaru
+
 const SHEET_USERS = "Users";
 const SHEET_SESSIONS = "Sessions";
 const SHEET_ATTENDANCE = "Attendance";
@@ -258,6 +260,7 @@ function doGet(e){
     if(action === "getAll"){
       return jsonResponse_({
         ok: true,
+        version: CODE_VERSION,
         users: sheetToObjects_(SHEET_USERS),
         sessions: sheetToObjects_(SHEET_SESSIONS),
         attendance: sheetToObjects_(SHEET_ATTENDANCE),
