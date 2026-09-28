@@ -4007,9 +4007,27 @@ function processAttendance(token){
         toast("QR sudah dinonaktifkan.", "error"); return;
     }
 
-    const now=new Date();
-    const currentDate=now.toISOString().slice(0,10);
-    const currentTime=now.toTimeString().slice(0,5);
+    const now = new Date();
+
+const wibParts = new Intl.DateTimeFormat("en-US", {
+  timeZone: "Asia/Jakarta",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23"
+}).formatToParts(now);
+
+const wib = {};
+wibParts.forEach(part => {
+  if (part.type !== "literal") {
+    wib[part.type] = part.value;
+  }
+});
+
+const currentDate = `${wib.year}-${wib.month}-${wib.day}`;
+const currentTime = `${wib.hour}:${wib.minute}`;
 
     if(currentDate !== session.date){
         toast("QR belum atau sudah melewati tanggal kegiatan.", "error"); return;
@@ -5276,11 +5294,19 @@ function toggleSidebar(){
 }
 
 function updateCurrentDate(){
-    const el=document.getElementById("currentDate");
-    if(!el)return;
-    el.textContent=new Date().toLocaleDateString("id-ID", {weekday:"long", day:"numeric", month:"long", year:"numeric"});
-}
+    const el = document.getElementById("currentDate");
+    if(!el) return;
 
+    const now = new Date();
+
+    el.textContent = new Intl.DateTimeFormat("id-ID", {
+        timeZone: "Asia/Jakarta",
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric"
+    }).format(now);
+}
 function renderAll(){
     if(!currentUser)return;
     if(currentUser.role==="STAF"){
