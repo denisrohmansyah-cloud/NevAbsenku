@@ -4496,6 +4496,7 @@ function attendanceProofCell(a){
   const thumb = a.photo
     ? `<img src="${normalizePhotoUrl(a.photo)}" class="proof-thumb" onclick="viewProofPhoto('${a.id}')" alt="Selfie">`
     : `<span style="color:#aaa;font-size:11px;">-</span>`;
+    let locBadge = "";
     if(a.lat!=null && a.lng!=null){
         const settings=typeof getSettings==="function" ? getSettings() : null;
         if(settings && settings.geofenceEnabled && settings.officeLat!=null && settings.officeLng!=null && typeof haversineDistance==="function"){
