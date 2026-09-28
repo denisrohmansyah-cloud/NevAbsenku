@@ -195,7 +195,14 @@ function startCloudPolling(){
         if(cloudSyncBusy) return; // jangan tumpang tindih saat sedang absen/upload foto
         const ok = await fetchCloudAll();
         if(ok && currentUser) renderAll();
-    }, 20000);
+    }, 8000);
+
+    // Segarkan segera saat aplikasi dibuka kembali (HP dibuka dari layar kunci / pindah tab).
+    document.addEventListener("visibilitychange", async ()=>{
+        if(document.visibilityState !== "visible" || cloudSyncBusy) return;
+        const ok = await fetchCloudAll();
+        if(ok && currentUser) renderAll();
+    });
 }
 
 

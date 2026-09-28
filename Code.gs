@@ -158,6 +158,25 @@ function appendObject_(name, obj){
   range.setValues(row);
 }
 
+/**
+ * Gabungkan (upsert) berdasarkan "id": baris yang dikirim client menggantikan
+ * baris server dengan id sama, sedangkan baris lain di server TETAP ADA.
+ * Ini mencegah data lama/basi dari satu perangkat (mis. HRD) menghapus
+ * absensi yang baru saja dikirim staf dari perangkat lain.
+ */
+function mergeObjectsById_(name, incoming){
+  const current = sheetToObjects_(name);
+  const byId = {};
+  const order = [];
+  current.forEach(o=>{ if(o.id){ byId[o.id] = o; order.push(o.id); } });
+  (incoming || []).forEach(o=>{
+    if(!o || !o.id) return;
+    if(!byId[o.id]) order.push(o.id);
+    byId[o.id] = o;
+  });
+  objectsToSheet_(name, order.map(id => byId[id]));
+}
+
 function settingsToObject_(){
   const sheet = getSheet_(SHEET_SETTINGS);
   const headers = HEADERS.Settings;
@@ -291,7 +310,7 @@ function doPost(e){
         return jsonResponse_({ ok: true });
 
       case "saveSessions":
-        withLock_(() => objectsToSheet_(SHEET_SESSIONS, body.data));
+        withLock_(() => mergeObjectsById_(SHEET_SESSIONS, body.data));
         return jsonResponse_({ ok: true });
 
       case "saveSettings":
@@ -300,11 +319,11 @@ function doPost(e){
 
       case "saveAttendance":
         // Field "photo" di sini sudah berupa link Drive (bukan base64).
-        withLock_(() => objectsToSheet_(SHEET_ATTENDANCE, body.data));
+        withLock_(() => mergeObjectsById_(SHEET_ATTENDANCE, body.data));
         return jsonResponse_({ ok: true });
 
       case "savePermits":
-        withLock_(() => objectsToSheet_(SHEET_PERMITS, body.data));
+        withLock_(() => mergeObjectsById_(SHEET_PERMITS, body.data));
         return jsonResponse_({ ok: true });
 
       case "addAttendance": {
