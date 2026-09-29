@@ -23,7 +23,7 @@
       - Saat STAF absen (ambil selfie), foto diunggah ke Google
         Drive lebih dulu lewat Apps Script, baru linknya dicatat
         di Google Sheets (bukan base64 mentah).
-      - Setiap ~20 detik, aplikasi menarik ulang data terbaru dari
+      - Setiap 30 detik, aplikasi menarik ulang data terbaru dari
         Google Sheets, supaya QR/absensi yang dibuat di HP lain
         ikut terlihat di perangkat ini.
 
@@ -53,7 +53,7 @@ let cloudPollTimer = null;
 let cloudSyncBusy = false;
 
 // Diagnostik sinkronisasi (ditampilkan sebagai lencana di pojok kiri bawah)
-const EXPECTED_SERVER_VERSION = "secure-v3";
+const EXPECTED_SERVER_VERSION = "secure-v4";
 let cloudServerVersion = null;
 let cloudLastSyncAt = null;
 let cloudLastError = null;
@@ -204,6 +204,25 @@ function sanitizeCloudData(json){
 
 
 /* =========================================================
+AMBIL TOKEN QR HANYA SAAT QR DITAMPILKAN
+Token sengaja tidak ikut getAll agar tidak bocor di response berkala.
+========================================================= */
+async function cloudGetSessionToken(sessionId){
+    if(!cloudSyncEnabled) return "";
+    const authToken=getAuthToken();
+    if(!authToken) throw new Error("Sesi login tidak ditemukan.");
+    const res=await fetch(`${CLOUD_SCRIPT_URL}?action=getSessionToken&sessionId=${encodeURIComponent(sessionId)}&authToken=${encodeURIComponent(authToken)}`);
+    const json=await res.json();
+    if(json && json.authExpired){
+        clearAuthSession();
+        if(typeof currentUser !== "undefined") currentUser=null;
+        throw new Error("Sesi login telah berakhir.");
+    }
+    if(!json || !json.ok) throw new Error(json?.error || "Token QR tidak tersedia.");
+    return json.token || "";
+}
+
+/* =========================================================
 AMBIL SEMUA DATA TERBARU DARI GOOGLE SHEETS
 ========================================================= */
 
@@ -282,7 +301,7 @@ function startCloudPolling(){
         if(cloudSyncBusy) return; // jangan tumpang tindih saat sedang absen/upload foto
         const ok = await fetchCloudAll();
         if(ok && currentUser) renderAll();
-    }, 8000);
+    }, 30000);
 
     // Segarkan segera saat aplikasi dibuka kembali (HP dibuka dari layar kunci / pindah tab).
     window.addEventListener("focus", ()=>{ if(!cloudSyncBusy) manualCloudRefresh(true); });

@@ -4378,7 +4378,12 @@ function renderQRSessionList(type){
     if(type==="hrd"){
         sessions=sessions.filter(s=>s.creatorRole==="HRD");
     }else{
-        sessions=sessions.filter(s=>s.creatorRole==="KOOR KP" && s.activity==="Ngoprek");
+        sessions=sessions.filter(s=>
+            s.creatorId===currentUser.id &&
+            s.creatorRole==="KOOR KP" &&
+            s.activity==="Ngoprek" &&
+            s.division===currentUser.division
+        );
     }
 
     if(!sessions.length){
@@ -4420,13 +4425,23 @@ function renderQRSessionList(type){
     `;
 }
 
-function loadSessionToQR(id,type){
+async function loadSessionToQR(id,type){
     const sessions=load(DB.sessions);
     const session=sessions.find(s=>s.id===id);
     if(!session)return;
-    currentQR[type]=session;
-    renderGeneratedQR(type, session);
-    toast("QR session ditampilkan.", "success");
+    try{
+        if(typeof cloudGetSessionToken === "function") session.token=await cloudGetSessionToken(id);
+        if(!session.token){
+            toast("Token QR tidak tersedia. Deploy Code.gs secure-v4 terlebih dahulu.", "error");
+            return;
+        }
+        currentQR[type]=session;
+        renderGeneratedQR(type, session);
+        toast("QR session ditampilkan.", "success");
+    }catch(err){
+        console.error("Gagal mengambil token QR:",err);
+        toast("Gagal mengambil token QR dari server.", "error");
+    }
 }
 
 
@@ -4815,13 +4830,26 @@ function renderStafDashboard(){
 }
 
 function renderKoorDashboard(){
-    const sessions=load(DB.sessions).filter(s=> s.creatorId===currentUser.id && s.activity==="Ngoprek");
-    const attendance=load(DB.attendance).filter(a=> a.creatorId===currentUser.id && a.activity==="Ngoprek");
+    const division=currentUser?.division || "-";
+    const sessions=load(DB.sessions).filter(s=>
+        s.creatorId===currentUser.id &&
+        s.activity==="Ngoprek" &&
+        s.division===division
+    );
+    const attendance=load(DB.attendance).filter(a=>
+        a.creatorId===currentUser.id &&
+        a.activity==="Ngoprek" &&
+        a.division===division
+    );
     
     document.getElementById("koorTotalQR").textContent=sessions.length;
     document.getElementById("koorTotalHadir").textContent=attendance.filter(a=>a.status==="Hadir").length;
-    document.getElementById("koorNetworking").textContent=attendance.filter(a=>a.division==="Networking").length;
-    document.getElementById("koorCyber").textContent=attendance.filter(a=>a.division==="Cyber").length;
+    document.getElementById("koorNetworking").textContent=attendance.length;
+    document.getElementById("koorCyber").textContent=division;
+    const n=document.querySelector("#koorNetworking")?.closest(".stat-card")?.querySelector("p");
+    const c=document.querySelector("#koorCyber")?.closest(".stat-card")?.querySelector("p");
+    if(n) n.textContent="Absensi Divisi";
+    if(c) c.textContent="Divisi Aktif";
 }
 
 function renderKoorAttendance(){
