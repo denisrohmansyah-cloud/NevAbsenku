@@ -28,7 +28,7 @@ const FALLBACK_FOLDER_NAMES = {
   presensi: "NEV Absenku - Foto Presensi"
 };
 
-const CODE_VERSION = "secure-v4";
+const CODE_VERSION = "secure-v5";
 
 const SHEET_USERS = "Users";
 const SHEET_SESSIONS = "Sessions";
@@ -152,12 +152,6 @@ function mergeObjectsById_(name,incoming){
   (incoming||[]).forEach(o=>{
     if(!o||!o.id)return;
     if(!byId[o.id])order.push(o.id);
-    if(name===SHEET_SESSIONS && byId[o.id] && byId[o.id].token && !o.token){
-      o.token=byId[o.id].token;
-    }
-    if(name===SHEET_ATTENDANCE && byId[o.id] && byId[o.id].token && !o.token){
-      o.token=byId[o.id].token;
-    }
     byId[o.id]=o;
   });
   objectsToSheet_(name,order.map(id=>byId[id]));
@@ -200,23 +194,6 @@ function safeUser_(u){
     id:u.id, name:u.name, username:u.username,
     role:u.role, division:u.division || null
   };
-}
-
-// DATA SENSITIF TIDAK PERNAH DIKIRIM PADA GETALL.
-// Token QR adalah credential yang memungkinkan absensi, sehingga hanya
-// diberikan lewat action getSessionToken setelah otorisasi di server.
-function safeSession_(s){
-  if(!s)return null;
-  const out=Object.assign({},s);
-  delete out.token;
-  return out;
-}
-
-function safeAttendance_(a){
-  if(!a)return null;
-  const out=Object.assign({},a);
-  delete out.token;
-  return out;
 }
 
 function seedUsers_(){
@@ -279,37 +256,44 @@ function requireActor_(body){
 /* =========================================================
 ACCESS FILTER
 ========================================================= */
+function publicSession_(s){
+  if(!s) return null;
+  const out={...s};
+  delete out.token;
+  return out;
+}
+
+function publicAttendance_(a){
+  if(!a) return null;
+  const out={...a};
+  delete out.token;
+  return out;
+}
+
 function sessionsFor_(user){
   const all=sheetToObjects_(SHEET_SESSIONS);
-  if(user.role==="HRD") return all.map(safeSession_);
-  if(user.role==="KOOR KP"){
-    return all
-      .filter(s=>s.creatorId===user.id && s.activity==="Ngoprek" && s.division===user.division)
-      .map(safeSession_);
-  }
-  // STAF tetap menerima metadata sesi untuk menu kegiatan/izin, tetapi
-  // token QR tidak pernah ikut dalam response. Token dibaca dari QR yang
-  // dipindai atau diminta hanya oleh pembuat QR yang berwenang.
-  return all.map(safeSession_);
+  if(user.role==="HRD") return all.map(publicSession_);
+  if(user.role==="KOOR KP") return all
+    .filter(s=>s.creatorId===user.id && s.activity==="Ngoprek" && s.division===user.division)
+    .map(publicSession_);
+  // STAF tidak perlu menerima token/QR atau seluruh database sesi.
+  // Ia hanya membutuhkan sesi aktif untuk kalender/pengajuan izin.
+  return all.filter(s=>s.active===true || String(s.active).toLowerCase()==="true").map(publicSession_);
 }
 
 function attendanceFor_(user){
   const all=sheetToObjects_(SHEET_ATTENDANCE);
-  if(user.role==="HRD") return all.map(safeAttendance_);
-  if(user.role==="KOOR KP"){
-    return all
-      .filter(a=>a.creatorId===user.id && a.activity==="Ngoprek" && a.division===user.division)
-      .map(safeAttendance_);
-  }
-  return all.filter(a=>a.userId===user.id).map(safeAttendance_);
+  if(user.role==="HRD") return all.map(publicAttendance_);
+  if(user.role==="KOOR KP") return all
+    .filter(a=>a.creatorId===user.id && a.activity==="Ngoprek" && a.division===user.division)
+    .map(publicAttendance_);
+  return all.filter(a=>a.userId===user.id).map(publicAttendance_);
 }
 
 function permitsFor_(user){
   const all=sheetToObjects_(SHEET_PERMITS);
   if(user.role==="HRD") return all;
-  if(user.role==="KOOR KP"){
-    return all.filter(p=>p.sessionCreatorId===user.id && p.sessionActivity==="Ngoprek" && p.sessionDivision===user.division);
-  }
+  if(user.role==="KOOR KP") return all.filter(p=>p.sessionCreatorId===user.id && p.sessionActivity==="Ngoprek" && p.sessionDivision===user.division);
   return all.filter(p=>p.userId===user.id);
 }
 
@@ -386,15 +370,13 @@ function doGet(e){
     if(action==="getSessionToken"){
       const user=authUser_(e.parameter && e.parameter.authToken);
       const sessionId=String(e.parameter && e.parameter.sessionId || "");
-      const session=sheetToObjects_(SHEET_SESSIONS).find(s=>s.id===sessionId);
-      if(!session) throw new Error("Sesi/QR tidak ditemukan.");
-      if(user.role==="HRD"){
-        return jsonResponse_({ok:true, sessionId:session.id, token:session.token});
-      }
-      if(user.role==="KOOR KP" && session.creatorId===user.id && session.activity==="Ngoprek" && session.division===user.division){
-        return jsonResponse_({ok:true, sessionId:session.id, token:session.token});
-      }
-      throw new Error("Akses ditolak untuk token QR ini.");
+      const sessions=sheetToObjects_(SHEET_SESSIONS);
+      const session=sessions.find(s=>s.id===sessionId);
+      if(!session) throw new Error("QR/kegiatan tidak ditemukan.");
+      const allowed = user.role==="HRD" ||
+        (user.role==="KOOR KP" && session.creatorId===user.id && session.activity==="Ngoprek" && session.division===user.division);
+      if(!allowed) throw new Error("Akses ditolak untuk QR ini.");
+      return jsonResponse_({ok:true, sessionId:session.id, token:String(session.token||"")});
     }
 
     if(action==="getAll"){

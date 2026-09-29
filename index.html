@@ -2322,7 +2322,7 @@ APP
 
                     </div>
 
-                    <div class="stat-card">
+                    <div id="koorDivisionCardNetworking" class="stat-card" data-division-card="Networking">
 
                         <div class="stat-icon">
                             <i class="fa-solid fa-network-wired"></i>
@@ -2334,7 +2334,7 @@ APP
 
                     </div>
 
-                    <div class="stat-card">
+                    <div id="koorDivisionCardCyber" class="stat-card" data-division-card="Cyber">
 
                         <div class="stat-icon">
                             <i class="fa-solid fa-shield-halved"></i>
@@ -2376,7 +2376,7 @@ APP
 
                     <div class="grid-3">
 
-                        <div class="activity-card">
+                        <div id="koorActivityCardNetworking" class="activity-card" data-division-card="Networking">
 
                             <div class="activity-icon">
                                 <i class="fa-solid fa-network-wired"></i>
@@ -2391,7 +2391,7 @@ APP
 
                         </div>
 
-                        <div class="activity-card">
+                        <div id="koorActivityCardCyber" class="activity-card" data-division-card="Cyber">
 
                             <div class="activity-icon">
                                 <i class="fa-solid fa-shield-halved"></i>
@@ -2406,7 +2406,7 @@ APP
 
                         </div>
 
-                        <div class="activity-card">
+                        <div id="koorActivityCardSysadmin" class="activity-card" data-division-card="Sysadmin">
 
                             <div class="activity-icon">
                                 <i class="fa-solid fa-server"></i>
@@ -4303,12 +4303,17 @@ function printQR(type){
     setTimeout(()=>{ printWindow.print(); },500);
 }
 
-function copyToken(type){
+async function copyToken(type){
     const session=currentQR[type];
     if(!session)return;
-    navigator.clipboard.writeText(session.token).then(()=>{
+    try{
+        const token=await ensureSessionToken(session);
+        if(!token) throw new Error("Token QR tidak tersedia.");
+        await navigator.clipboard.writeText(token);
         toast("Token berhasil disalin.", "success");
-    });
+    }catch(err){
+        toast("Gagal mengambil token QR: "+friendlyCloudError(err),"error");
+    }
 }
 
 function toggleCurrentQR(type){
@@ -4378,12 +4383,7 @@ function renderQRSessionList(type){
     if(type==="hrd"){
         sessions=sessions.filter(s=>s.creatorRole==="HRD");
     }else{
-        sessions=sessions.filter(s=>
-            s.creatorId===currentUser.id &&
-            s.creatorRole==="KOOR KP" &&
-            s.activity==="Ngoprek" &&
-            s.division===currentUser.division
-        );
+        sessions=sessions.filter(s=>s.creatorRole==="KOOR KP" && s.activity==="Ngoprek");
     }
 
     if(!sessions.length){
@@ -4430,17 +4430,13 @@ async function loadSessionToQR(id,type){
     const session=sessions.find(s=>s.id===id);
     if(!session)return;
     try{
-        if(typeof cloudGetSessionToken === "function") session.token=await cloudGetSessionToken(id);
-        if(!session.token){
-            toast("Token QR tidak tersedia. Deploy Code.gs secure-v4 terlebih dahulu.", "error");
-            return;
-        }
+        await ensureSessionToken(session);
+        if(!session.token) throw new Error("Token QR tidak tersedia.");
         currentQR[type]=session;
         renderGeneratedQR(type, session);
         toast("QR session ditampilkan.", "success");
     }catch(err){
-        console.error("Gagal mengambil token QR:",err);
-        toast("Gagal mengambil token QR dari server.", "error");
+        toast("Gagal mengambil QR: "+friendlyCloudError(err),"error");
     }
 }
 
@@ -4830,26 +4826,32 @@ function renderStafDashboard(){
 }
 
 function renderKoorDashboard(){
-    const division=currentUser?.division || "-";
+    if(currentUser?.role!=="KOOR KP") return;
+    const division=String(currentUser.division||"");
     const sessions=load(DB.sessions).filter(s=>
-        s.creatorId===currentUser.id &&
-        s.activity==="Ngoprek" &&
-        s.division===division
+        s.creatorId===currentUser.id && s.activity==="Ngoprek" && s.division===division
     );
     const attendance=load(DB.attendance).filter(a=>
-        a.creatorId===currentUser.id &&
-        a.activity==="Ngoprek" &&
-        a.division===division
+        a.creatorId===currentUser.id && a.activity==="Ngoprek" && a.division===division
     );
-    
+
     document.getElementById("koorTotalQR").textContent=sessions.length;
     document.getElementById("koorTotalHadir").textContent=attendance.filter(a=>a.status==="Hadir").length;
-    document.getElementById("koorNetworking").textContent=attendance.length;
-    document.getElementById("koorCyber").textContent=division;
-    const n=document.querySelector("#koorNetworking")?.closest(".stat-card")?.querySelector("p");
-    const c=document.querySelector("#koorCyber")?.closest(".stat-card")?.querySelector("p");
-    if(n) n.textContent="Absensi Divisi";
-    if(c) c.textContent="Divisi Aktif";
+    document.getElementById("koorNetworking").textContent=division==="Networking" ? attendance.length : 0;
+    document.getElementById("koorCyber").textContent=division==="Cyber" ? attendance.length : 0;
+
+    document.querySelectorAll('[data-division-card="Networking"],[data-division-card="Cyber"],[data-division-card="Sysadmin"]').forEach(el=>{
+        el.style.display = el.dataset.divisionCard===division ? "" : "none";
+    });
+
+    const koorDivision=document.getElementById("koorDivision");
+    if(koorDivision){
+        koorDivision.value=division;
+        Array.from(koorDivision.options).forEach(opt=>{
+            opt.hidden = !!opt.value && opt.value!==division;
+            opt.disabled = !!opt.value && opt.value!==division;
+        });
+    }
 }
 
 function renderKoorAttendance(){

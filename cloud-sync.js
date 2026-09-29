@@ -23,7 +23,7 @@
       - Saat STAF absen (ambil selfie), foto diunggah ke Google
         Drive lebih dulu lewat Apps Script, baru linknya dicatat
         di Google Sheets (bukan base64 mentah).
-      - Setiap 30 detik, aplikasi menarik ulang data terbaru dari
+      - Setiap ~20 detik, aplikasi menarik ulang data terbaru dari
         Google Sheets, supaya QR/absensi yang dibuat di HP lain
         ikut terlihat di perangkat ini.
 
@@ -53,7 +53,7 @@ let cloudPollTimer = null;
 let cloudSyncBusy = false;
 
 // Diagnostik sinkronisasi (ditampilkan sebagai lencana di pojok kiri bawah)
-const EXPECTED_SERVER_VERSION = "secure-v4";
+const EXPECTED_SERVER_VERSION = "secure-v5";
 let cloudServerVersion = null;
 let cloudLastSyncAt = null;
 let cloudLastError = null;
@@ -204,25 +204,6 @@ function sanitizeCloudData(json){
 
 
 /* =========================================================
-AMBIL TOKEN QR HANYA SAAT QR DITAMPILKAN
-Token sengaja tidak ikut getAll agar tidak bocor di response berkala.
-========================================================= */
-async function cloudGetSessionToken(sessionId){
-    if(!cloudSyncEnabled) return "";
-    const authToken=getAuthToken();
-    if(!authToken) throw new Error("Sesi login tidak ditemukan.");
-    const res=await fetch(`${CLOUD_SCRIPT_URL}?action=getSessionToken&sessionId=${encodeURIComponent(sessionId)}&authToken=${encodeURIComponent(authToken)}`);
-    const json=await res.json();
-    if(json && json.authExpired){
-        clearAuthSession();
-        if(typeof currentUser !== "undefined") currentUser=null;
-        throw new Error("Sesi login telah berakhir.");
-    }
-    if(!json || !json.ok) throw new Error(json?.error || "Token QR tidak tersedia.");
-    return json.token || "";
-}
-
-/* =========================================================
 AMBIL SEMUA DATA TERBARU DARI GOOGLE SHEETS
 ========================================================= */
 
@@ -251,11 +232,25 @@ async function fetchCloudAll(){
         const unsyncedAtt = (load(DB.attendance) || []).filter(a=> a && a.id && !attIds.has(a.id) && !attKeys.has(a.sessionId + "|" + a.userId));
         const unsyncedPer = (load(DB.permits) || []).filter(p=> p && p.id && !perIds.has(p.id));
 
-        _localSave(DB.users, json.users || []);
-        _localSave(DB.sessions, json.sessions || []);
-        _localSave(DB.attendance, serverAtt.concat(unsyncedAtt));
+        let nextUsers = json.users || [];
+        let nextSessions = json.sessions || [];
+        let nextAttendance = serverAtt.concat(unsyncedAtt);
+        let nextPermits = serverPer.concat(unsyncedPer);
+
+        // Pertahanan kedua di browser: Koor KP tidak boleh menyimpan cache divisi lain.
+        if(currentUser?.role === "KOOR KP"){
+            const div = String(currentUser.division || "");
+            nextUsers = nextUsers.filter(u=>u.id===currentUser.id || (u.role==="STAF" && u.division===div));
+            nextSessions = nextSessions.filter(s=>s.creatorId===currentUser.id && s.activity==="Ngoprek" && s.division===div);
+            nextAttendance = nextAttendance.filter(a=>a.creatorId===currentUser.id && a.activity==="Ngoprek" && a.division===div);
+            nextPermits = nextPermits.filter(p=>p.sessionCreatorId===currentUser.id && p.sessionActivity==="Ngoprek" && p.sessionDivision===div);
+        }
+
+        _localSave(DB.users, nextUsers);
+        _localSave(DB.sessions, nextSessions);
+        _localSave(DB.attendance, nextAttendance);
         _localSave(DB.settings, json.settings || { officeLat:null, officeLng:null, radius:100, geofenceEnabled:false });
-        _localSave(DB.permits, serverPer.concat(unsyncedPer));
+        _localSave(DB.permits, nextPermits);
 
         cloudUnsynced = unsyncedAtt.length + unsyncedPer.length;
         if(cloudUnsynced) flushUnsynced(unsyncedAtt, unsyncedPer);
@@ -297,20 +292,12 @@ async function flushUnsynced(att, per){
 
 function startCloudPolling(){
     if(!cloudSyncEnabled || cloudPollTimer) return;
+    // Sinkronisasi otomatis tepat setiap 30 detik.
     cloudPollTimer = setInterval(async ()=>{
-        if(cloudSyncBusy) return; // jangan tumpang tindih saat sedang absen/upload foto
+        if(cloudSyncBusy) return;
         const ok = await fetchCloudAll();
         if(ok && currentUser) renderAll();
     }, 30000);
-
-    // Segarkan segera saat aplikasi dibuka kembali (HP dibuka dari layar kunci / pindah tab).
-    window.addEventListener("focus", ()=>{ if(!cloudSyncBusy) manualCloudRefresh(true); });
-
-    document.addEventListener("visibilitychange", async ()=>{
-        if(document.visibilityState !== "visible" || cloudSyncBusy) return;
-        const ok = await fetchCloudAll();
-        if(ok && currentUser) renderAll();
-    });
 }
 
 
@@ -355,6 +342,28 @@ async function manualCloudRefresh(silent){
     const ok = await fetchCloudAll();
     if(ok && currentUser) renderAll();
     if(!silent) toast(ok ? "Data berhasil disegarkan dari Google Sheets." : "Gagal mengambil data dari Google Sheets.", ok ? "success" : "error");
+}
+
+async function fetchSessionToken(sessionId){
+    if(!cloudSyncEnabled || !getAuthToken()) throw new Error("Sesi login tidak tersedia.");
+    const url = `${CLOUD_SCRIPT_URL}?action=getSessionToken&sessionId=${encodeURIComponent(sessionId)}&authToken=${encodeURIComponent(getAuthToken())}`;
+    const res = await fetch(url);
+    const json = await res.json();
+    if(!json || !json.ok) throw new Error((json && json.error) || "Token QR tidak dapat diambil.");
+    return String(json.token || "");
+}
+
+async function ensureSessionToken(session){
+    if(!session) return "";
+    if(session.token) return session.token;
+    const token = await fetchSessionToken(session.id);
+    if(token){
+        session.token = token;
+        const sessions = load(DB.sessions);
+        const idx = sessions.findIndex(s=>s.id===session.id);
+        if(idx>=0){ sessions[idx] = {...sessions[idx], token}; _localSave(DB.sessions,sessions); }
+    }
+    return token;
 }
 
 
