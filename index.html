@@ -21,13 +21,38 @@
 <link rel="preload" as="style" href="geo-selfie.css" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link rel="stylesheet" href="geo-selfie.css"></noscript>
 
-<!-- Feature libraries: deferred so they do not block first paint. Order is preserved. -->
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script defer src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-<script defer src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-<script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- V12: feature libraries are loaded on demand only when the feature is opened. -->
+<script>
+(() => {
+  const _featurePromises = Object.create(null);
+  const _featureCssPromises = Object.create(null);
+  function loadScriptOnce(key, src, test){
+    if(test && test()) return Promise.resolve();
+    if(_featurePromises[key]) return _featurePromises[key];
+    _featurePromises[key] = new Promise((resolve,reject) => {
+      const el=document.createElement('script'); el.src=src; el.async=true; el.crossOrigin='anonymous';
+      el.onload=()=> (test && test()) ? resolve() : reject(new Error(key+' loaded but global was not found'));
+      el.onerror=()=>reject(new Error('Gagal memuat '+key)); document.head.appendChild(el);
+    });
+    return _featurePromises[key];
+  }
+  function loadCssOnce(key,href){
+    if(_featureCssPromises[key]) return _featureCssPromises[key];
+    if(document.querySelector('link[data-lazy-css="'+key+'"]')) return Promise.resolve();
+    _featureCssPromises[key]=new Promise((resolve,reject)=>{
+      const el=document.createElement('link'); el.rel='stylesheet'; el.href=href; el.dataset.lazyCss=key;
+      el.onload=resolve; el.onerror=()=>reject(new Error('Gagal memuat CSS '+key)); document.head.appendChild(el);
+    });
+    return _featureCssPromises[key];
+  }
+  window.ensureQRCode=()=>loadScriptOnce('qrcode','https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',()=>typeof window.QRCode==='function');
+  window.ensureHtml5Qr=()=>loadScriptOnce('html5-qrcode','https://unpkg.com/html5-qrcode',()=>typeof window.Html5Qrcode==='function');
+  window.ensureXLSX=()=>loadScriptOnce('xlsx','https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js',()=>!!window.XLSX);
+  window.ensureJsPDF=async()=>{await loadScriptOnce('jspdf','https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',()=>!!window.jspdf);await loadScriptOnce('jspdf-autotable','https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js',()=>!!window.jspdf);};
+  window.ensureLeaflet=async()=>{await loadCssOnce('leaflet','https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');await loadScriptOnce('leaflet','https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',()=>!!window.L);};
+  window.featureLoadError=(name,err)=>{console.error('[NEV V12] '+name,err);if(typeof window.toast==='function')window.toast('Fitur '+name+' gagal dimuat. Periksa koneksi internet.','error');};
+})();
+</script>
 
 <style>
 :root{
@@ -3904,7 +3929,7 @@ function updateUserUI(){
 QR GENERATION
 ========================================================= */
 
-function generateQR(event,creatorRole){
+async function generateQR(event,creatorRole){
     event.preventDefault();
     let activity, division, date, start, end, location, notes;
     const geoRole = creatorRole==="HRD" ? "hrd" : "koor";
@@ -3976,7 +4001,7 @@ function generateQR(event,creatorRole){
     save(DB.sessions,sessions);
     currentQR[creatorRole==="HRD" ? "hrd" : "koor"] = session;
 
-    renderGeneratedQR(creatorRole==="HRD" ? "hrd" : "koor", session);
+    await renderGeneratedQR(creatorRole==="HRD" ? "hrd" : "koor", session);
     if(typeof resetSessionGeoForm==="function") resetSessionGeoForm(geoRole);
     renderAll();
     toast("QR berhasil dibuat otomatis.", "success");
@@ -4038,10 +4063,12 @@ function decodeSessionToken(token){
 RENDER QR
 ========================================================= */
 
-function renderGeneratedQR(type,session){
+async function renderGeneratedQR(type,session){
     const box = document.getElementById(type==="hrd" ? "hrdQrBox" : "koorQrBox");
     const details = document.getElementById(type==="hrd" ? "hrdQrDetails" : "koorQrDetails");
     const actions = document.getElementById(type==="hrd" ? "hrdQrActions" : "koorQrActions");
+
+    try{ await ensureQRCode(); }catch(err){ featureLoadError("QR Generator",err); return; }
 
     box.innerHTML="";
     const qr=document.createElement("div");
@@ -4198,7 +4225,7 @@ function finalizeAttendance(session, token, location, photo){
 SCANNER
 ========================================================= */
 
-function startScanner(){
+async function startScanner(){
     if(currentUser?.role!=="STAF"){
         toast("Fitur scanner hanya tersedia untuk STAF.", "error"); return;
     }
@@ -4222,6 +4249,8 @@ function startScanner(){
         toast("Browser tidak mendukung kamera.", "error");
         return;
     }
+
+    try{ await ensureHtml5Qr(); }catch(err){ featureLoadError("QR Scanner",err); return; }
 
     html5QrCode = new Html5Qrcode("reader");
     html5QrCode.start({facingMode:"environment"}, {fps:10, qrbox:{width:250, height:250}},
@@ -4341,7 +4370,7 @@ function toggleCurrentQR(type){
     save(DB.sessions,sessions);
     currentQR[type]=target;
 
-    renderGeneratedQR(type, target);
+    renderGeneratedQR(type, target).catch(err=>featureLoadError("QR Generator",err));
     renderQRSessionList(type);
     toast(target.active ? "QR diaktifkan." : "QR dinonaktifkan.", "success");
 }
@@ -4447,7 +4476,7 @@ async function loadSessionToQR(id,type){
         await ensureSessionToken(session);
         if(!session.token) throw new Error("Token QR tidak tersedia.");
         currentQR[type]=session;
-        renderGeneratedQR(type, session);
+        await renderGeneratedQR(type, session);
         toast("QR session ditampilkan.", "success");
     }catch(err){
         toast("Gagal mengambil QR: "+friendlyCloudError(err),"error");
@@ -5575,8 +5604,9 @@ function getKoorFilteredAttendance(){
     return data;
 }
 
-function exportKoorExcel(){
+async function exportKoorExcel(){
     if(currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
+    try{ await ensureXLSX(); }catch(err){ featureLoadError("Excel",err); return; }
     const data=getKoorFilteredAttendance();
     const rows=data.map(a=>({
         "Nama":a.userName, "NIM":a.username, "Kegiatan":a.activity,
@@ -5590,8 +5620,9 @@ function exportKoorExcel(){
     toast("Rekap Ngoprek berhasil dibuat.","success");
 }
 
-function exportKoorPDF(){
+async function exportKoorPDF(){
     if(currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
+    try{ await ensureJsPDF(); }catch(err){ featureLoadError("PDF",err); return; }
     const data=getKoorFilteredAttendance();
     const {jsPDF}=window.jspdf;
     const doc=new jsPDF("landscape");
@@ -5608,8 +5639,9 @@ function exportKoorPDF(){
     toast("PDF rekap Ngoprek berhasil dibuat.","success");
 }
 
-function exportExcel(){
+async function exportExcel(){
     if(currentUser.role!=="HRD"){ toast("Hanya HRD yang dapat export data.", "error"); return; }
+    try{ await ensureXLSX(); }catch(err){ featureLoadError("Excel",err); return; }
     let data=load(DB.attendance);
     const date=document.getElementById("filterDate").value;
     const activity=document.getElementById("filterActivity").value;
@@ -5639,8 +5671,9 @@ function exportExcel(){
 EXPORT PDF
 ========================================================= */
 
-function exportPDF(){
+async function exportPDF(){
     if(currentUser.role!=="HRD"){ toast("Hanya HRD yang dapat export PDF.", "error"); return; }
+    try{ await ensureJsPDF(); }catch(err){ featureLoadError("PDF",err); return; }
     let data=load(DB.attendance);
     const date=document.getElementById("filterDate").value;
     const activity=document.getElementById("filterActivity").value;
