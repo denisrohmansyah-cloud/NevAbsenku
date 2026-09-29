@@ -1012,6 +1012,34 @@ td{
         grid-template-columns:1fr;
     }
 }
+
+/* LOADING ANIMATION — NEV Absenku */
+#cloudLoader{
+    background:
+        radial-gradient(circle at 50% 35%, rgba(229,9,20,.18), transparent 34%),
+        linear-gradient(135deg,#070707,#151515)!important;
+}
+.nev-loader-logo{
+    width:120px;height:120px;border-radius:50%;object-fit:cover;
+    box-shadow:0 0 0 6px rgba(255,255,255,.05),0 15px 45px rgba(0,0,0,.45);
+    animation:nevLogoFloat 1.8s ease-in-out infinite, nevLogoGlow 1.8s ease-in-out infinite;
+}
+.nev-loader-title{
+    font-size:30px;font-weight:800;letter-spacing:.5px;
+    background:linear-gradient(90deg,#fff,#ff4650,#fff);
+    background-size:200% auto;-webkit-background-clip:text;background-clip:text;color:transparent;
+    animation:nevTextShine 2s linear infinite;
+}
+.nev-loader-subtitle{font-size:12px;color:#aaa;animation:nevFade 1.2s ease-in-out infinite alternate;}
+.nev-loader-dots{display:flex;gap:7px;margin-top:3px;}
+.nev-loader-dots span{width:8px;height:8px;border-radius:50%;background:#e50914;animation:nevDot 1.1s infinite ease-in-out;}
+.nev-loader-dots span:nth-child(2){animation-delay:.15s}.nev-loader-dots span:nth-child(3){animation-delay:.3s}
+@keyframes nevLogoFloat{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-10px) rotate(2deg)}}
+@keyframes nevLogoGlow{0%,100%{filter:drop-shadow(0 0 0 rgba(229,9,20,0))}50%{filter:drop-shadow(0 0 18px rgba(229,9,20,.38))}}
+@keyframes nevTextShine{to{background-position:200% center}}
+@keyframes nevFade{from{opacity:.55}to{opacity:1}}
+@keyframes nevDot{0%,80%,100%{transform:scale(.7);opacity:.4}40%{transform:scale(1.15);opacity:1}}
+
 </style>
 </head>
 
@@ -1028,7 +1056,7 @@ LOGIN
         <div class="login-brand">
 
             <div class="logo-circle">
-                <img src="Hijau Monokrom Modern Maulid Nabi Muhammad SAW Your Story_20260901_202118_0000.png" alt="NEV Logo">
+                <img src="nev-logo.png" alt="NEV Logo">
             </div>
 
             <h1>NEV Absenku</h1>
@@ -1125,20 +1153,8 @@ LOGIN
                 </button>
 
             </form>
-
-            <div class="login-register">
-
-                Belum mempunyai akun?
-                <span class="link" onclick="openRegister()">
-                    Daftar sekarang
-                </span>
-
-            </div>
-
             <div style="margin-top:25px;text-align:center;font-size:10px;color:#999;">
-                Demo STAF: <b>24101001</b> / <b>123456</b><br>
-                Demo HRD: <b>HRD001</b> / <b>123456</b><br>
-                Demo Koor KP: <b>KOORKP001</b> / <b>123456</b>
+                Akun dibuat oleh HRD atau Koor KP melalui menu <b>Manajemen Akun</b>.
             </div>
 
         </div>
@@ -1161,7 +1177,7 @@ APP
         <div class="sidebar-logo">
 
             <div class="sidebar-logo-icon">
-                <img src="Hijau Monokrom Modern Maulid Nabi Muhammad SAW Your Story_20260901_202118_0000.png" alt="NEV Logo">
+                <img src="nev-logo.png" alt="NEV Logo">
             </div>
 
             <span>NEV Absenku</span>
@@ -2189,6 +2205,15 @@ APP
 
                             </button>
 
+                            <button
+                                class="btn btn-danger"
+                                onclick="deleteCurrentQR('hrd')">
+
+                                <i class="fa-solid fa-trash"></i>
+                                Hapus QR
+
+                            </button>
+
                         </div>
 
                     </div>
@@ -2448,12 +2473,13 @@ APP
 
                             <div class="form-group">
 
-                                <label>Divisi *</label>
+                                <label>Divisi Koor KP *</label>
 
                                 <select
                                     id="koorDivision"
                                     class="form-control"
-                                    required>
+                                    required
+                                    disabled>
 
                                     <option value="">
                                         Pilih divisi
@@ -2684,6 +2710,15 @@ APP
 
                             </button>
 
+                            <button
+                                class="btn btn-danger"
+                                onclick="deleteCurrentQR('koor')">
+
+                                <i class="fa-solid fa-trash"></i>
+                                Hapus QR
+
+                            </button>
+
                         </div>
 
                     </div>
@@ -2835,6 +2870,13 @@ APP
 
                             </select>
 
+                        </div>
+
+                        <div>
+                            <label style="font-size:10px;font-weight:700;">
+                                Cari Nama / NIM
+                            </label>
+                            <input id="filterSearch" class="form-control" placeholder="Ketik nama atau NIM..." oninput="renderHRDReport()">
                         </div>
 
                         <div>
@@ -2992,7 +3034,7 @@ APP
                             <h3>Manajemen Akun</h3>
 
                             <p>
-                                Lihat, kelola, atau hapus akun pengguna.
+                                Akun staf dibuat oleh HRD atau Koor KP. Password tidak ditampilkan dan disimpan dalam bentuk hash.
                             </p>
 
                         </div>
@@ -3031,12 +3073,40 @@ APP
                             <h3>Absensi Ngoprek</h3>
 
                             <p>
-                                Koor KP hanya dapat mengelola
-                                absensi Ngoprek.
+                                Hanya menampilkan absensi Ngoprek yang dibuat Koor KP ini.
                             </p>
 
                         </div>
 
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <button class="btn btn-success" onclick="exportKoorExcel()">
+                                <i class="fa-solid fa-file-excel"></i> Excel
+                            </button>
+                            <button class="btn btn-danger" onclick="exportKoorPDF()">
+                                <i class="fa-solid fa-file-pdf"></i> PDF
+                            </button>
+                        </div>
+
+                    </div>
+
+                    <div class="filter-grid koor-attendance-filters">
+                        <div>
+                            <label style="font-size:10px;font-weight:700;">Tanggal</label>
+                            <input id="koorFilterDate" type="date" class="form-control" onchange="renderKoorAttendance()">
+                        </div>
+                        <div>
+                            <label style="font-size:10px;font-weight:700;">Cari Nama / NIM</label>
+                            <input id="koorFilterSearch" class="form-control" placeholder="Ketik nama atau NIM..." oninput="renderKoorAttendance()">
+                        </div>
+                        <div>
+                            <label style="font-size:10px;font-weight:700;">Divisi</label>
+                            <input id="koorFilterDivision" class="form-control" readonly>
+                        </div>
+                        <div style="display:flex;align-items:flex-end;">
+                            <button class="btn btn-outline btn-block" onclick="clearKoorAttendanceFilter()">
+                                <i class="fa-solid fa-rotate-left"></i> Reset
+                            </button>
+                        </div>
                     </div>
 
                     <div id="koorAttendanceTable"></div>
@@ -3185,7 +3255,7 @@ REGISTER MODAL
 
         <div class="modal-header">
 
-            <h3>Registrasi Akun</h3>
+            <h3>Tambah Akun STAF</h3>
 
             <button
                 class="modal-close"
@@ -3223,35 +3293,11 @@ REGISTER MODAL
 
                 </div>
 
-                <div class="form-group">
-
-                    <label>Role *</label>
-
-                    <select
-                        id="registerRole"
-                        class="form-control"
-                        required
-                        onchange="toggleRegisterDivision()">
-
-                        <option value="STAF">
-                            STAF
-                        </option>
-
-                        <option value="KOOR KP">
-                            KOOR KP
-                        </option>
-
-                        <option value="HRD">
-                            HRD
-                        </option>
-
-                    </select>
-
-                </div>
+                <input type="hidden" id="registerRole" value="STAF">
 
                 <div class="form-group" id="registerDivisionGroup">
 
-                    <label>Divisi * (Khusus Staf & Koor KP)</label>
+                    <label>Divisi *</label>
 
                     <select
                         id="registerDivision"
@@ -3519,7 +3565,7 @@ function initializeDatabase(){
                 id:"U001",
                 name:"Denis Adityan Rohmansyah",
                 username:"24101001",
-                password:"123456",
+                password:"",
                 role:"STAF",
                 division:"Networking"
             },
@@ -3527,7 +3573,7 @@ function initializeDatabase(){
                 id:"U002",
                 name:"Admin HRD",
                 username:"HRD001",
-                password:"123456",
+                password:"",
                 role:"HRD",
                 division:null
             },
@@ -3535,7 +3581,7 @@ function initializeDatabase(){
                 id:"U003",
                 name:"Koor KP NEV",
                 username:"KOORKP001",
-                password:"123456",
+                password:"",
                 role:"KOOR KP",
                 division:"Networking"
             },
@@ -3543,7 +3589,7 @@ function initializeDatabase(){
                 id:"U004",
                 name:"Andi Staff",
                 username:"24101002",
-                password:"123456",
+                password:"",
                 role:"STAF",
                 division:"Cyber"
             },
@@ -3551,7 +3597,7 @@ function initializeDatabase(){
                 id:"U005",
                 name:"Budi Staff",
                 username:"24101003",
-                password:"123456",
+                password:"",
                 role:"STAF",
                 division:"Sysadmin"
             }
@@ -3639,11 +3685,23 @@ async function login(event){
     }
 
     currentUser = result.user;
+    if(result.authToken) localStorage.setItem("nev_auth_token", result.authToken);
 
     localStorage.setItem(
       "nev_current_user",
       JSON.stringify(currentUser)
     );
+
+    if(typeof fetchCloudAll === "function"){
+        const synced = await fetchCloudAll();
+        if(!synced){
+            localStorage.removeItem("nev_auth_token");
+            localStorage.removeItem("nev_current_user");
+            currentUser = null;
+            toast("Login berhasil tetapi data pusat tidak dapat diambil. Coba lagi.", "error");
+            return;
+        }
+    }
 
     document.getElementById("loginScreen").classList.add("hidden");
     document.getElementById("app").classList.remove("hidden");
@@ -3674,6 +3732,7 @@ function logout(){
     stopScanner();
     currentUser=null;
     localStorage.removeItem("nev_current_user");
+    localStorage.removeItem("nev_auth_token");
     document.getElementById("app").classList.add("hidden");
     document.getElementById("loginScreen").classList.remove("hidden");
     document.getElementById("loginUsername").value="";
@@ -3795,8 +3854,19 @@ function showPage(page){
     if(page==="hrd-location") setTimeout(initOfficeMap, 50);
     if(page==="users") renderUsers();
     if(page==="koor-dashboard") renderKoorDashboard();
-    if(page==="koor-qr") renderQRSessionList("koor");
-    if(page==="koor-attendance") renderKoorAttendance();
+    if(page==="koor-qr"){
+        const div = document.getElementById("koorDivision");
+        if(div){
+            div.value = currentUser.division || "";
+            div.disabled = true;
+        }
+        renderQRSessionList("koor");
+    }
+    if(page==="koor-attendance"){
+        const div = document.getElementById("koorFilterDivision");
+        if(div) div.value = currentUser.division || "-";
+        renderKoorAttendance();
+    }
     if(page==="koor-permit") renderPermitApproval("koor");
     if(page==="settings") renderSettings();
 }
@@ -3839,7 +3909,11 @@ function generateQR(event,creatorRole){
         }
     }else{
         activity="Ngoprek";
-        division=document.getElementById("koorDivision").value;
+        division=currentUser.division;
+        const selectedDivision=document.getElementById("koorDivision").value;
+        if(selectedDivision && selectedDivision !== currentUser.division){
+            toast("Divisi QR harus sama dengan divisi akun Koor KP.", "error"); return;
+        }
         date=document.getElementById("koorDate").value;
         start=document.getElementById("koorStart").value;
         end=document.getElementById("koorEnd").value;
@@ -3961,9 +4035,9 @@ function renderGeneratedQR(type,session){
 
     new QRCode(qr,{
         text:session.token,
-        width:250, height:250,
+        width:210, height:210,
         colorDark:"#000000", colorLight:"#ffffff",
-        correctLevel:QRCode.CorrectLevel.H
+        correctLevel:QRCode.CorrectLevel.M
     });
 
     details.innerHTML=`
@@ -3971,13 +4045,8 @@ function renderGeneratedQR(type,session){
             <div class="qr-info-row"><span>Kegiatan</span><span>${escapeHTML(session.activity)}</span></div>
             <div class="qr-info-row"><span>Divisi</span><span>${escapeHTML(session.division)}</span></div>
             <div class="qr-info-row"><span>Tanggal</span><span>${escapeHTML(session.date)}</span></div>
-            <div class="qr-info-row"><span>Jam</span><span>${session.start} - ${session.end}</span></div>
-            <div class="qr-info-row"><span>Lokasi</span><span>${escapeHTML(session.location)}</span></div>
-            <div class="qr-info-row"><span>Lokasi & Radius Khusus</span><span>${session.geoEnabled ? `Aktif (±${session.geoRadius} m)` : "Tidak aktif (ikuti kantor)"}</span></div>
-            <div style="margin-top:12px;">
-                <div style="font-size:10px;color:#777;margin-bottom:5px;">TOKEN SESSION</div>
-                <div class="token">${escapeHTML(session.token)}</div>
-            </div>
+            <div class="qr-info-row"><span>Waktu</span><span>${session.start} - ${session.end}</span></div>
+            <div class="qr-info-row"><span>Status</span><span>${session.active ? "Aktif" : "Nonaktif"}</span></div>
         </div>
     `;
 
@@ -4030,7 +4099,7 @@ if(!session){
             sessions.push(session);
         }
 
-        save(DB.sessions, sessions);
+        _localSave(DB.sessions, sessions);
     }
 }
 
@@ -4218,7 +4287,7 @@ function printQR(type){
         <style>
             body{font-family:Arial,sans-serif;text-align:center;padding:40px;}
             img{width:300px;height:300px;margin:25px;}
-            .token{margin:20px auto;padding:10px;background:#eee;max-width:500px;word-break:break-all;}
+            .token{margin:20px auto;padding:10px;background:#eee;max-width:500px;word-break:break-all;display:none;}
         </style></head>
         <body>
             <h1>NEV Absenku</h1>
@@ -4226,7 +4295,6 @@ function printQR(type){
             <p>${escapeHTML(session.division)}</p>
             <p>${session.date} • ${session.start} - ${session.end}</p>
             <img src="${image}">
-            <div class="token">${escapeHTML(session.token)}</div>
             <p>Scan QR menggunakan aplikasi NEV Absenku.</p>
         </body></html>
     `);
@@ -4257,6 +4325,44 @@ function toggleCurrentQR(type){
     renderGeneratedQR(type, target);
     renderQRSessionList(type);
     toast(target.active ? "QR diaktifkan." : "QR dinonaktifkan.", "success");
+}
+
+async function deleteCurrentQR(type){
+    const session=currentQR[type];
+    if(!session){
+        toast("QR belum dipilih.","error"); return;
+    }
+    await deleteSession(session.id,type);
+}
+
+async function deleteSession(id,type){
+    const sessions=load(DB.sessions);
+    const session=sessions.find(s=>s.id===id);
+    if(!session)return;
+
+    if(currentUser.role==="KOOR KP" &&
+       (session.creatorId!==currentUser.id || session.activity!=="Ngoprek" || session.division!==currentUser.division)){
+        toast("Akses ditolak. Koor KP hanya dapat menghapus QR Ngoprek miliknya sendiri.","error");
+        return;
+    }
+    if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
+        toast("Akses ditolak.","error"); return;
+    }
+
+    if(!confirm(`Hapus QR ${session.activity} • ${session.date}? Semua absensi pada kegiatan ini juga akan dihapus.`)) return;
+
+    try{
+        await cloudPost("deleteSession",{sessionId:id},1);
+        _localSave(DB.sessions,sessions.filter(s=>s.id!==id));
+        _localSave(DB.attendance,load(DB.attendance).filter(a=>a.sessionId!==id));
+        _localSave(DB.permits,load(DB.permits).filter(p=>p.sessionId!==id));
+
+        if(currentQR[type]?.id===id) currentQR[type]=null;
+        renderAll();
+        toast("QR/kegiatan dan absensinya berhasil dihapus.","success");
+    }catch(err){
+        toast("Gagal menghapus QR/kegiatan: "+friendlyCloudError(err),"error");
+    }
 }
 
 
@@ -4298,9 +4404,12 @@ function renderQRSessionList(type){
                             <td>${escapeHTML(s.creatorName)}</td>
                             <td>${s.geoEnabled ? `<span class="badge badge-active" title="Radius ${s.geoRadius} m"><i class="fa-solid fa-location-dot"></i> ${s.geoRadius}m</span>` : `<span style="color:#999;font-size:12px;">Kantor</span>`}</td>
                             <td><span class="badge ${s.active ? "badge-active" : "badge-inactive"}">${s.active ? "Aktif" : "Nonaktif"}</span></td>
-                            <td>
+                            <td style="display:flex;gap:5px;">
                                 <button class="btn btn-outline" style="padding:7px 9px;" onclick="loadSessionToQR('${s.id}','${type}')">
                                     <i class="fa-solid fa-qrcode"></i>
+                                </button>
+                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteSession('${s.id}','${type}')">
+                                    <i class="fa-solid fa-trash"></i>
                                 </button>
                             </td>
                         </tr>
@@ -4482,9 +4591,12 @@ function attendanceTable(data,canEdit){
                             <td>${formatTime(a.checkIn)}</td>
                             <td>${statusBadge(a.status)}</td>
                             <td>${attendanceProofCell(a)}</td>
-                            ${canEdit ? `<td>
+                            ${canEdit ? `<td style="display:flex;gap:5px;">
                                 <button class="btn btn-outline" style="padding:7px 9px;" onclick="openEditAttendance('${a.id}')">
                                     <i class="fa-solid fa-pen"></i>
+                                </button>
+                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteAttendance('${a.id}')">
+                                    <i class="fa-solid fa-trash"></i>
                                 </button>
                             </td>` : ""}
                         </tr>
@@ -4651,11 +4763,16 @@ function renderHRDReport(){
     const activity=document.getElementById("filterActivity").value;
     const division=document.getElementById("filterDivision").value;
     const status=document.getElementById("filterStatus").value;
+    const search=(document.getElementById("filterSearch")?.value || "").trim().toLowerCase();
 
     if(date) data=data.filter(a=>a.date===date);
     if(activity) data=data.filter(a=>a.activity===activity);
     if(division) data=data.filter(a=>a.division===division);
     if(status) data=data.filter(a=>a.status===status);
+    if(search) data=data.filter(a=>
+        String(a.userName||"").toLowerCase().includes(search) ||
+        String(a.username||"").toLowerCase().includes(search)
+    );
 
     const container=document.getElementById("hrdReportTable");
     if(!data.length){
@@ -4709,13 +4826,36 @@ function renderKoorDashboard(){
 
 function renderKoorAttendance(){
     if(currentUser?.role!=="KOOR KP")return;
-    const attendance=load(DB.attendance).filter(a=> a.creatorId===currentUser.id && a.activity==="Ngoprek");
-    const container=document.getElementById("koorAttendanceTable");
+    let attendance=load(DB.attendance).filter(a=>
+        a.creatorId===currentUser.id &&
+        a.activity==="Ngoprek" &&
+        a.division===currentUser.division
+    );
 
+    const date=document.getElementById("koorFilterDate")?.value || "";
+    const search=(document.getElementById("koorFilterSearch")?.value || "").trim().toLowerCase();
+
+    if(date) attendance=attendance.filter(a=>a.date===date);
+    if(search) attendance=attendance.filter(a=>
+        String(a.userName||"").toLowerCase().includes(search) ||
+        String(a.username||"").toLowerCase().includes(search)
+    );
+
+    const container=document.getElementById("koorAttendanceTable");
     if(!attendance.length){
-        container.innerHTML=emptyHTML("fa-clipboard-check", "Belum ada absensi Ngoprek."); return;
+        container.innerHTML=emptyHTML("fa-clipboard-check", "Tidak ada absensi Ngoprek sesuai filter.");
+        return;
     }
+    attendance.sort((a,b)=> String(b.date).localeCompare(String(a.date)) || String(b.checkIn).localeCompare(String(a.checkIn)));
     container.innerHTML=attendanceTable(attendance,true);
+}
+
+function clearKoorAttendanceFilter(){
+    const d=document.getElementById("koorFilterDate");
+    const s=document.getElementById("koorFilterSearch");
+    if(d) d.value="";
+    if(s) s.value="";
+    renderKoorAttendance();
 }
 
 
@@ -4797,6 +4937,33 @@ function saveAttendanceEdit(){
     toast("Status absensi berhasil diperbarui.", "success");
 }
 
+async function deleteAttendance(id){
+    const attendance=load(DB.attendance);
+    const record=attendance.find(a=>a.id===id);
+    if(!record)return;
+
+    if(currentUser.role==="KOOR KP" &&
+       (record.creatorId!==currentUser.id || record.activity!=="Ngoprek" || record.division!==currentUser.division)){
+        toast("Akses ditolak. Anda hanya dapat menghapus absensi Ngoprek milik Anda.","error");
+        return;
+    }
+    if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
+        toast("Akses ditolak.","error"); return;
+    }
+
+    if(!confirm(`Hapus absensi ${record.userName} pada ${record.date}?`)) return;
+
+    try{
+        await cloudPost("deleteAttendance",{attendanceId:id},1);
+        _localSave(DB.attendance,attendance.filter(a=>a.id!==id));
+        renderAll();
+        renderSessionStaffStatus();
+        toast("Data absensi berhasil dihapus.","success");
+    }catch(err){
+        toast("Gagal menghapus absensi: "+friendlyCloudError(err),"error");
+    }
+}
+
 
 /* =========================================================
 USERS (HRD & KOOR KP)
@@ -4808,14 +4975,13 @@ function renderUsers(){
     const users=load(DB.users);
     let displayUsers = [];
     
-    // HRD dapat melihat semua (atau selain dirinya sendiri)
+    // HRD dapat melihat semua akun. Koor KP hanya melihat staf di divisinya.
     if(currentUser.role==="HRD") {
         document.getElementById("btnTambahAkun").style.display = "inline-flex";
         displayUsers = users;
     } 
-    // KOOR KP hanya dapat melihat staf di divisinya
     else if(currentUser.role==="KOOR KP") {
-        document.getElementById("btnTambahAkun").style.display = "none";
+        document.getElementById("btnTambahAkun").style.display = "inline-flex";
         displayUsers = users.filter(u => u.role === "STAF" && u.division === currentUser.division);
     }
 
@@ -4863,110 +5029,133 @@ function renderUsers(){
     `;
 }
 
-function editUser(id){
-    if(currentUser.role!=="HRD"){
-        toast("Hanya HRD yang dapat mengedit akun.", "error"); return;
+async function editUser(id){
+    if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
+        toast("Akses ditolak.", "error"); return;
     }
     const users=load(DB.users);
     const user=users.find(u=>u.id===id);
     if(!user)return;
 
-    const name=prompt("Nama:", user.name);
-    if(name===null)return;
-    const password=prompt("Password baru:", user.password);
-    if(password===null)return;
-
-    let division = user.division;
-    if(user.role !== "HRD") {
-        const div = prompt("Divisi (Networking/Cyber/Sysadmin):", user.division);
-        if(div !== null) division = div;
+    if(user.role!=="STAF"){
+        toast("Hanya akun STAF yang dapat dikelola dari menu ini.", "error"); return;
+    }
+    if(currentUser.role==="KOOR KP" && user.division!==currentUser.division){
+        toast("Akses ditolak.", "error"); return;
     }
 
-    user.name=name;
-    user.password=password;
-    if(user.role !== "HRD") user.division = division;
+    const name=prompt("Nama:", user.name);
+    if(name===null)return;
+    const password=prompt("Password baru (kosongkan jika tidak diubah):", "");
 
-    save(DB.users,users);
-    renderUsers();
-    toast("Akun berhasil diperbarui.", "success");
+    try{
+        const result=await cloudPost("updateUser", {
+            targetId:id,
+            name:name.trim(),
+            password:password || "",
+            division:user.division
+        },1);
+        const updated=result.user;
+        const next=users.map(u=>u.id===id ? updated : u);
+        _localSave(DB.users,next);
+        renderUsers();
+        toast("Akun berhasil diperbarui.", "success");
+    }catch(err){
+        toast("Gagal memperbarui akun: "+friendlyCloudError(err), "error");
+    }
 }
 
-function deleteUser(id){
-    if(!confirm("Yakin ingin menghapus akun ini?")) return;
-    let users=load(DB.users);
+async function deleteUser(id){
+    if(!confirm("Yakin ingin menghapus akun STAF ini?")) return;
+    const users=load(DB.users);
     const user=users.find(u=>u.id===id);
     if(!user)return;
 
-    if(currentUser.role === "KOOR KP") {
-        if(user.role !== "STAF" || user.division !== currentUser.division){
-            toast("Akses ditolak. Anda hanya dapat menghapus Staf di divisi Anda.", "error");
-            return;
-        }
-    } else if (currentUser.role !== "HRD") {
-        toast("Akses ditolak.", "error");
+    if(currentUser.role==="KOOR KP" && (user.role!=="STAF" || user.division!==currentUser.division)){
+        toast("Akses ditolak. Anda hanya dapat menghapus Staf di divisi Anda.", "error");
         return;
     }
+    if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
+        toast("Akses ditolak.", "error"); return;
+    }
 
-    users = users.filter(u => u.id !== id);
-    save(DB.users, users);
-    renderUsers();
-    toast("Akun berhasil dihapus.", "success");
+    try{
+        await cloudPost("deleteUser",{targetId:id},1);
+        _localSave(DB.users,users.filter(u=>u.id!==id));
+        renderUsers();
+        toast("Akun berhasil dihapus.", "success");
+    }catch(err){
+        toast("Gagal menghapus akun: "+friendlyCloudError(err), "error");
+    }
 }
 
 
 /* =========================================================
-REGISTRATION
+PEMBUATAN AKUN OLEH HRD / KOOR KP
 ========================================================= */
 
 function toggleRegisterDivision(){
-    const role = document.getElementById("registerRole").value;
     const divGroup = document.getElementById("registerDivisionGroup");
     const divSelect = document.getElementById("registerDivision");
-    
-    if(role === "HRD"){
-        divGroup.classList.add("hidden");
-        divSelect.required = false;
-        divSelect.value = "";
-    } else {
+    const roleInput = document.getElementById("registerRole");
+    if(roleInput) roleInput.value = "STAF";
+
+    if(currentUser?.role==="KOOR KP"){
+        divSelect.value=currentUser.division || "";
+        divSelect.disabled=true;
+        divSelect.required=true;
         divGroup.classList.remove("hidden");
-        divSelect.required = true;
+    }else{
+        divSelect.disabled=false;
+        divSelect.required=true;
+        divGroup.classList.remove("hidden");
     }
 }
 
 function openRegister(){
+    if(!currentUser || (currentUser.role!=="HRD" && currentUser.role!=="KOOR KP")){
+        toast("Hanya HRD atau Koor KP yang dapat membuat akun.", "error");
+        return;
+    }
     toggleRegisterDivision();
     document.getElementById("registerModal").classList.add("show");
 }
 
-function register(event){
+async function register(event){
     event.preventDefault();
+
+    if(!currentUser || (currentUser.role!=="HRD" && currentUser.role!=="KOOR KP")){
+        toast("Akses ditolak.", "error"); return;
+    }
+
     const name=document.getElementById("registerName").value.trim();
     const username=document.getElementById("registerUsername").value.trim();
-    const role=document.getElementById("registerRole").value;
     const password=document.getElementById("registerPassword").value;
     let division=document.getElementById("registerDivision").value;
 
-    if(role !== "HRD" && !division) {
-        toast("Silakan pilih divisi untuk Staf / Koor KP.", "error"); return;
-    }
-    if(role === "HRD") division = null;
-
-    const users=load(DB.users);
-    if(users.some(u=>u.username===username)){
-        toast("Username/NIM sudah digunakan.", "error"); return;
+    if(!name || !username || !password || !division){
+        toast("Nama, NIM, password, dan divisi wajib diisi.", "error"); return;
     }
 
-    users.push({
-        id: "U-"+Date.now(),
-        name, username, password, role, division
-    });
+    if(currentUser.role==="KOOR KP") division=currentUser.division;
 
-    save(DB.users,users);
-    closeModal("registerModal");
-    document.querySelector("#registerModal form").reset();
-    toast("Akun berhasil dibuat.", "success");
-    
-    if(currentUser && currentUser.role === "HRD") renderUsers();
+    try{
+        const result=await cloudPost("createUser", {
+            name, username, password, division, role:"STAF"
+        },1);
+
+        const users=load(DB.users);
+        users.push(result.user);
+        _localSave(DB.users,users);
+
+        closeModal("registerModal");
+        document.querySelector("#registerModal form").reset();
+        toggleRegisterDivision();
+        renderUsers();
+        toast("Akun STAF berhasil dibuat.", "success");
+    }catch(err){
+        toast("Gagal membuat akun: "+friendlyCloudError(err), "error");
+    }
 }
 
 
@@ -5313,27 +5502,82 @@ function renderSettings(){
     document.getElementById("settingRole").value=currentUser.role;
 }
 
-function saveSettings(){
+async function saveSettings(){
+    if(!currentUser) return;
     const name=document.getElementById("settingName").value.trim();
-    if(!name){ toast("Nama tidak boleh kosong.", "error"); return; }
-    
-    const users=load(DB.users);
-    const user=users.find(u=>u.id===currentUser.id);
-    if(!user)return;
+    if(!name){ toast("Nama tidak boleh kosong.","error"); return; }
 
-    user.name=name;
-    currentUser.name=name;
-    save(DB.users,users);
-    localStorage.setItem("nev_current_user", JSON.stringify(currentUser));
-    
-    updateUserUI();
-    toast("Pengaturan berhasil disimpan.", "success");
+    try{
+        const result=await cloudPost("updateUser",{
+            targetId:currentUser.id,
+            name,
+            password:"",
+            division:currentUser.division || null
+        },1);
+        currentUser=result.user;
+        localStorage.setItem("nev_current_user",JSON.stringify(currentUser));
+        const users=load(DB.users).map(u=>u.id===currentUser.id ? currentUser : u);
+        _localSave(DB.users,users);
+        updateUserUI();
+        toast("Pengaturan akun berhasil disimpan.","success");
+    }catch(err){
+        toast("Gagal menyimpan pengaturan: "+friendlyCloudError(err),"error");
+    }
 }
 
 
 /* =========================================================
 EXPORT EXCEL
 ========================================================= */
+
+function getKoorFilteredAttendance(){
+    let data=load(DB.attendance).filter(a=>
+        a.creatorId===currentUser.id &&
+        a.activity==="Ngoprek" &&
+        a.division===currentUser.division
+    );
+    const date=document.getElementById("koorFilterDate")?.value || "";
+    const search=(document.getElementById("koorFilterSearch")?.value || "").trim().toLowerCase();
+    if(date) data=data.filter(a=>a.date===date);
+    if(search) data=data.filter(a=>
+        String(a.userName||"").toLowerCase().includes(search) ||
+        String(a.username||"").toLowerCase().includes(search)
+    );
+    return data;
+}
+
+function exportKoorExcel(){
+    if(currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
+    const data=getKoorFilteredAttendance();
+    const rows=data.map(a=>({
+        "Nama":a.userName, "NIM":a.username, "Kegiatan":a.activity,
+        "Divisi":a.division, "Tanggal":a.date, "Jam":formatTime(a.checkIn),
+        "Status":a.status
+    }));
+    const worksheet=XLSX.utils.json_to_sheet(rows);
+    const workbook=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook,worksheet,"Ngoprek");
+    XLSX.writeFile(workbook,"NEV-Absenku-Rekap-Ngoprek.xlsx");
+    toast("Rekap Ngoprek berhasil dibuat.","success");
+}
+
+function exportKoorPDF(){
+    if(currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
+    const data=getKoorFilteredAttendance();
+    const {jsPDF}=window.jspdf;
+    const doc=new jsPDF("landscape");
+    doc.setFontSize(18);
+    doc.text("NEV Absenku - Rekap Ngoprek",14,15);
+    doc.setFontSize(9);
+    doc.text("Divisi: "+(currentUser.division||"-"),14,22);
+    doc.autoTable({
+        startY:28,
+        head:[["Nama","NIM","Kegiatan","Divisi","Tanggal","Jam","Status"]],
+        body:data.map(a=>[a.userName,a.username,a.activity,a.division,a.date,formatTime(a.checkIn),a.status])
+    });
+    doc.save("NEV-Absenku-Rekap-Ngoprek.pdf");
+    toast("PDF rekap Ngoprek berhasil dibuat.","success");
+}
 
 function exportExcel(){
     if(currentUser.role!=="HRD"){ toast("Hanya HRD yang dapat export data.", "error"); return; }

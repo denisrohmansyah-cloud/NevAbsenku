@@ -43,7 +43,6 @@ const CLOUD_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby5iQt8AxuGmH6
 const cloudSyncEnabled = typeof CLOUD_SCRIPT_URL === "string" && CLOUD_SCRIPT_URL.startsWith("http");
 
 const CLOUD_ACTION_BY_KEY = {
-    [DB.users]: "saveUsers",
     [DB.sessions]: "saveSessions",
     [DB.attendance]: "saveAttendance",
     [DB.settings]: "saveSettings",
@@ -54,7 +53,7 @@ let cloudPollTimer = null;
 let cloudSyncBusy = false;
 
 // Diagnostik sinkronisasi (ditampilkan sebagai lencana di pojok kiri bawah)
-const EXPECTED_SERVER_VERSION = "merge-v2";
+const EXPECTED_SERVER_VERSION = "secure-v3";
 let cloudServerVersion = null;
 let cloudLastSyncAt = null;
 let cloudLastError = null;
@@ -89,15 +88,34 @@ function sanitizeList(key, data){
     });
 }
 
+function getAuthToken(){
+    return localStorage.getItem("nev_auth_token") || "";
+}
+
+function clearAuthSession(){
+    localStorage.removeItem("nev_auth_token");
+    localStorage.removeItem("nev_current_user");
+}
+
+function cloudPayload(action, data){
+    const body = { action, data };
+    if(action !== "login"){
+        const token = getAuthToken();
+        if(token) body.authToken = token;
+    }
+    return JSON.stringify(body);
+}
+
 function pushToCloud(key, data){
     if(!cloudSyncEnabled) return;
     const action = CLOUD_ACTION_BY_KEY[key];
     if(!action) return;
+    if(!getAuthToken()) return;
 
     fetch(CLOUD_SCRIPT_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" }, // hindari CORS preflight ke Apps Script
-        body: JSON.stringify({ action, data })
+        body: cloudPayload(action, data)
     }).catch(err=>{
         console.error("Gagal sinkron ke Google Sheets:", err);
         toast("Gagal menyinkronkan data ke Google Sheets. Periksa koneksi internet.", "error");
@@ -119,7 +137,7 @@ async function cloudPost(action, data, retries){
             const res = await fetch(CLOUD_SCRIPT_URL, {
                 method: "POST",
                 headers: { "Content-Type": "text/plain;charset=utf-8" },
-                body: JSON.stringify({ action, data })
+                body: cloudPayload(action, data)
             });
             const text = await res.text();
 
@@ -192,8 +210,15 @@ AMBIL SEMUA DATA TERBARU DARI GOOGLE SHEETS
 async function fetchCloudAll(){
     if(!cloudSyncEnabled) return false;
     try{
-        const res = await fetch(`${CLOUD_SCRIPT_URL}?action=getAll`);
+        const token = getAuthToken();
+        if(!token) return false;
+        const res = await fetch(`${CLOUD_SCRIPT_URL}?action=getAll&authToken=${encodeURIComponent(token)}`);
         const json = await res.json();
+        if(json && json.authExpired){
+            clearAuthSession();
+            if(typeof currentUser !== "undefined") currentUser = null;
+            return false;
+        }
         if(!json || !json.ok) throw new Error((json && json.error) || "Respons tidak valid");
         sanitizeCloudData(json);
 
@@ -452,8 +477,10 @@ function showCloudLoader(show){
             el.id = "cloudLoader";
             el.style.cssText = "position:fixed;inset:0;background:#101010;color:#fff;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;z-index:99999;font-family:'Inter',sans-serif;text-align:center;padding:20px;";
             el.innerHTML = `
-                <i class="fa-solid fa-cloud-arrow-down fa-2x" style="color:#e50914;"></i>
-                <div>Menyinkronkan data dari Google Sheets...</div>
+                <img src="nev-logo.png" class="nev-loader-logo" alt="NEV Evolution">
+                <div class="nev-loader-title">NevAbsenku</div>
+                <div class="nev-loader-subtitle">Menyiapkan sistem absensi...</div>
+                <div class="nev-loader-dots"><span></span><span></span><span></span></div>
             `;
             document.body.appendChild(el);
         }
@@ -474,30 +501,66 @@ data terpusat yang sama, bukan data lokal yang mungkin basi.
 
 async function bootWithCloud(){
     if(cloudSyncEnabled){
+        const savedToken = getAuthToken();
+        const savedUser = localStorage.getItem("nev_current_user");
+
         showCloudLoader(true);
-        const ok = await fetchCloudAll();
+
+        if(savedToken && savedUser){
+            try{
+                const user = JSON.parse(savedUser);
+                currentUser = user;
+                const ok = await fetchCloudAll();
+                if(ok){
+                    const valid = (load(DB.users) || []).find(u=>u.id===user.id);
+                    if(valid){
+                        currentUser = valid;
+                        localStorage.setItem("nev_current_user", JSON.stringify(valid));
+                        document.getElementById("loginScreen").classList.add("hidden");
+                        document.getElementById("app").classList.remove("hidden");
+                        buildSidebar();
+                        updateUserUI();
+                        if(currentUser.role==="STAF") showPage("staf-dashboard");
+                        else if(currentUser.role==="HRD") showPage("hrd-dashboard");
+                        else if(currentUser.role==="KOOR KP") showPage("koor-dashboard");
+                    }else{
+                        clearAuthSession();
+                        currentUser = null;
+                    }
+                }else{
+                    clearAuthSession();
+                    currentUser = null;
+                }
+            }catch(e){
+                clearAuthSession();
+                currentUser = null;
+            }
+        }
+
+        // Ambil versi/settings tanpa membuka data akun sebelum login.
+        try{
+            const res = await fetch(`${CLOUD_SCRIPT_URL}?action=bootstrap`);
+            const boot = await res.json();
+            if(boot && boot.ok){
+                cloudServerVersion = boot.version || cloudServerVersion;
+                _localSave(DB.settings, boot.settings || {officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
+            }
+        }catch(e){
+            console.warn("Bootstrap cloud gagal:",e);
+        }
+
         showCloudLoader(false);
 
-        if(ok){
-            const users = load(DB.users);
-            if(!users || !users.length){
-                // Spreadsheet masih kosong (pemakaian pertama kali): isi akun
-                // demo bawaan secara lokal, lalu (lewat save() yang sudah
-                // di-override) otomatis terkirim & tersimpan ke Google Sheets.
-                localStorage.removeItem(DB.users);
-                initializeDatabase();
-            }else{
-                initializeDatabase(); // hanya melengkapi sessions/attendance/settings bila perlu
-            }
-        }else{
-            toast("Gagal terhubung ke Google Sheets. Sementara memakai data lokal (offline).", "error");
+        // Jika belum login, backend tetap menjadi sumber akun. Tidak membuat
+        // daftar akun baru dari halaman login.
+        if(!currentUser){
             initializeDatabase();
         }
     }else{
         initializeDatabase();
     }
 
-    restoreLogin();
+    if(currentUser) renderAll();
     startCloudPolling();
 }
 
