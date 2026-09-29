@@ -286,18 +286,27 @@ async function flushUnsynced(att, per){
     }finally{
         cloudFlushing = false;
     }
-    const ok = await fetchCloudAll();
-    if(ok && currentUser) renderAll();
+    // Jangan langsung fetchCloudAll() di sini. Tunggu siklus polling 30 detik
+    // berikutnya agar request getAll tidak meledak setelah retry/pengiriman ulang.
 }
+
+const AUTO_SYNC_INTERVAL_MS = 30000; // 30 detik
+let autoSyncRunning = false;
 
 function startCloudPolling(){
     if(!cloudSyncEnabled || cloudPollTimer) return;
-    // Sinkronisasi otomatis tepat setiap 30 detik.
+
+    // Tepat satu request getAll otomatis setiap 30 detik.
     cloudPollTimer = setInterval(async ()=>{
-        if(cloudSyncBusy) return;
-        const ok = await fetchCloudAll();
-        if(ok && currentUser) renderAll();
-    }, 30000);
+        if(autoSyncRunning || cloudSyncBusy || !getAuthToken()) return;
+        autoSyncRunning = true;
+        try{
+            const ok = await fetchCloudAll();
+            if(ok && currentUser) renderAll();
+        }finally{
+            autoSyncRunning = false;
+        }
+    }, AUTO_SYNC_INTERVAL_MS);
 }
 
 
@@ -587,6 +596,7 @@ async function bootWithCloud(){
     }
 
     if(currentUser) renderAll();
+    // Satu sinkronisasi awal saat login/restore, lalu polling otomatis setiap 30 detik.
     startCloudPolling();
 }
 

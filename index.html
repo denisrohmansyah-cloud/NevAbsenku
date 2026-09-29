@@ -5,32 +5,29 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NEV Absenku</title>
 
+<!-- Critical connection hints only; non-critical CSS/JS is loaded without blocking first paint. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
 
-<link rel="stylesheet"
-href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<!-- Non-blocking fonts/icons/maps CSS -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"></noscript>
+<link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"></noscript>
+<link rel="preload" as="style" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"></noscript>
+<link rel="preload" as="style" href="geo-selfie.css" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="geo-selfie.css"></noscript>
 
-<!-- QR Generator -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-
-<!-- QR Scanner -->
-<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-
-<!-- Excel -->
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-
-<!-- PDF -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-
-<!-- Peta lokasi kantor (Geofencing) -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-<!-- File tambahan: lokasi (geofencing) & selfie -->
-<link rel="stylesheet" href="geo-selfie.css">
+<!-- Feature libraries: deferred so they do not block first paint. Order is preserved. -->
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script defer src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+<script defer src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <style>
 :root{
@@ -1056,7 +1053,7 @@ LOGIN
         <div class="login-brand">
 
             <div class="logo-circle">
-                <img src="nev-logo.png" alt="NEV Logo">
+                <img src="nev-logo.webp" width="105" height="105" decoding="async" fetchpriority="high" alt="NEV Logo">
             </div>
 
             <h1>NEV Absenku</h1>
@@ -1177,7 +1174,7 @@ APP
         <div class="sidebar-logo">
 
             <div class="sidebar-logo-icon">
-                <img src="nev-logo.png" alt="NEV Logo">
+                <img src="nev-logo.webp" width="105" height="105" loading="lazy" decoding="async" alt="NEV Logo">
             </div>
 
             <span>NEV Absenku</span>
@@ -5764,10 +5761,10 @@ function restoreLogin(){
 </script>
 
 <!-- File tambahan: fitur lokasi (geofencing) & selfie capture -->
-<script src="geo-selfie.js"></script>
+<script defer src="geo-selfie.js"></script>
 
 <!-- File tambahan: sinkronisasi terpusat ke Google Sheets & Google Drive -->
-<script src="cloud-sync.js"></script>
+<script defer src="cloud-sync.js"></script>
 
 </body>
 </html>
