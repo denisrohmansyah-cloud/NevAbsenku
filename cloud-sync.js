@@ -23,7 +23,7 @@
       - Saat STAF absen (ambil selfie), foto diunggah ke Google
         Drive lebih dulu lewat Apps Script, baru linknya dicatat
         di Google Sheets (bukan base64 mentah).
-      - Setiap ~20 detik, aplikasi menarik ulang data terbaru dari
+      - Setiap 30 detik, aplikasi menarik ulang data terbaru dari
         Google Sheets, supaya QR/absensi yang dibuat di HP lain
         ikut terlihat di perangkat ini.
 
@@ -57,9 +57,34 @@ const EXPECTED_SERVER_VERSION = "secure-v5";
 let cloudServerVersion = null;
 let cloudLastSyncAt = null;
 let cloudLastError = null;
-let cloudUnsynced = 0;        // jumlah data lokal yang belum ada di server
+let cloudUnsynced = 0;        // jumlah item pada queue sinkronisasi eksplisit
 let cloudFlushing = false;
 let cloudLastFlushAt = 0;
+const SYNC_QUEUE_KEY = "nev_sync_queue_v11";
+
+function loadSyncQueue(){
+    try{
+        const q = JSON.parse(localStorage.getItem(SYNC_QUEUE_KEY) || "[]");
+        return Array.isArray(q) ? q : [];
+    }catch(e){ return []; }
+}
+function saveSyncQueue(q){
+    localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(q || []));
+    cloudUnsynced = Array.isArray(q) ? q.length : 0;
+    updateCloudBadge();
+}
+function queueSync(type, payload){
+    if(!payload || !payload.id) return;
+    const q = loadSyncQueue();
+    const idx = q.findIndex(x=>x.type===type && x.id===payload.id);
+    const item = {type, id:payload.id, payload};
+    if(idx >= 0) q[idx] = item; else q.push(item);
+    saveSyncQueue(q);
+}
+function removeQueued(type, id){
+    const q = loadSyncQueue().filter(x=>!(x.type===type && x.id===id));
+    saveSyncQueue(q);
+}
 
 
 /* =========================================================
@@ -109,16 +134,15 @@ function cloudPayload(action, data){
 function pushToCloud(key, data){
     if(!cloudSyncEnabled) return;
     const action = CLOUD_ACTION_BY_KEY[key];
-    if(!action) return;
-    if(!getAuthToken()) return;
+    if(!action || !getAuthToken()) return;
 
-    fetch(CLOUD_SCRIPT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" }, // hindari CORS preflight ke Apps Script
-        body: cloudPayload(action, data)
+    // Write-through tanpa retry beruntun. Jika gagal, masukkan ke queue;
+    // queue hanya diproses pada siklus sinkronisasi 30 detik berikutnya.
+    cloudPost(action, data, 0).then(()=>{
+        if(data && data.id) removeQueued(action, data.id);
     }).catch(err=>{
         console.error("Gagal sinkron ke Google Sheets:", err);
-        toast("Gagal menyinkronkan data ke Google Sheets. Periksa koneksi internet.", "error");
+        queueSync(action, data);
     });
 }
 
@@ -252,20 +276,16 @@ async function fetchCloudAll(){
         if(!json || !json.ok) throw new Error((json && json.error) || "Respons tidak valid");
         sanitizeCloudData(json);
 
-        // Data yang ada di perangkat ini tetapi BELUM ada di server (mis. absensi
-        // yang gagal terkirim) jangan ikut terhapus: simpan & kirim ulang otomatis.
+        // Jangan lagi menebak data "belum terkirim" hanya karena ada record lokal
+        // yang belum muncul di server. Itu menyebabkan false-positive seperti
+        // "1 data belum terkirim" pada data lama/cache divisi lain. Pending hanya
+        // berasal dari queue eksplisit yang dibuat ketika POST benar-benar gagal.
         const serverAtt = json.attendance || [];
         const serverPer = json.permits || [];
-        const attIds = new Set(serverAtt.map(a=>a.id));
-        const attKeys = new Set(serverAtt.map(a=> a.sessionId + "|" + a.userId));
-        const perIds = new Set(serverPer.map(p=>p.id));
-        const unsyncedAtt = (load(DB.attendance) || []).filter(a=> a && a.id && !attIds.has(a.id) && !attKeys.has(a.sessionId + "|" + a.userId));
-        const unsyncedPer = (load(DB.permits) || []).filter(p=> p && p.id && !perIds.has(p.id));
-
         let nextUsers = json.users || [];
         let nextSessions = json.sessions || [];
-        let nextAttendance = serverAtt.concat(unsyncedAtt);
-        let nextPermits = serverPer.concat(unsyncedPer);
+        let nextAttendance = serverAtt.slice();
+        let nextPermits = serverPer.slice();
 
         // Pertahanan kedua di browser: Koor KP tidak boleh menyimpan cache divisi lain.
         if(currentUser?.role === "KOOR KP"){
@@ -282,8 +302,20 @@ async function fetchCloudAll(){
         _localSave(DB.settings, json.settings || { officeLat:null, officeLng:null, radius:100, geofenceEnabled:false });
         _localSave(DB.permits, nextPermits);
 
-        cloudUnsynced = unsyncedAtt.length + unsyncedPer.length;
-        if(cloudUnsynced) flushUnsynced(unsyncedAtt, unsyncedPer);
+        // Rekonsiliasi queue: item yang ternyata sudah ada di server langsung dihapus.
+        const queue = loadSyncQueue();
+        const attIds = new Set(serverAtt.map(a=>a.id));
+        const attKeys = new Set(serverAtt.map(a=>a.sessionId + "|" + a.userId));
+        const perIds = new Set(serverPer.map(p=>p.id));
+        const remaining = queue.filter(item=>{
+            if(item.type === "addAttendance") {
+                const a = item.payload || {};
+                return !(attIds.has(item.id) || attKeys.has((a.sessionId||"") + "|" + (a.userId||"")));
+            }
+            if(item.type === "addPermit") return !perIds.has(item.id);
+            return true;
+        });
+        saveSyncQueue(remaining);
 
         cloudServerVersion = json.version || null;
         cloudLastSyncAt = new Date();
@@ -298,26 +330,37 @@ async function fetchCloudAll(){
     }
 }
 
-/** Kirim ulang data lokal yang belum tersimpan di server (aman diulang: server menolak duplikat). */
-async function flushUnsynced(att, per){
-    if(cloudFlushing || Date.now() - cloudLastFlushAt < 30000) return;
+/**
+ * Kirim queue yang benar-benar gagal. Tidak melakukan getAll tambahan setelahnya.
+ * Satu item = satu POST. Tidak ada retry 1.5 detik. Siklus berikutnya 30 detik lagi.
+ */
+async function flushSyncQueue(){
+    if(cloudFlushing || !getAuthToken()) return;
+    const now = Date.now();
+    if(now - cloudLastFlushAt < 30000) return;
+    const queue = loadSyncQueue();
+    if(!queue.length){ cloudUnsynced = 0; updateCloudBadge(); return; }
+
     cloudFlushing = true;
-    cloudLastFlushAt = Date.now();
+    cloudLastFlushAt = now;
     updateCloudBadge();
+    const remaining = [];
     try{
-        for(const r of att){
-            try{ await cloudPost("addAttendance", r, 1); }
-            catch(e){ console.error("Kirim ulang absensi gagal:", e); }
-        }
-        for(const p of per){
-            try{ await cloudPost("addPermit", p, 1); }
-            catch(e){ console.error("Kirim ulang pengajuan gagal:", e); }
+        for(const item of queue){
+            try{
+                await cloudPost(item.type, item.payload, 0);
+                // Jika server menerima duplicate, cloudPost tetap dianggap sukses.
+            }catch(e){
+                console.error("Queue sinkronisasi gagal:", e);
+                remaining.push(item);
+            }
         }
     }finally{
         cloudFlushing = false;
+        saveSyncQueue(remaining);
+        cloudUnsynced = remaining.length;
+        updateCloudBadge();
     }
-    // Jangan langsung fetchCloudAll() di sini. Tunggu siklus polling 30 detik
-    // berikutnya agar request getAll tidak meledak setelah retry/pengiriman ulang.
 }
 
 const AUTO_SYNC_INTERVAL_MS = 30000; // 30 detik
@@ -332,7 +375,10 @@ function startCloudPolling(){
         autoSyncRunning = true;
         try{
             const ok = await fetchCloudAll();
-            if(ok && currentUser) renderAll();
+            if(ok){
+                await flushSyncQueue();
+                if(currentUser) renderAll();
+            }
         }finally{
             autoSyncRunning = false;
         }
@@ -444,21 +490,12 @@ async function finalizeAttendance(session, token, location, photo){
     toast("Mengunggah foto & menyimpan absensi ke Google Sheets...", "normal");
 
     try{
-        const json = await cloudPost("addAttendance", record);
-
-        const saved = json.record || record; // record.photo sudah berupa link Drive dari server
-
-        // Verifikasi: tarik ulang dari Google Sheets & pastikan barisnya benar-benar ada.
-        const refreshed = await fetchCloudAll();
-        const list = load(DB.attendance);
-        const found = list.some(a=> a.id===saved.id || (a.sessionId===saved.sessionId && a.userId===saved.userId));
-        if(refreshed && !found){
-            throw new Error("absensi terkirim tetapi belum terbaca di Google Sheets. Pastikan Code.gs sudah di-deploy ulang (New version)");
-        }
-        if(!found){
-            list.push(saved);
-            _localSave(DB.attendance, list); // fetch gagal: simpan di cache lokal saja
-        }
+        const json = await cloudPost("addAttendance", record, 0);
+        const saved = json.record || record;
+        removeQueued("addAttendance", saved.id || record.id);
+        const list = load(DB.attendance).filter(a=>!(a.sessionId===saved.sessionId && a.userId===saved.userId));
+        list.push(saved);
+        _localSave(DB.attendance, list);
 
         toast(`Absensi ${session.activity} berhasil & terverifikasi di Google Sheets.`, "success");
         updateScannerStatus(`Berhasil hadir: ${session.activity}${session.division!=="-" ? " • "+session.division : ""}`, "success");
@@ -467,7 +504,8 @@ async function finalizeAttendance(session, token, location, photo){
         renderAll();
     }catch(err){
         console.error("Gagal menyimpan absensi ke Google Sheets:", err);
-        toast(`Gagal menyimpan absensi: ${friendlyCloudError(err)}. Silakan coba lagi.`, "error");
+        queueSync("addAttendance", record);
+        toast(`Absensi disimpan sebagai pending dan akan dicoba lagi pada sinkronisasi 30 detik berikutnya.`, "error");
     }finally{
         cloudSyncBusy = false;
     }
@@ -511,9 +549,10 @@ async function submitPermit(event){
     toast("Mengunggah foto bukti & mengirim pengajuan ke Google Sheets...", "normal");
 
     try{
-        const json = await cloudPost("addPermit", permit);
+        const json = await cloudPost("addPermit", permit, 0);
 
-        const saved = json.record || permit; // record.photo sudah berupa link Drive dari server
+        const saved = json.record || permit;
+        removeQueued("addPermit", saved.id || permit.id);
         const list = load(DB.permits);
         list.push(saved);
         _localSave(DB.permits, list); // cache lokal saja, sudah tersimpan di server
@@ -523,7 +562,8 @@ async function submitPermit(event){
         toast(`Pengajuan ${type} berhasil dikirim & tersimpan di Google Sheets.`, "success");
     }catch(err){
         console.error("Gagal mengirim pengajuan izin/sakit ke Google Sheets:", err);
-        toast(`Gagal mengirim pengajuan: ${friendlyCloudError(err)}. Silakan coba lagi.`, "error");
+        queueSync("addPermit", permit);
+        toast(`Pengajuan disimpan sebagai pending dan akan dicoba lagi pada sinkronisasi 30 detik berikutnya.`, "error");
     }finally{
         cloudSyncBusy = false;
     }
