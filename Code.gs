@@ -506,26 +506,182 @@ function deleteAttendance_(actor,id){
 }
 
 /* =========================================================
-ATTENDANCE / PERMIT HELPERS
+SECURE ATTENDANCE / PERMIT HELPERS
 ========================================================= */
-function addRecord_(sheetName,record,photoKind,isDuplicate,actor){
-  const existing=sheetToObjects_(sheetName).filter(isDuplicate)[0];
-  if(existing)return {ok:true,record:existing,duplicate:true};
+function isFiniteNumber_(v){ return typeof v === "number" && isFinite(v); }
 
-  if(record.photo && String(record.photo).indexOf("data:")===0){
-    record.photo=savePhotoToDrive_(
-      record.photo,
-      (record.username||"user")+"_"+(record.date||record.sessionDate||"")+"_"+(record.id||Date.now()),
-      photoKind
-    );
+function haversineMeters_(lat1,lng1,lat2,lng2){
+  const R=6371000;
+  const toRad=x=>x*Math.PI/180;
+  const dLat=toRad(lat2-lat1), dLng=toRad(lng2-lng1);
+  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.min(1,Math.sqrt(a)));
+}
+
+function wibNow_(){
+  const now=new Date();
+  return {
+    date:Utilities.formatDate(now,"Asia/Jakarta","yyyy-MM-dd"),
+    time:Utilities.formatDate(now,"Asia/Jakarta","HH:mm")
+  };
+}
+
+function timeInWindow_(time,start,end){
+  if(!/^\d{2}:\d{2}$/.test(String(start||"")) || !/^\d{2}:\d{2}$/.test(String(end||""))) return false;
+  return String(time)>=String(start) && String(time)<=String(end);
+}
+
+function safePhotoValue_(photo){
+  if(photo===null || photo===undefined || photo==="") return null;
+  const value=String(photo).trim();
+  if(/^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/i.test(value)) return value;
+  if(/^https:\/\/drive\.google\.com\/file\/d\/[A-Za-z0-9_-]+\/view(?:\?.*)?$/i.test(value)) return value;
+  if(/^https:\/\/drive\.google\.com\/thumbnail\?id=[A-Za-z0-9_-]+(?:&.*)?$/i.test(value)) return value;
+  throw new Error("Foto tidak valid.");
+}
+
+function makeServerId_(prefix){ return prefix+"-"+Date.now()+"-"+Utilities.getUuid().slice(0,8); }
+
+function validateSessionForAttendance_(actor,data){
+  const sessionId=String(data.sessionId||"");
+  const suppliedToken=String(data.token||"").trim();
+  if(!sessionId || !suppliedToken) throw new Error("Sesi absensi atau token QR tidak lengkap.");
+
+  const session=sheetToObjects_(SHEET_SESSIONS).find(s=>String(s.id)===sessionId);
+  if(!session) throw new Error("Kegiatan/QR tidak ditemukan.");
+  if(!session.active) throw new Error("QR/kegiatan sudah tidak aktif.");
+  if(String(session.token||"")!==suppliedToken) throw new Error("Token QR tidak valid atau sudah diubah.");
+
+  const now=wibNow_();
+  if(String(session.date)!==now.date) throw new Error("Absensi hanya dapat dilakukan pada tanggal kegiatan.");
+  if(!timeInWindow_(now.time,session.start,session.end)) throw new Error("Absensi dilakukan di luar jam kegiatan.");
+
+  const lat=Number(data.lat), lng=Number(data.lng);
+  if(session.geoEnabled){
+    if(!isFiniteNumber_(lat) || !isFiniteNumber_(lng)) throw new Error("Lokasi wajib dikirim untuk kegiatan ini.");
+    if(!isFiniteNumber_(Number(session.geoLat)) || !isFiniteNumber_(Number(session.geoLng)) || !isFiniteNumber_(Number(session.geoRadius))){
+      throw new Error("Konfigurasi geofence kegiatan tidak valid.");
+    }
+    const distance=haversineMeters_(lat,lng,Number(session.geoLat),Number(session.geoLng));
+    if(distance>Number(session.geoRadius)) throw new Error("Anda berada di luar radius geofence kegiatan.");
   }
+  return session;
+}
 
-  return withLock_(function(){
-    const again=sheetToObjects_(sheetName).filter(isDuplicate)[0];
-    if(again)return {ok:true,record:again,duplicate:true};
-    appendObject_(sheetName,record);
-    return {ok:true,record:record};
+function addAttendanceSecure_(actor,data){
+  if(actor.role!=="STAF" || String(data.userId||"")!==String(actor.id)) throw new Error("Hanya STAF yang dapat mengirim absensinya sendiri.");
+  const session=validateSessionForAttendance_(actor,data);
+  const existing=sheetToObjects_(SHEET_ATTENDANCE).find(a=>String(a.sessionId)===String(session.id) && String(a.userId)===String(actor.id));
+  if(existing) return {ok:true,record:publicAttendance_(existing),duplicate:true};
+
+  const photo=safePhotoValue_(data.photo);
+  const record={
+    id:makeServerId_("ATT"), sessionId:session.id, token:session.token,
+    userId:actor.id, userName:actor.name, username:actor.username,
+    activity:session.activity, division:session.division, date:session.date,
+    checkIn:new Date().toISOString(), status:"Hadir",
+    creatorId:session.creatorId, creatorRole:session.creatorRole,
+    lat:isFiniteNumber_(Number(data.lat)) ? Number(data.lat) : null,
+    lng:isFiniteNumber_(Number(data.lng)) ? Number(data.lng) : null,
+    photo:null, permitId:null, approvedFromPermit:false
+  };
+  if(photo) record.photo=savePhotoToDrive_(photo,actor.username+"_"+session.date+"_"+record.id,"selfie");
+  appendObject_(SHEET_ATTENDANCE,record);
+  return {ok:true,record:publicAttendance_(record)};
+}
+
+function addPermitSecure_(actor,data){
+  if(actor.role!=="STAF" || String(data.userId||"")!==String(actor.id)) throw new Error("Akses ditolak.");
+  const sessionId=String(data.sessionId||"");
+  const session=sheetToObjects_(SHEET_SESSIONS).find(s=>String(s.id)===sessionId);
+  if(!session) throw new Error("Kegiatan tidak ditemukan.");
+  if(String(data.sessionActivity||session.activity)!==String(session.activity) || String(data.sessionDivision||session.division)!==String(session.division)) throw new Error("Data kegiatan tidak valid.");
+  const type=String(data.type||"");
+  if(type!=="Izin" && type!=="Sakit") throw new Error("Jenis pengajuan tidak valid.");
+  const reason=String(data.reason||"").trim();
+  if(!reason) throw new Error("Alasan wajib diisi.");
+  const photo=safePhotoValue_(data.photo);
+  if(!photo) throw new Error("Bukti foto wajib dilampirkan.");
+
+  const existing=sheetToObjects_(SHEET_PERMITS).find(p=>String(p.sessionId)===sessionId && String(p.userId)===String(actor.id) && String(p.status)!=="Ditolak");
+  if(existing) return {ok:true,record:existing,duplicate:true};
+
+  const record={
+    id:makeServerId_("PERMIT"), sessionId:session.id, sessionActivity:session.activity,
+    sessionDivision:session.division, sessionDate:session.date, sessionLocation:session.location,
+    sessionCreatorId:session.creatorId, sessionCreatorRole:session.creatorRole,
+    userId:actor.id, userName:actor.name, username:actor.username,
+    type, reason, photo:null, status:"Menunggu", submittedAt:new Date().toISOString(),
+    reviewedBy:null, reviewedByName:null, reviewedAt:null, reviewNote:null
+  };
+  record.photo=savePhotoToDrive_(photo,actor.username+"_"+session.date+"_"+record.id,"permit");
+  appendObject_(SHEET_PERMITS,record);
+  return {ok:true,record:record};
+}
+
+function canReviewPermit_(actor,permit){
+  if(actor.role==="HRD") return true;
+  return actor.role==="KOOR KP" && permit.sessionActivity==="Ngoprek" && permit.sessionCreatorId===actor.id && permit.sessionDivision===actor.division;
+}
+
+function reviewPermitSecure_(actor,data){
+  const permitId=String(data.permitId||"");
+  const decision=String(data.decision||"");
+  if(decision!=="Disetujui" && decision!=="Ditolak") throw new Error("Keputusan tidak valid.");
+  const permits=sheetToObjects_(SHEET_PERMITS);
+  const permit=permits.find(p=>String(p.id)===permitId);
+  if(!permit) throw new Error("Pengajuan tidak ditemukan.");
+  if(!canReviewPermit_(actor,permit)) throw new Error("Akses ditolak.");
+  if(permit.status!=="Menunggu") throw new Error("Pengajuan ini sudah diproses.");
+
+  permit.status=decision;
+  permit.reviewedBy=actor.id;
+  permit.reviewedByName=actor.name;
+  permit.reviewedAt=new Date().toISOString();
+  permit.reviewNote=String(data.reviewNote||"").trim() || null;
+  objectsToSheet_(SHEET_PERMITS,permits);
+
+  let attendance=null;
+  if(decision==="Disetujui"){
+    const list=sheetToObjects_(SHEET_ATTENDANCE);
+    attendance=list.find(a=>String(a.sessionId)===String(permit.sessionId) && String(a.userId)===String(permit.userId));
+    if(attendance){
+      attendance.status=permit.type;
+      attendance.photo=permit.photo;
+      attendance.permitId=permit.id;
+      attendance.approvedFromPermit=true;
+    }else{
+      attendance={
+        id:makeServerId_("ATT"), sessionId:permit.sessionId, token:null,
+        userId:permit.userId, userName:permit.userName, username:permit.username,
+        activity:permit.sessionActivity, division:permit.sessionDivision, date:permit.sessionDate,
+        checkIn:permit.submittedAt, status:permit.type,
+        creatorId:permit.sessionCreatorId, creatorRole:permit.sessionCreatorRole,
+        lat:null,lng:null,photo:permit.photo,permitId:permit.id,approvedFromPermit:true
+      };
+      list.push(attendance);
+    }
+    objectsToSheet_(SHEET_ATTENDANCE,list);
+  }
+  return {ok:true,permit:permit,attendance:attendance?publicAttendance_(attendance):null};
+}
+
+function mergeAuthorizedAttendance_(actor,incoming){
+  if(actor.role==="STAF") throw new Error("STAF tidak dapat mengubah absensi melalui sinkronisasi umum.");
+  const current=sheetToObjects_(SHEET_ATTENDANCE);
+  const byId={}; current.forEach(r=>{if(r.id)byId[r.id]=r;});
+  (incoming||[]).forEach(raw=>{
+    if(!raw || !raw.id) return;
+    const old=byId[raw.id];
+    if(!old) throw new Error("Absensi baru harus dibuat melalui endpoint absensi resmi.");
+    if(actor.role==="KOOR KP" && !(old.creatorId===actor.id && old.activity==="Ngoprek" && old.division===actor.division)) throw new Error("Koor KP tidak dapat mengubah absensi di luar divisinya.");
+    const next={...old};
+    if(raw.status!==undefined) next.status=String(raw.status);
+    if(raw.photo!==undefined) next.photo=old.photo;
+    if(actor.role==="HRD" && raw.status!==undefined) next.status=String(raw.status);
+    byId[raw.id]=next;
   });
+  objectsToSheet_(SHEET_ATTENDANCE,Object.values(byId));
 }
 
 /* =========================================================
@@ -593,43 +749,21 @@ function doPost(e){
         withLock_(()=>objectToSettingsSheet_(data));
         return jsonResponse_({ok:true});
 
-      case "saveAttendance":{
-        if(actor.role==="STAF"){
-          if((data||[]).some(a=>a.userId!==actor.id)) throw new Error("STAF hanya dapat menyimpan absensinya sendiri.");
-        }else if(actor.role==="KOOR KP"){
-          if((data||[]).some(a=>a.creatorId!==actor.id || a.activity!=="Ngoprek" || a.division!==actor.division)){
-            throw new Error("Koor KP hanya dapat mengubah absensi Ngoprek miliknya.");
-          }
-        }else if(actor.role!=="HRD"){
-          throw new Error("Akses ditolak.");
-        }
-        withLock_(()=>mergeObjectsById_(SHEET_ATTENDANCE,data));
+      case "saveAttendance":
+        mergeAuthorizedAttendance_(actor,data);
         return jsonResponse_({ok:true});
-      }
 
-      case "savePermits":{
-        if(actor.role==="STAF"){
-          if((data||[]).some(p=>p.userId!==actor.id)) throw new Error("Akses ditolak.");
-        }else if(actor.role==="KOOR KP"){
-          if((data||[]).some(p=>p.sessionCreatorId!==actor.id)) throw new Error("Koor KP hanya dapat mengelola pengajuan miliknya.");
-        }else if(actor.role!=="HRD"){
-          throw new Error("Akses ditolak.");
-        }
-        withLock_(()=>mergeObjectsById_(SHEET_PERMITS,data));
-        return jsonResponse_({ok:true});
-      }
+      case "savePermits":
+        throw new Error("Pengajuan izin/sakit harus dibuat melalui endpoint resmi.");
 
-      case "addAttendance":{
-        if(actor.role!=="STAF" || data.userId!==actor.id) throw new Error("Hanya STAF yang dapat mengirim absensi dirinya sendiri.");
-        return jsonResponse_(addRecord_(SHEET_ATTENDANCE,data,"selfie",
-          r=>r.id===data.id || (r.sessionId===data.sessionId && r.userId===data.userId),actor));
-      }
+      case "addAttendance":
+        return jsonResponse_(withLock_(()=>addAttendanceSecure_(actor,data)));
 
-      case "addPermit":{
-        if(actor.role!=="STAF" || data.userId!==actor.id) throw new Error("Akses ditolak.");
-        return jsonResponse_(addRecord_(SHEET_PERMITS,data,"permit",
-          r=>r.id===data.id || (r.sessionId===data.sessionId && r.userId===data.userId && r.status!=="Ditolak"),actor));
-      }
+      case "addPermit":
+        return jsonResponse_(withLock_(()=>addPermitSecure_(actor,data)));
+
+      case "reviewPermit":
+        return jsonResponse_(withLock_(()=>reviewPermitSecure_(actor,data)));
 
       default:
         return jsonResponse_({ok:false,error:"Action tidak dikenali: "+action});

@@ -4639,8 +4639,9 @@ function normalizePhotoUrl(url, size){
   if(!url) return "";
   const value = String(url).trim();
   const id = getDriveFileId(value);
-  if(id) return `https://drive.google.com/thumbnail?id=${id}&sz=w${size || 1000}`;
-  return value;
+  if(id) return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w${size || 1000}`;
+  if(/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(value)) return value;
+  return "";
 }
 
 /* Tanggal hari ini menurut WIB (format YYYY-MM-DD), bukan UTC. */
@@ -4652,7 +4653,7 @@ function getTodayWIB(){
 
 function attendanceProofCell(a){
   const thumb = a.photo
-    ? photoThumbHTML(a.photo, `viewProofPhoto('${a.id}')`, "Selfie")
+    ? photoThumbHTML(a.photo, `viewProofPhoto('${escapeJSString(a.id)}')`, "Selfie")
     : `<span style="color:#aaa;font-size:11px;">-</span>`;
     let locBadge = "";
     if(a.lat!=null && a.lng!=null){
@@ -4691,12 +4692,17 @@ function photoFallback(img){
     }
 }
 
+function escapeJSString(value){
+    return String(value ?? "").replaceAll("\\","\\\\").replaceAll("'","\\'").replaceAll("\r","\\r").replaceAll("\n","\\n");
+}
+
 function photoThumbHTML(photo, onclick, alt){
     const src = normalizePhotoUrl(photo);
+    if(!src) return `<span style="color:#aaa;font-size:11px;">-</span>`;
     const fb = getDriveFileId(photo)
         ? ` data-orig="${escapeHTML(photo)}" data-idx="1" onerror="photoFallback(this)"`
         : "";
-    return `<img src="${src}" class="proof-thumb"${fb} onclick="${onclick}" alt="${alt}">`;
+    return `<img src="${escapeHTML(src)}" class="proof-thumb"${fb} onclick="${escapeHTML(onclick)}" alt="${escapeHTML(alt)}">`;
 }
 
 function closePhotoLightbox(){
@@ -5307,31 +5313,36 @@ function resetPermitForm(){
 /* Versi dasar (localStorage saja). Jika cloud-sync.js dimuat & sudah
    dikonfigurasi, fungsi ini akan DITIMPA supaya foto diunggah ke
    Google Drive dulu sebelum pengajuan tersimpan (lihat cloud-sync.js). */
-function submitPermit(event){
+async function submitPermit(event){
     event.preventDefault();
+    if(currentUser?.role!=="STAF"){ toast("Akses ditolak.","error"); return; }
 
     const sessionId = document.getElementById("permitSession").value;
     const type = document.getElementById("permitType").value;
     const reason = document.getElementById("permitReason").value.trim();
+    if(!sessionId){ toast("Pilih kegiatan terlebih dahulu.","error"); return; }
+    if(!reason){ toast("Alasan wajib diisi.","error"); return; }
+    if(!pendingPermitPhoto){ toast("Lampirkan foto bukti terlebih dahulu.","error"); return; }
 
-    if(!sessionId){ toast("Pilih kegiatan terlebih dahulu.", "error"); return; }
-    if(!reason){ toast("Alasan wajib diisi.", "error"); return; }
-    if(!pendingPermitPhoto){ toast("Lampirkan foto bukti terlebih dahulu.", "error"); return; }
+    const session = load(DB.sessions).find(s=>s.id===sessionId);
+    if(!session){ toast("Kegiatan tidak ditemukan.","error"); return; }
+    if(!cloudSyncEnabled){ toast("Server wajib terhubung untuk mengirim pengajuan.","error"); return; }
 
-    const sessions = load(DB.sessions);
-    const session = sessions.find(s=>s.id===sessionId);
-    if(!session){ toast("Kegiatan tidak ditemukan.", "error"); return; }
-
-    const permit = buildPermitRecord(session, type, reason, pendingPermitPhoto);
-    const permits = load(DB.permits);
-    permits.push(permit);
-    save(DB.permits, permits);
-
-    resetPermitForm();
-    renderPermitHistory();
-    toast(`Pengajuan ${type} berhasil dikirim, menunggu persetujuan.`, "success");
+    cloudSyncBusy=true;
+    try{
+        const permit=buildPermitRecord(session,type,reason,pendingPermitPhoto);
+        const json=await cloudPost("addPermit",permit,1);
+        const saved=json.record||permit;
+        const permits=load(DB.permits).filter(p=>p.id!==saved.id && !(p.sessionId===saved.sessionId && p.userId===saved.userId && p.status!=="Ditolak"));
+        permits.push(saved);
+        _localSave(DB.permits,permits);
+        resetPermitForm();
+        renderPermitHistory();
+        toast(`Pengajuan ${type} berhasil dikirim, menunggu persetujuan.`, "success");
+    }catch(err){
+        toast("Gagal mengirim pengajuan: "+friendlyCloudError(err),"error");
+    }finally{ cloudSyncBusy=false; }
 }
-
 function buildPermitRecord(session, type, reason, photo){
     return {
         id: "PERMIT-"+Date.now(),
@@ -5353,7 +5364,7 @@ function permitStatusBadge(status){
 
 function permitProofCell(p){
     return p.photo
-        ? photoThumbHTML(p.photo, `viewPermitPhoto('${p.id}')`, "Bukti")
+        ? photoThumbHTML(p.photo, `viewPermitPhoto('${escapeJSString(p.id)}')`, "Bukti")
         : `<span style="color:#aaa;font-size:11px;">-</span>`;
 }
 
@@ -5452,63 +5463,37 @@ function canReviewPermit(permit){
     return false;
 }
 
-function approvePermit(id){
-    const permits = load(DB.permits);
-    const permit = permits.find(p=>p.id===id);
-    if(!permit){ toast("Pengajuan tidak ditemukan.", "error"); return; }
-    if(!canReviewPermit(permit)){ toast("Akses ditolak.", "error"); return; }
-    if(permit.status!=="Menunggu"){ toast("Pengajuan ini sudah diproses.", "error"); return; }
+async function reviewPermit(id,decision){
+    if(currentUser?.role!=="HRD" && currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
+    const permits=load(DB.permits);
+    const permit=permits.find(p=>p.id===id);
+    if(!permit){ toast("Pengajuan tidak ditemukan.","error"); return; }
+    if(!canReviewPermit(permit)){ toast("Akses ditolak.","error"); return; }
+    if(permit.status!=="Menunggu"){ toast("Pengajuan ini sudah diproses.","error"); return; }
 
-    permit.status = "Disetujui";
-    permit.reviewedBy = currentUser.id;
-    permit.reviewedByName = currentUser.name;
-    permit.reviewedAt = new Date().toISOString();
-    save(DB.permits, permits);
-
-    // Buat/perbarui catatan absensi supaya muncul di Rekap Absensi lengkap dengan bukti fotonya.
-    const attendance = load(DB.attendance);
-    let record = attendance.find(a=> a.sessionId===permit.sessionId && a.userId===permit.userId);
-    if(record){
-        record.status = permit.type;
-        record.photo = permit.photo;
-        record.permitId = permit.id;
-    }else{
-        attendance.push({
-            id: "ATT-"+Date.now(), sessionId: permit.sessionId, token: null,
-            userId: permit.userId, userName: permit.userName, username: permit.username,
-            activity: permit.sessionActivity, division: permit.sessionDivision, date: permit.sessionDate,
-            checkIn: new Date().toISOString(), status: permit.type,
-            creatorId: permit.sessionCreatorId, creatorRole: permit.sessionCreatorRole,
-            lat: null, lng: null, photo: permit.photo,
-            permitId: permit.id, approvedFromPermit: true
-        });
-    }
-    save(DB.attendance, attendance);
-
-    renderPermitApproval(currentUser.role==="HRD" ? "hrd" : "koor");
-    renderAll();
-    toast(`Pengajuan ${permit.type} dari ${permit.userName} disetujui.`, "success");
+    let reviewNote="";
+    if(decision==="Ditolak") reviewNote=(prompt("Alasan penolakan (opsional):","")||"").trim();
+    cloudSyncBusy=true;
+    try{
+        const json=await cloudPost("reviewPermit",{permitId:id,decision,reviewNote},1);
+        const saved=json.permit||{...permit,status:decision,reviewNote};
+        const nextPermits=load(DB.permits).map(p=>p.id===saved.id?saved:p);
+        _localSave(DB.permits,nextPermits);
+        if(json.attendance){
+            const list=load(DB.attendance).filter(a=>!(a.sessionId===json.attendance.sessionId && a.userId===json.attendance.userId));
+            list.push(json.attendance);
+            _localSave(DB.attendance,list);
+        }
+        renderPermitApproval(currentUser.role==="HRD" ? "hrd" : "koor");
+        renderAll();
+        toast(`Pengajuan ${permit.type} dari ${permit.userName} ${decision.toLowerCase()}.`, "success");
+    }catch(err){
+        toast("Gagal memproses pengajuan: "+friendlyCloudError(err),"error");
+    }finally{ cloudSyncBusy=false; }
 }
 
-function rejectPermit(id){
-    const permits = load(DB.permits);
-    const permit = permits.find(p=>p.id===id);
-    if(!permit){ toast("Pengajuan tidak ditemukan.", "error"); return; }
-    if(!canReviewPermit(permit)){ toast("Akses ditolak.", "error"); return; }
-    if(permit.status!=="Menunggu"){ toast("Pengajuan ini sudah diproses.", "error"); return; }
-
-    const note = prompt("Alasan penolakan (opsional):", "") || "";
-
-    permit.status = "Ditolak";
-    permit.reviewedBy = currentUser.id;
-    permit.reviewedByName = currentUser.name;
-    permit.reviewedAt = new Date().toISOString();
-    permit.reviewNote = note.trim() || null;
-    save(DB.permits, permits);
-
-    renderPermitApproval(currentUser.role==="HRD" ? "hrd" : "koor");
-    toast(`Pengajuan ${permit.type} dari ${permit.userName} ditolak.`, "success");
-}
+function approvePermit(id){ return reviewPermit(id,"Disetujui"); }
+function rejectPermit(id){ return reviewPermit(id,"Ditolak"); }
 
 function viewPermitPhoto(id){
     const permit = load(DB.permits).find(p=>p.id===id);

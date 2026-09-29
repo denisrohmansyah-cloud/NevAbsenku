@@ -355,13 +355,11 @@ async function fetchSessionToken(sessionId){
 
 async function ensureSessionToken(session){
     if(!session) return "";
+    if(session._runtimeToken) return session._runtimeToken;
     if(session.token) return session.token;
     const token = await fetchSessionToken(session.id);
     if(token){
-        session.token = token;
-        const sessions = load(DB.sessions);
-        const idx = sessions.findIndex(s=>s.id===session.id);
-        if(idx>=0){ sessions[idx] = {...sessions[idx], token}; _localSave(DB.sessions,sessions); }
+        session._runtimeToken = token;
     }
     return token;
 }
@@ -381,7 +379,7 @@ async function finalizeAttendance(session, token, location, photo){
     }
 
     const record = {
-        id: "ATT-"+Date.now(), sessionId: session.id, token: session.token,
+        id: "ATT-"+Date.now(), sessionId: session.id, token: token,
         userId: currentUser.id, userName: currentUser.name, username: currentUser.username,
         activity: session.activity, division: session.division, date: session.date,
         checkIn: new Date().toISOString(), status: "Hadir",
