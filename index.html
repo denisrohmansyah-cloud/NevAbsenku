@@ -3660,18 +3660,24 @@ function selectLoginRole(role,button){
     button.classList.add("active");
 }
 
+let loginInProgress = false;
+
 async function login(event){
   event.preventDefault();
+  if(loginInProgress) return;
 
   const username = document.getElementById("loginUsername").value.trim();
   const password = document.getElementById("loginPassword").value;
+  const loginButton = document.querySelector('#loginForm button[type="submit"]') || document.querySelector('button[type="submit"]');
+  loginInProgress = true;
+  if(loginButton){ loginButton.disabled=true; loginButton.dataset.oldText=loginButton.innerHTML; loginButton.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Memproses...'; }
 
   try{
-    const result = await cloudPost("login", {
+    const result = await cloudLoginFast({
       username: username,
       password: password,
       role: loginRole
-    }, 1);
+    });
 
     if(!result || !result.ok || !result.user){
       toast(
@@ -3689,17 +3695,9 @@ async function login(event){
       JSON.stringify(currentUser)
     );
 
-    if(typeof fetchCloudAll === "function"){
-        const synced = await fetchCloudAll();
-        if(!synced){
-            localStorage.removeItem("nev_auth_token");
-            localStorage.removeItem("nev_current_user");
-            currentUser = null;
-            toast("Login berhasil tetapi data pusat tidak dapat diambil. Coba lagi.", "error");
-            return;
-        }
-    }
-
+    // Jangan menunggu getAll di sini. Login hanya membutuhkan validasi akun
+    // + pembuatan token. Dashboard ditampilkan segera, sedangkan data cloud
+    // dimuat di background agar login terasa cepat.
     document.getElementById("loginScreen").classList.add("hidden");
     document.getElementById("app").classList.remove("hidden");
 
@@ -3716,12 +3714,31 @@ async function login(event){
       showPage("koor-dashboard");
     }
 
+    // Sinkronisasi pertama berjalan setelah dashboard tampil.
+    // Tidak memblokir proses login.
+    if(typeof fetchCloudAll === "function"){
+        setTimeout(async ()=>{
+            const synced = await fetchCloudAll();
+            if(synced && currentUser) renderAll();
+            else if(!synced && getAuthToken()){
+                // Token invalid/expired akan ditangani fetchCloudAll().
+                updateCloudBadge();
+            }
+        }, 0);
+    }
+
   }catch(err){
     console.error("Login error:", err);
-    toast(
-      "Gagal terhubung ke server. Silakan coba lagi.",
-      "error"
-    );
+    const message = err?.name === "AbortError"
+      ? "Server terlalu lama merespons. Silakan coba lagi."
+      : (err?.message || "Gagal terhubung ke server. Silakan coba lagi.");
+    toast(message, "error");
+  }finally{
+    loginInProgress=false;
+    if(loginButton){
+      loginButton.disabled=false;
+      loginButton.innerHTML=loginButton.dataset.oldText || '<i class="fa-solid fa-right-to-bracket"></i> Masuk';
+    }
   }
 }
 

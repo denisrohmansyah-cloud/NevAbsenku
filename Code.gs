@@ -28,7 +28,7 @@ const FALLBACK_FOLDER_NAMES = {
   presensi: "NEV Absenku - Foto Presensi"
 };
 
-const CODE_VERSION = "secure-v5";
+const CODE_VERSION = "secure-v6-fast-login";
 
 const SHEET_USERS = "Users";
 const SHEET_SESSIONS = "Sessions";
@@ -211,7 +211,20 @@ function seedUsers_(){
   return seed;
 }
 
-function migratePlaintextPasswords_(){
+const USERS_CACHE_KEY = "nev-users-cache-v1";
+const USERS_CACHE_TTL = 300; // 5 menit
+
+function invalidateUsersCache_(){
+  CacheService.getScriptCache().remove(USERS_CACHE_KEY);
+}
+
+function getUsersCached_(){
+  const cache=CacheService.getScriptCache();
+  const cached=cache.get(USERS_CACHE_KEY);
+  if(cached){
+    try{return JSON.parse(cached);}catch(e){}
+  }
+
   const users=seedUsers_();
   let changed=false;
   users.forEach(u=>{
@@ -221,7 +234,14 @@ function migratePlaintextPasswords_(){
     }
   });
   if(changed) objectsToSheet_(SHEET_USERS,users);
+
+  cache.put(USERS_CACHE_KEY,JSON.stringify(users),USERS_CACHE_TTL);
   return users;
+}
+
+// Backward-compatible alias. Semua autentikasi sekarang memakai cache.
+function migratePlaintextPasswords_(){
+  return getUsersCached_();
 }
 
 function authUser_(token){
@@ -233,7 +253,7 @@ function authUser_(token){
     throw err;
   }
   const session=JSON.parse(raw);
-  const users=migratePlaintextPasswords_();
+  const users=getUsersCached_();
   const user=users.find(u=>u.id===session.userId);
   if(!user){
     const err=new Error("Akun tidak ditemukan.");
@@ -359,7 +379,8 @@ function doGet(e){
     const action=(e.parameter && e.parameter.action)||"bootstrap";
 
     if(action==="bootstrap"){
-      migratePlaintextPasswords_();
+      // Hangatkan cache akun agar request login berikutnya tidak perlu membaca Sheets.
+      getUsersCached_();
       return jsonResponse_({
         ok:true,
         version:CODE_VERSION,
@@ -426,6 +447,7 @@ function createUser_(actor, data){
     role:"STAF", division
   };
   appendObject_(SHEET_USERS,record);
+  invalidateUsersCache_();
   return safeUser_(record);
 }
 
@@ -446,6 +468,7 @@ function updateUser_(actor,data){
   if(data.password) user.password=hashPassword_(String(data.password));
 
   objectsToSheet_(SHEET_USERS,users);
+  invalidateUsersCache_();
   return safeUser_(user);
 }
 
@@ -463,6 +486,7 @@ function deleteUser_(actor,data){
   }
 
   objectsToSheet_(SHEET_USERS,users.filter(u=>u.id!==id));
+  invalidateUsersCache_();
   return {ok:true};
 }
 
@@ -698,7 +722,7 @@ function doPost(e){
       const password=String(body.data && body.data.password || "");
       const role=String(body.data && body.data.role || "");
 
-      const users=migratePlaintextPasswords_();
+      const users=getUsersCached_();
       const hash=hashPassword_(password);
       const user=users.find(u=>
         String(u.username).toLowerCase()===username.toLowerCase() &&

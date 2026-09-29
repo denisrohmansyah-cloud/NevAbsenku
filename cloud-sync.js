@@ -124,6 +124,36 @@ function pushToCloud(key, data){
 
 
 /* =========================================================
+LOGIN CEPAT
+Login hanya melakukan satu request. Tidak menunggu getAll dan tidak retry
+otomatis 1.5 detik jika request pertama gagal. Data cloud dimuat setelah dashboard tampil.
+========================================================= */
+async function cloudLoginFast(data){
+    const controller = new AbortController();
+    const timer = setTimeout(()=>controller.abort(), 10000);
+    try{
+        const res = await fetch(CLOUD_SCRIPT_URL, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({action:"login", data:data}),
+            signal: controller.signal
+        });
+        const text = await res.text();
+        let json;
+        try{ json=JSON.parse(text); }
+        catch(e){ throw new Error("Respons server bukan JSON."); }
+        if(!json.ok){
+            const err=new Error(json.error || "Username, password, atau role tidak sesuai.");
+            err.fatal=true;
+            throw err;
+        }
+        return json;
+    }finally{
+        clearTimeout(timer);
+    }
+}
+
+/* =========================================================
 KIRIM KE APPS SCRIPT (dengan percobaan ulang & pesan error jelas)
 Aman diulang: server menolak duplikat (id/sesi+user yang sama).
 ========================================================= */
@@ -535,70 +565,58 @@ data terpusat yang sama, bukan data lokal yang mungkin basi.
 ========================================================= */
 
 async function bootWithCloud(){
-    if(cloudSyncEnabled){
-        const savedToken = getAuthToken();
-        const savedUser = localStorage.getItem("nev_current_user");
+    if(!cloudSyncEnabled){
+        initializeDatabase();
+        startCloudPolling();
+        return;
+    }
 
-        showCloudLoader(true);
+    initializeDatabase();
 
-        if(savedToken && savedUser){
-            try{
-                const user = JSON.parse(savedUser);
-                currentUser = user;
+    const savedToken = getAuthToken();
+    const savedUser = localStorage.getItem("nev_current_user");
+
+    // Restore login dari cache lokal tanpa menunggu Google Apps Script.
+    // Validasi token dilakukan di background agar halaman tidak terasa lambat.
+    if(savedToken && savedUser){
+        try{
+            currentUser = JSON.parse(savedUser);
+            document.getElementById("loginScreen").classList.add("hidden");
+            document.getElementById("app").classList.remove("hidden");
+            buildSidebar();
+            updateUserUI();
+            if(currentUser.role==="STAF") showPage("staf-dashboard");
+            else if(currentUser.role==="HRD") showPage("hrd-dashboard");
+            else if(currentUser.role==="KOOR KP") showPage("koor-dashboard");
+            renderAll();
+
+            // Validasi token + sinkronisasi data di background.
+            setTimeout(async ()=>{
                 const ok = await fetchCloudAll();
-                if(ok){
-                    const valid = (load(DB.users) || []).find(u=>u.id===user.id);
-                    if(valid){
-                        currentUser = valid;
-                        localStorage.setItem("nev_current_user", JSON.stringify(valid));
-                        document.getElementById("loginScreen").classList.add("hidden");
-                        document.getElementById("app").classList.remove("hidden");
-                        buildSidebar();
-                        updateUserUI();
-                        if(currentUser.role==="STAF") showPage("staf-dashboard");
-                        else if(currentUser.role==="HRD") showPage("hrd-dashboard");
-                        else if(currentUser.role==="KOOR KP") showPage("koor-dashboard");
-                    }else{
-                        clearAuthSession();
-                        currentUser = null;
-                    }
-                }else{
-                    clearAuthSession();
-                    currentUser = null;
-                }
-            }catch(e){
-                clearAuthSession();
-                currentUser = null;
-            }
+                if(ok && currentUser) renderAll();
+            }, 0);
+        }catch(e){
+            clearAuthSession();
+            currentUser = null;
         }
+    }
 
-        // Ambil versi/settings tanpa membuka data akun sebelum login.
+    // Bootstrap settings/version tidak boleh memblokir login/dashboard.
+    setTimeout(async ()=>{
         try{
             const res = await fetch(`${CLOUD_SCRIPT_URL}?action=bootstrap`);
             const boot = await res.json();
             if(boot && boot.ok){
                 cloudServerVersion = boot.version || cloudServerVersion;
                 _localSave(DB.settings, boot.settings || {officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
+                updateCloudBadge();
             }
         }catch(e){
             console.warn("Bootstrap cloud gagal:",e);
         }
+    }, 0);
 
-        showCloudLoader(false);
-
-        // Jika belum login, backend tetap menjadi sumber akun. Tidak membuat
-        // daftar akun baru dari halaman login.
-        if(!currentUser){
-            initializeDatabase();
-        }
-    }else{
-        initializeDatabase();
-    }
-
-    if(currentUser) renderAll();
-    // Satu sinkronisasi awal saat login/restore, lalu polling otomatis setiap 30 detik.
     startCloudPolling();
 }
-
 setInterval(updateCloudBadge, 2000);
 bootWithCloud();
