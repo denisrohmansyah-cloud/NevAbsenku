@@ -3304,7 +3304,7 @@ REGISTER MODAL
 
         <div class="modal-header">
 
-            <h3>Tambah Akun</h3>
+            <h3 id="registerModalTitle">Tambah Akun</h3>
 
             <button
                 class="modal-close"
@@ -3349,8 +3349,7 @@ REGISTER MODAL
                     <select
                         id="registerRole"
                         class="form-control"
-                        required
-                        onchange="toggleRegisterDivision()">
+                        onchange="toggleRegisterRole()">
 
                         <option value="STAF">STAF</option>
                         <option value="KOOR KP">KOOR KP</option>
@@ -4362,7 +4361,58 @@ function printQR(type){
             <img src="${image}">
             <p>Scan QR menggunakan aplikasi NEV Absenku.</p>
         
-<!-- Login loading helper intentionally excluded from printed QR page. -->
+<script id="nev-login-loading-script">
+/* =========================================================
+   LOGIN LOADING — tidak mengubah fungsi login/cloud-sync.
+   Hanya memberi feedback visual saat request login berjalan.
+========================================================= */
+(function(){
+    let resetTimer = null;
+
+    function getLoginButton(){
+        return document.getElementById("loginSubmitBtn");
+    }
+
+    function setLoginLoading(loading){
+        const btn = getLoginButton();
+        if(!btn) return;
+        btn.classList.toggle("nev-login-loading", !!loading);
+        btn.disabled = !!loading;
+        btn.setAttribute("aria-busy", loading ? "true" : "false");
+        if(!loading && resetTimer){
+            clearTimeout(resetTimer);
+            resetTimer = null;
+        }
+    }
+
+    document.addEventListener("submit", function(event){
+        const form = event.target;
+        if(!form || !form.querySelector || !form.querySelector("#loginUsername")) return;
+
+        const btn = getLoginButton();
+        if(!btn || btn.classList.contains("nev-login-loading")) return;
+
+        setLoginLoading(true);
+
+        // Pengaman: jika login gagal/terputus tanpa mengubah halaman,
+        // tombol otomatis kembali normal setelah 20 detik.
+        resetTimer = setTimeout(function(){
+            const screen = document.getElementById("loginScreen");
+            if(screen && !screen.classList.contains("hidden")) setLoginLoading(false);
+        }, 20000);
+    }, true);
+
+    // Jika login berhasil, loginScreen diberi class "hidden" oleh aplikasi.
+    // Loader tidak perlu disentuh karena form sudah tidak terlihat.
+    const screen = document.getElementById("loginScreen");
+    if(screen){
+        const observer = new MutationObserver(function(){
+            if(screen.classList.contains("hidden")) setLoginLoading(false);
+        });
+        observer.observe(screen, {attributes:true, attributeFilter:["class"]});
+    }
+})();
+</script>
 
 </body></html>
     `);
@@ -5043,10 +5093,10 @@ function renderUsers(){
     const users=load(DB.users);
     let displayUsers=[];
 
-    if(currentUser.role==="HRD"){
+    if(currentUser.role==="HRD") {
         document.getElementById("btnTambahAkun").style.display="inline-flex";
         displayUsers=users;
-    }else{
+    }else if(currentUser.role==="KOOR KP"){
         document.getElementById("btnTambahAkun").style.display="inline-flex";
         displayUsers=users.filter(u=>u.role==="STAF" && u.division===currentUser.division);
     }
@@ -5077,13 +5127,16 @@ function renderUsers(){
                             <td><span class="badge badge-active">${escapeHTML(u.role)}</span></td>
                             <td>${escapeHTML(u.division || "-")}</td>
                             <td>
-                                <button class="btn btn-outline" style="padding:7px 9px; margin-right:5px;" onclick="editUser('${u.id}')">
+                                ${currentUser.role === 'HRD' || (currentUser.role==='KOOR KP' && u.role==='STAF') ? `
+                                <button class="btn btn-outline" style="padding:7px 9px; margin-right:5px;" onclick="editUser('${u.id}')" title="Edit akun">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
-                                ${u.id!==currentUser.id ? `
-                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteUser('${u.id}')">
+                                ` : ''}
+                                ${currentUser.role === 'HRD' || (currentUser.role==='KOOR KP' && u.role==='STAF') ? `
+                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteUser('${u.id}')" title="Hapus akun">
                                     <i class="fa-solid fa-trash"></i>
-                                </button>` : ''}
+                                </button>
+                                ` : ''}
                             </td>
                         </tr>
                     `).join("")}
@@ -5095,7 +5148,7 @@ function renderUsers(){
 
 async function editUser(id){
     if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
-        toast("Akses ditolak.","error"); return;
+        toast("Akses ditolak.", "error"); return;
     }
 
     const users=load(DB.users);
@@ -5103,40 +5156,44 @@ async function editUser(id){
     if(!user)return;
 
     if(currentUser.role==="KOOR KP" && (user.role!=="STAF" || user.division!==currentUser.division)){
-        toast("Akses ditolak. Anda hanya dapat mengedit STAF di divisi Anda.","error"); return;
+        toast("Akses ditolak. Koor KP hanya dapat mengedit STAF di divisinya.", "error"); return;
     }
 
-    const name=prompt("Nama lengkap:",user.name);
+    const name=prompt("Nama:", user.name);
     if(name===null)return;
-    const username=prompt("Username / NIM:",user.username);
+
+    const username=prompt("Username / NIM:", user.username);
     if(username===null)return;
 
     let role=user.role;
     let division=user.division || "";
 
     if(currentUser.role==="HRD"){
-        const roleInput=prompt("Role (STAF / KOOR KP / HRD):",user.role);
-        if(roleInput===null)return;
-        role=roleInput.trim().toUpperCase();
+        role=prompt("Role (STAF / KOOR KP / HRD):", user.role);
+        if(role===null)return;
+        role=role.trim().toUpperCase();
         if(!["STAF","KOOR KP","HRD"].includes(role)){
-            toast("Role harus STAF, KOOR KP, atau HRD.","error"); return;
+            toast("Role harus STAF, KOOR KP, atau HRD.", "error"); return;
         }
-        if(role!=="HRD"){
-            const divInput=prompt("Divisi (Networking / Cyber / Sysadmin):",user.division || "");
-            if(divInput===null)return;
-            division=divInput.trim();
-        }else{
+
+        if(role==="HRD"){
             division="";
+        }else{
+            division=prompt("Divisi (Networking / Cyber / Sysadmin):", user.division || "");
+            if(division===null)return;
+            division=division.trim();
+            if(!division){ toast("Divisi wajib diisi.", "error"); return; }
         }
     }else{
+        // Koor KP tidak boleh memindahkan divisi/role staf.
         role="STAF";
         division=currentUser.division;
     }
 
-    const password=prompt("Password baru (kosongkan jika tidak diubah):","");
+    const password=prompt("Password baru (kosongkan jika tidak diubah):", "");
 
     try{
-        const result=await cloudPost("updateUser",{
+        const result=await cloudPost("updateUser", {
             targetId:id,
             name:name.trim(),
             username:username.trim(),
@@ -5145,35 +5202,38 @@ async function editUser(id){
             password:password || ""
         },1);
 
-        const next=users.map(u=>u.id===id ? result.user : u);
+        const updated=result.user;
+        const next=users.map(u=>u.id===id ? updated : u);
         _localSave(DB.users,next);
 
         if(currentUser.id===id){
-            currentUser=result.user;
+            currentUser=updated;
             localStorage.setItem("nev_current_user",JSON.stringify(currentUser));
-            buildSidebar();
             updateUserUI();
+            buildSidebar();
         }
 
         renderUsers();
-        toast("Akun berhasil diperbarui.","success");
+        toast("Akun berhasil diperbarui.", "success");
     }catch(err){
-        toast("Gagal memperbarui akun: "+friendlyCloudError(err),"error");
+        toast("Gagal memperbarui akun: "+friendlyCloudError(err), "error");
     }
 }
 
 async function deleteUser(id){
+    if(!currentUser || (currentUser.role!=="HRD" && currentUser.role!=="KOOR KP")){
+        toast("Akses ditolak.", "error"); return;
+    }
     const users=load(DB.users);
     const user=users.find(u=>u.id===id);
     if(!user)return;
-    if(user.id===currentUser.id){
-        toast("Akun yang sedang login tidak dapat dihapus.","error"); return;
-    }
+
     if(currentUser.role==="KOOR KP" && (user.role!=="STAF" || user.division!==currentUser.division)){
-        toast("Akses ditolak. Anda hanya dapat menghapus Staf di divisi Anda.","error"); return;
+        toast("Akses ditolak. Anda hanya dapat menghapus Staf di divisi Anda.", "error");
+        return;
     }
-    if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
-        toast("Akses ditolak.","error"); return;
+    if(user.id===currentUser.id){
+        toast("Akun yang sedang login tidak dapat dihapus.", "error"); return;
     }
     if(!confirm(`Yakin ingin menghapus akun ${user.name}?`)) return;
 
@@ -5181,9 +5241,9 @@ async function deleteUser(id){
         await cloudPost("deleteUser",{targetId:id},1);
         _localSave(DB.users,users.filter(u=>u.id!==id));
         renderUsers();
-        toast("Akun berhasil dihapus.","success");
+        toast("Akun berhasil dihapus.", "success");
     }catch(err){
-        toast("Gagal menghapus akun: "+friendlyCloudError(err),"error");
+        toast("Gagal menghapus akun: "+friendlyCloudError(err), "error");
     }
 }
 
@@ -5192,47 +5252,64 @@ async function deleteUser(id){
 PEMBUATAN AKUN OLEH HRD / KOOR KP
 ========================================================= */
 
-function toggleRegisterDivision(){
+function toggleRegisterRole(){
+    const roleSelect=document.getElementById("registerRole");
+    const role=roleSelect ? roleSelect.value : "STAF";
     const divGroup=document.getElementById("registerDivisionGroup");
     const divSelect=document.getElementById("registerDivision");
-    const roleSelect=document.getElementById("registerRole");
-    if(!divGroup || !divSelect || !roleSelect || !currentUser)return;
+    const title=document.getElementById("registerModalTitle");
 
-    if(currentUser.role==="KOOR KP"){
-        roleSelect.value="STAF";
-        roleSelect.disabled=true;
-        divSelect.value=currentUser.division || "";
-        divSelect.disabled=true;
-        divSelect.required=true;
-        divGroup.classList.remove("hidden");
+    // Koor KP hanya dapat membuat STAF. Role lain disembunyikan dari form Koor KP.
+    if(currentUser?.role==="KOOR KP"){
+        if(roleSelect){
+            roleSelect.value="STAF";
+            roleSelect.disabled=true;
+        }
+        if(title) title.textContent="Tambah Akun STAF";
+        if(divSelect){
+            divSelect.value=currentUser.division || "";
+            divSelect.disabled=true;
+            divSelect.required=true;
+        }
+        if(divGroup) divGroup.classList.remove("hidden");
         return;
     }
 
-    roleSelect.disabled=false;
-    const role=roleSelect.value;
+    if(roleSelect) roleSelect.disabled=false;
+    if(title) title.textContent=role==="STAF" ? "Tambah Akun STAF" : (role==="KOOR KP" ? "Tambah Akun Koor KP" : "Tambah Akun HRD");
+
     if(role==="HRD"){
-        divSelect.value="";
-        divSelect.disabled=true;
-        divSelect.required=false;
-        divGroup.classList.add("hidden");
+        if(divSelect){
+            divSelect.value="";
+            divSelect.disabled=true;
+            divSelect.required=false;
+        }
+        if(divGroup) divGroup.classList.add("hidden");
     }else{
-        divSelect.disabled=false;
-        divSelect.required=true;
-        divGroup.classList.remove("hidden");
+        if(divSelect){
+            divSelect.disabled=false;
+            divSelect.required=true;
+        }
+        if(divGroup) divGroup.classList.remove("hidden");
     }
+}
+
+function toggleRegisterDivision(){
+    toggleRegisterRole();
 }
 
 function openRegister(){
     if(!currentUser || (currentUser.role!=="HRD" && currentUser.role!=="KOOR KP")){
-        toast("Hanya HRD atau Koor KP yang dapat membuat akun.","error");
+        toast("Hanya HRD atau Koor KP yang dapat membuat akun.", "error");
         return;
     }
-
-    const form=document.querySelector("#registerModal form");
-    if(form)form.reset();
     const roleSelect=document.getElementById("registerRole");
-    if(roleSelect)roleSelect.value="STAF";
-    toggleRegisterDivision();
+    if(roleSelect) roleSelect.value=currentUser.role==="KOOR KP" ? "STAF" : "STAF";
+    document.getElementById("registerName").value="";
+    document.getElementById("registerUsername").value="";
+    document.getElementById("registerPassword").value="";
+    document.getElementById("registerDivision").value="";
+    toggleRegisterRole();
     document.getElementById("registerModal").classList.add("show");
 }
 
@@ -5240,51 +5317,46 @@ async function register(event){
     event.preventDefault();
 
     if(!currentUser || (currentUser.role!=="HRD" && currentUser.role!=="KOOR KP")){
-        toast("Akses ditolak.","error"); return;
+        toast("Akses ditolak.", "error"); return;
     }
 
     const name=document.getElementById("registerName").value.trim();
     const username=document.getElementById("registerUsername").value.trim();
     const password=document.getElementById("registerPassword").value;
-    let role=document.getElementById("registerRole").value;
+    const role=currentUser.role==="KOOR KP" ? "STAF" : document.getElementById("registerRole").value;
     let division=document.getElementById("registerDivision").value;
 
-    if(currentUser.role==="KOOR KP"){
-        role="STAF";
-        division=currentUser.division;
+    if(!name || !username || !password){
+        toast("Nama, username/NIM, dan password wajib diisi.", "error"); return;
     }
 
-    if(!name || !username || !password){
-        toast("Nama, username/NIM, dan password wajib diisi.","error"); return;
-    }
     if(role!=="HRD" && !division){
-        toast("Divisi wajib dipilih untuk STAF dan KOOR KP.","error"); return;
+        toast("Divisi wajib dipilih untuk akun STAF atau KOOR KP.", "error"); return;
     }
-    if(role==="HRD")division="";
+
+    if(currentUser.role==="KOOR KP") division=currentUser.division;
+    if(role==="HRD") division="";
 
     try{
-        const result=await cloudPost("createUser",{
-            name,username,password,division,role
+        const result=await cloudPost("createUser", {
+            name, username, password, division, role
         },1);
 
         const users=load(DB.users);
-        const existing=users.findIndex(u=>u.id===result.user.id);
-        if(existing>=0)users[existing]=result.user;
-        else users.push(result.user);
+        users.push(result.user);
         _localSave(DB.users,users);
 
         closeModal("registerModal");
-        const form=document.querySelector("#registerModal form");
-        if(form)form.reset();
-        if(document.getElementById("registerRole"))document.getElementById("registerRole").value="STAF";
-        toggleRegisterDivision();
+        document.querySelector("#registerModal form").reset();
+        const roleSelect=document.getElementById("registerRole");
+        if(roleSelect) roleSelect.value="STAF";
+        toggleRegisterRole();
         renderUsers();
-        toast(`Akun ${result.user.role} berhasil dibuat.`,"success");
+        toast("Akun "+role+" berhasil dibuat.", "success");
     }catch(err){
-        toast("Gagal membuat akun: "+friendlyCloudError(err),"error");
+        toast("Gagal membuat akun: "+friendlyCloudError(err), "error");
     }
 }
-
 
 /* =========================================================
 CALENDAR
@@ -5880,43 +5952,6 @@ function restoreLogin(){
 
 <!-- File tambahan: sinkronisasi terpusat ke Google Sheets & Google Drive -->
 <script src="cloud-sync.js"></script>
-
-
-<script id="nev-login-loading-script">
-/* =========================================================
-   LOGIN LOADING — visual feedback only.
-========================================================= */
-(function(){
-    let resetTimer = null;
-    function getLoginButton(){ return document.getElementById("loginSubmitBtn"); }
-    function setLoginLoading(loading){
-        const btn=getLoginButton();
-        if(!btn)return;
-        btn.classList.toggle("nev-login-loading",!!loading);
-        btn.disabled=!!loading;
-        btn.setAttribute("aria-busy",loading?"true":"false");
-        if(!loading && resetTimer){ clearTimeout(resetTimer); resetTimer=null; }
-    }
-    document.addEventListener("submit",function(event){
-        const form=event.target;
-        if(!form || !form.querySelector || !form.querySelector("#loginUsername"))return;
-        const btn=getLoginButton();
-        if(!btn || btn.classList.contains("nev-login-loading"))return;
-        setLoginLoading(true);
-        resetTimer=setTimeout(function(){
-            const screen=document.getElementById("loginScreen");
-            if(screen && !screen.classList.contains("hidden"))setLoginLoading(false);
-        },20000);
-    },true);
-    const screen=document.getElementById("loginScreen");
-    if(screen){
-        const observer=new MutationObserver(function(){
-            if(screen.classList.contains("hidden"))setLoginLoading(false);
-        });
-        observer.observe(screen,{attributes:true,attributeFilter:["class"]});
-    }
-})();
-</script>
 
 </body>
 </html>
