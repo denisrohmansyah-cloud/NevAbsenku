@@ -295,7 +295,7 @@ function updateCloudBadge(){
         el = document.createElement("button");
         el.id = "cloudBadge";
         el.type = "button";
-        el.style.cssText = "position:fixed;left:12px;bottom:78px;z-index:9999;border:0;border-radius:999px;padding:8px 14px;font:600 12px Inter,sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);max-width:calc(100vw - 24px);";
+        el.style.cssText = "position:fixed;right:12px;bottom:12px;z-index:9999;border:0;border-radius:999px;padding:8px 14px;font:600 12px Inter,sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);max-width:calc(100vw - 24px);";
         el.onclick = ()=> manualCloudRefresh(false);
         document.body.appendChild(el);
     }
