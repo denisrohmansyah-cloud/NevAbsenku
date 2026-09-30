@@ -1103,7 +1103,7 @@ LOGIN
         <div class="login-brand">
 
             <div class="logo-circle">
-                <img src="nev-logo.png" alt="NEV Logo">
+                <img src="nev-logo.webp" alt="NEV Logo">
             </div>
 
             <h1>NEV Absenku</h1>
@@ -1226,7 +1226,7 @@ APP
         <div class="sidebar-logo">
 
             <div class="sidebar-logo-icon">
-                <img src="nev-logo.png" alt="NEV Logo">
+                <img src="nev-logo.webp" alt="NEV Logo">
             </div>
 
             <span>NEV Absenku</span>
@@ -3693,7 +3693,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 });
 
 function setDefaultDates(){
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone:"Asia/Jakarta", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
     const ids = ["hrdDate", "koorDate"];
     ids.forEach(id=>{
         const el = document.getElementById(id);
@@ -3713,68 +3713,66 @@ function selectLoginRole(role,button){
 }
 
 async function login(event){
-  event.preventDefault();
+    event.preventDefault();
 
-  const username = document.getElementById("loginUsername").value.trim();
-  const password = document.getElementById("loginPassword").value;
+    const username = document.getElementById("loginUsername").value.trim();
+    const password = document.getElementById("loginPassword").value;
+    const btn = document.getElementById("loginSubmitBtn");
 
-  try{
-    const result = await cloudPost("login", {
-      username: username,
-      password: password,
-      role: loginRole
-    }, 1);
-
-    if(!result || !result.ok || !result.user){
-      toast(
-        result?.error || "Username, password, atau role tidak sesuai.",
-        "error"
-      );
-      return;
+    if(!username || !password){
+        toast("Username dan password wajib diisi.", "error");
+        return;
     }
 
-    currentUser = result.user;
-    if(result.authToken) localStorage.setItem("nev_auth_token", result.authToken);
+    if(btn){
+        btn.disabled = true;
+        btn.classList.add("nev-login-loading");
+        btn.setAttribute("aria-busy","true");
+    }
 
-    localStorage.setItem(
-      "nev_current_user",
-      JSON.stringify(currentUser)
-    );
+    try{
+        const result = await cloudPost("login", { username, password, role:loginRole }, 1);
+        if(!result || !result.ok || !result.user || !result.authToken){
+            throw new Error(result?.error || "Username, password, atau role tidak sesuai.");
+        }
 
-    if(typeof fetchCloudAll === "function"){
-        const synced = await fetchCloudAll();
-        if(!synced){
-            localStorage.removeItem("nev_auth_token");
-            localStorage.removeItem("nev_current_user");
-            currentUser = null;
-            toast("Login berhasil tetapi data pusat tidak dapat diambil. Coba lagi.", "error");
-            return;
+        localStorage.setItem("nev_auth_token", result.authToken);
+        localStorage.setItem("nev_current_user", JSON.stringify(result.user));
+        currentUser = result.user;
+
+        initializeDatabase();
+        document.getElementById("loginScreen").classList.add("hidden");
+        document.getElementById("app").classList.remove("hidden");
+        buildSidebar();
+        updateUserUI();
+
+        if(currentUser.role === "STAF") showPage("staf-dashboard");
+        else if(currentUser.role === "HRD") showPage("hrd-dashboard");
+        else showPage("koor-dashboard");
+
+        updateCloudBadge();
+        toast("Login berhasil.", "success");
+
+        // Ambil data pusat setelah dashboard tampil; kegagalan sinkron tidak membatalkan login.
+        queueMicrotask(async()=>{
+            try{
+                await flushCloudQueue();
+                const ok = await fetchCloudAll();
+                if(ok && currentUser) renderAll();
+            }catch(err){
+                console.warn("Sinkronisasi awal gagal:", err);
+            }
+        });
+    }catch(err){
+        console.error("Login error:", err);
+        toast(friendlyCloudError(err), "error");
+    }finally{
+        if(btn){
+            btn.disabled = false;
+            btn.classList.remove("nev-login-loading");
+            btn.removeAttribute("aria-busy");
         }
     }
-
-    document.getElementById("loginScreen").classList.add("hidden");
-    document.getElementById("app").classList.remove("hidden");
-
-    buildSidebar();
-    updateUserUI();
-
-    if(currentUser.role === "STAF"){
-      showPage("staf-dashboard");
-    }
-    else if(currentUser.role === "HRD"){
-      showPage("hrd-dashboard");
-    }
-    else if(currentUser.role === "KOOR KP"){
-      showPage("koor-dashboard");
-    }
-
-  }catch(err){
-    console.error("Login error:", err);
-    toast(
-      "Gagal terhubung ke server. Silakan coba lagi.",
-      "error"
-    );
-  }
 }
 
 function logout(){
@@ -4346,58 +4344,7 @@ function printQR(type){
             <img src="${image}">
             <p>Scan QR menggunakan aplikasi NEV Absenku.</p>
         
-<script id="nev-login-loading-script">
-/* =========================================================
-   LOGIN LOADING — tidak mengubah fungsi login/cloud-sync.
-   Hanya memberi feedback visual saat request login berjalan.
-========================================================= */
-(function(){
-    let resetTimer = null;
-
-    function getLoginButton(){
-        return document.getElementById("loginSubmitBtn");
-    }
-
-    function setLoginLoading(loading){
-        const btn = getLoginButton();
-        if(!btn) return;
-        btn.classList.toggle("nev-login-loading", !!loading);
-        btn.disabled = !!loading;
-        btn.setAttribute("aria-busy", loading ? "true" : "false");
-        if(!loading && resetTimer){
-            clearTimeout(resetTimer);
-            resetTimer = null;
-        }
-    }
-
-    document.addEventListener("submit", function(event){
-        const form = event.target;
-        if(!form || !form.querySelector || !form.querySelector("#loginUsername")) return;
-
-        const btn = getLoginButton();
-        if(!btn || btn.classList.contains("nev-login-loading")) return;
-
-        setLoginLoading(true);
-
-        // Pengaman: jika login gagal/terputus tanpa mengubah halaman,
-        // tombol otomatis kembali normal setelah 20 detik.
-        resetTimer = setTimeout(function(){
-            const screen = document.getElementById("loginScreen");
-            if(screen && !screen.classList.contains("hidden")) setLoginLoading(false);
-        }, 20000);
-    }, true);
-
-    // Jika login berhasil, loginScreen diberi class "hidden" oleh aplikasi.
-    // Loader tidak perlu disentuh karena form sudah tidak terlihat.
-    const screen = document.getElementById("loginScreen");
-    if(screen){
-        const observer = new MutationObserver(function(){
-            if(screen.classList.contains("hidden")) setLoginLoading(false);
-        });
-        observer.observe(screen, {attributes:true, attributeFilter:["class"]});
-    }
-})();
-</script>
+<!-- Login loading is handled by the main page. -->
 
 </body></html>
     `);
@@ -4774,13 +4721,20 @@ function photoCandidates(url){
     ];
 }
 
-function photoFallback(img){
-    const list = photoCandidates(img.dataset.orig || "");
+async function photoFallback(img){
+    const original = img.dataset.orig || "";
+    const list = photoCandidates(original);
     const next = (parseInt(img.dataset.idx || "0", 10)) + 1;
     if(next < list.length){
         img.dataset.idx = String(next);
         img.src = list[next];
+        return;
     }
+    if(!img.dataset.proxyTried && typeof window.nevLoadPhotoProxy === "function"){
+        img.dataset.proxyTried = "1";
+        try{ img.src = await window.nevLoadPhotoProxy(original); return; }catch(err){ console.warn("Proxy foto gagal:",err); }
+    }
+    img.style.opacity = "0.45";
 }
 
 function photoThumbHTML(photo, onclick, alt){
@@ -4836,10 +4790,19 @@ function showPhotoLightbox(title, subtitle, note, photo){
     const img = overlay.querySelector("#photoLightboxImg");
     const err = overlay.querySelector("#photoLightboxError");
     let i = 0;
-    img.onerror = ()=>{
+    let proxyTried = false;
+    img.onerror = async ()=>{
         i++;
-        if(i < list.length){ img.src = list[i]; }
-        else { img.style.display = "none"; err.style.display = "block"; }
+        if(i < list.length){
+            img.src = list[i];
+            return;
+        }
+        if(!proxyTried && typeof window.nevLoadPhotoProxy === "function"){
+            proxyTried = true;
+            try{ img.src = await window.nevLoadPhotoProxy(photo); return; }catch(e){ console.warn("Proxy foto gagal:",e); }
+        }
+        img.style.display = "none";
+        err.style.display = "block";
     };
     img.src = list[0];
 }
@@ -5525,62 +5488,41 @@ function canReviewPermit(permit){
     return false;
 }
 
-function approvePermit(id){
+async function approvePermit(id){
     const permits = load(DB.permits);
     const permit = permits.find(p=>p.id===id);
     if(!permit){ toast("Pengajuan tidak ditemukan.", "error"); return; }
     if(!canReviewPermit(permit)){ toast("Akses ditolak.", "error"); return; }
     if(permit.status!=="Menunggu"){ toast("Pengajuan ini sudah diproses.", "error"); return; }
 
-    permit.status = "Disetujui";
-    permit.reviewedBy = currentUser.id;
-    permit.reviewedByName = currentUser.name;
-    permit.reviewedAt = new Date().toISOString();
-    save(DB.permits, permits);
-
-    // Buat/perbarui catatan absensi supaya muncul di Rekap Absensi lengkap dengan bukti fotonya.
-    const attendance = load(DB.attendance);
-    let record = attendance.find(a=> a.sessionId===permit.sessionId && a.userId===permit.userId);
-    if(record){
-        record.status = permit.type;
-        record.photo = permit.photo;
-        record.permitId = permit.id;
-    }else{
-        attendance.push({
-            id: "ATT-"+Date.now(), sessionId: permit.sessionId, token: null,
-            userId: permit.userId, userName: permit.userName, username: permit.username,
-            activity: permit.sessionActivity, division: permit.sessionDivision, date: permit.sessionDate,
-            checkIn: new Date().toISOString(), status: permit.type,
-            creatorId: permit.sessionCreatorId, creatorRole: permit.sessionCreatorRole,
-            lat: null, lng: null, photo: permit.photo,
-            permitId: permit.id, approvedFromPermit: true
-        });
+    try{
+        await cloudPost("reviewPermit", { permitId:id, decision:"Disetujui" }, 1);
+        await fetchCloudAll();
+        renderAll();
+        toast(`Pengajuan ${permit.type} dari ${permit.userName} disetujui.`, "success");
+    }catch(err){
+        toast(`Gagal menyetujui pengajuan: ${friendlyCloudError(err)}`, "error");
     }
-    save(DB.attendance, attendance);
-
-    renderPermitApproval(currentUser.role==="HRD" ? "hrd" : "koor");
-    renderAll();
-    toast(`Pengajuan ${permit.type} dari ${permit.userName} disetujui.`, "success");
 }
 
-function rejectPermit(id){
+async function rejectPermit(id){
     const permits = load(DB.permits);
     const permit = permits.find(p=>p.id===id);
     if(!permit){ toast("Pengajuan tidak ditemukan.", "error"); return; }
     if(!canReviewPermit(permit)){ toast("Akses ditolak.", "error"); return; }
     if(permit.status!=="Menunggu"){ toast("Pengajuan ini sudah diproses.", "error"); return; }
 
-    const note = prompt("Alasan penolakan (opsional):", "") || "";
+    const note = prompt("Alasan penolakan (opsional):", "");
+    if(note === null) return;
 
-    permit.status = "Ditolak";
-    permit.reviewedBy = currentUser.id;
-    permit.reviewedByName = currentUser.name;
-    permit.reviewedAt = new Date().toISOString();
-    permit.reviewNote = note.trim() || null;
-    save(DB.permits, permits);
-
-    renderPermitApproval(currentUser.role==="HRD" ? "hrd" : "koor");
-    toast(`Pengajuan ${permit.type} dari ${permit.userName} ditolak.`, "success");
+    try{
+        await cloudPost("reviewPermit", { permitId:id, decision:"Ditolak", reviewNote:note.trim() }, 1);
+        await fetchCloudAll();
+        renderAll();
+        toast(`Pengajuan ${permit.type} dari ${permit.userName} ditolak.`, "success");
+    }catch(err){
+        toast(`Gagal menolak pengajuan: ${friendlyCloudError(err)}`, "error");
+    }
 }
 
 function viewPermitPhoto(id){
@@ -5750,7 +5692,7 @@ HELPERS
 
 function formatTime(dateString){
     try{
-        return new Date(dateString).toLocaleTimeString("id-ID", {hour:"2-digit", minute:"2-digit"});
+        return new Date(dateString).toLocaleTimeString("id-ID", {timeZone:"Asia/Jakarta", hour:"2-digit", minute:"2-digit"});
     }catch(e){ return "-"; }
 }
 
