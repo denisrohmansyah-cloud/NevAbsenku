@@ -28,7 +28,8 @@ const FALLBACK_FOLDER_NAMES = {
   presensi: "NEV Absenku - Foto Presensi"
 };
 
-const CODE_VERSION = "secure-v7.3-alpha-rekap";
+const CODE_VERSION = "secure-v7.5-history-reset";
+const ATTENDANCE_RESET_PROPERTY = "NEV_ATTENDANCE_RESET_AT";
 
 const SHEET_USERS = "Users";
 const SHEET_SESSIONS = "Sessions";
@@ -291,6 +292,37 @@ function publicAttendance_(a){
 }
 
 /* =========================================================
+HISTORY RESET / AUTO ALPHA BOUNDARY
+========================================================= */
+function getAttendanceResetAt_(){
+  const raw=PropertiesService.getScriptProperties().getProperty(ATTENDANCE_RESET_PROPERTY);
+  const n=Number(raw||0);
+  return isFinite(n) && n>0 ? n : 0;
+}
+
+function ensureAttendanceResetMarker_(){
+  const props=PropertiesService.getScriptProperties();
+  const current=sheetToObjects_(SHEET_ATTENDANCE);
+  const existing=Number(props.getProperty(ATTENDANCE_RESET_PROPERTY)||0);
+  if(current.length===0 && !existing){
+    props.setProperty(ATTENDANCE_RESET_PROPERTY,String(Date.now()));
+    return Date.now();
+  }
+  return existing;
+}
+
+function attendanceVisibleAfterReset_(a, resetAt){
+  if(!resetAt) return true;
+  const check=String(a && a.checkIn || "");
+  const t=Date.parse(check);
+  if(!isNaN(t)) return t>=resetAt;
+  // Fallback untuk record lama yang tidak memiliki checkIn ISO.
+  const d=String(a && a.date || "");
+  const resetDate=Utilities.formatDate(new Date(resetAt),"Asia/Jakarta","yyyy-MM-dd");
+  return d>=resetDate;
+}
+
+/* =========================================================
 AUTO ALPHA
 ========================================================= */
 function sessionHasEnded_(session, now){
@@ -302,6 +334,7 @@ function sessionHasEnded_(session, now){
 
 function ensureAutomaticAlpha_(){
   const now=wibNow_();
+  const resetAt=ensureAttendanceResetMarker_();
   const sessions=sheetToObjects_(SHEET_SESSIONS);
   const users=sheetToObjects_(SHEET_USERS).filter(u=>u.role==="STAF");
   const attendance=sheetToObjects_(SHEET_ATTENDANCE);
@@ -309,6 +342,11 @@ function ensureAutomaticAlpha_(){
   const additions=[];
 
   sessions.forEach(session=>{
+    // Jangan membuat Alpha dari sesi/riwayat yang dibuat sebelum history reset.
+    if(resetAt){
+      const created=Date.parse(String(session.createdAt||""));
+      if(isNaN(created) || created < resetAt) return;
+    }
     if(!sessionHasEnded_(session,now)) return;
 
     const eligible=users.filter(u=>
@@ -372,7 +410,8 @@ function sessionsFor_(user){
 }
 
 function attendanceFor_(user){
-  const all=sheetToObjects_(SHEET_ATTENDANCE);
+  const resetAt=getAttendanceResetAt_();
+  const all=sheetToObjects_(SHEET_ATTENDANCE).filter(a=>attendanceVisibleAfterReset_(a,resetAt));
   if(user.role==="HRD") return all.map(publicAttendance_);
   if(user.role==="KOOR KP") return all
     .filter(a=>a.activity==="Ngoprek" && a.division===user.division)
@@ -909,6 +948,15 @@ function doPost(e){
 
       case "deleteSession":
         return jsonResponse_(withLock_(()=>deleteSession_(actor,String(data.sessionId||""))));
+
+      case "resetAttendanceHistory":{
+        if(actor.role!=="HRD") throw new Error("Hanya HRD yang dapat menghapus seluruh riwayat absensi.");
+        return jsonResponse_(withLock_(()=>{
+          objectsToSheet_(SHEET_ATTENDANCE,[]);
+          PropertiesService.getScriptProperties().setProperty(ATTENDANCE_RESET_PROPERTY,String(Date.now()));
+          return {ok:true,resetAt:Date.now()};
+        }));
+      }
 
       case "deleteAttendance":
         return jsonResponse_(withLock_(()=>deleteAttendance_(actor,String(data.attendanceId||""))));

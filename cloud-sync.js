@@ -62,8 +62,8 @@ let cloudUnsynced = 0;        // explicit failed-write queue only
 let cloudFlushing = false;
 let cloudLastFlushAt = 0;
 const CLOUD_POLL_MS = 30000;
-const CLOUD_QUEUE_KEY = "nev_sync_queue_v14_4";
-const LEGACY_QUEUE_KEYS = ["nev_sync_queue_v13", "nev_sync_queue_v14_3", "nev_sync_queue_v14_2"];
+const CLOUD_QUEUE_KEY = "nev_sync_queue_v14_5";
+const LEGACY_QUEUE_KEYS = ["nev_sync_queue_v13", "nev_sync_queue_v14_3", "nev_sync_queue_v14_2", "nev_sync_queue_v14_4"];
 
 
 /* =========================================================
@@ -264,6 +264,19 @@ AMBIL SEMUA DATA TERBARU DARI GOOGLE SHEETS
 async function fetchCloudAll(){
     if(!cloudSyncEnabled) return false;
     const token=getAuthToken();
+    // V14.5: Attendance server menjadi sumber kebenaran. Bersihkan cache
+    // lokal sebelum mengambil snapshot terbaru agar riwayat lama tidak
+    // dapat tampil kembali karena cache/queue versi sebelumnya.
+    try{
+        _localSave(DB.attendance,[]);
+        for(const legacyKey of LEGACY_QUEUE_KEYS) localStorage.removeItem(legacyKey);
+        const q=readCloudQueue().filter(item=>{
+            const a=String(item?.action||"");
+            return a!=="saveAttendance" && a!=="addAttendance";
+        });
+        writeCloudQueue(q);
+    }catch(e){}
+
     if(!token) return false;
     try{
         const res=await fetch(`${CLOUD_SCRIPT_URL}?action=getAll&authToken=${encodeURIComponent(token)}&_=${Date.now()}`,{cache:"no-store"});
@@ -276,17 +289,7 @@ async function fetchCloudAll(){
         if(!json || !json.ok) throw new Error((json&&json.error)||"Respons tidak valid");
         sanitizeCloudData(json);
 
-        // V14.4: jangan hidupkan kembali riwayat lama dari localStorage/queue.
-        // Jika server sudah kosong, browser juga harus kosong. Queue versi lama
-        // yang berisi snapshot Attendance dibuang sebelum data server diterapkan.
-        for(const legacyKey of LEGACY_QUEUE_KEYS){
-            try{ localStorage.removeItem(legacyKey); }catch(e){}
-        }
-        if(Array.isArray(json.attendance) && json.attendance.length===0){
-            _localSave(DB.attendance,[]);
-            const q=readCloudQueue().filter(item=>!/^saveAttendance\b|^addAttendance\b/.test(String(item?.action||"")));
-            writeCloudQueue(q);
-        }
+        // Server adalah sumber kebenaran untuk Attendance.
 
         _localSave(DB.users,json.users||[]);
         _localSave(DB.sessions,json.sessions||[]);
