@@ -1,13 +1,18 @@
-NEV Absenku — PATCH BACKEND UNTUK ROLE AKUN
+NEV Absenku V14.9.3 — PATCH BACKEND AKUN STAF
+
+Tujuan patch:
+1. HRD dapat mengubah Username/NIM staf.
+2. HRD dapat mengubah divisi staf.
+3. Nama staf dan password juga tetap dapat diubah.
+4. Username/NIM harus unik.
+5. Tidak perlu mengganti seluruh Code.gs aktif.
 
 PENTING:
-Jangan mengganti seluruh Code.gs yang sedang aktif dengan Code.gs lama dari arsip jika deployment Anda sekarang sudah menggunakan secure-v6-fast-login.
-Patch ini hanya untuk fungsi createUser_ agar HRD dapat membuat STAF / HRD / KOOR KP.
+Jika deployment aktif Anda sudah menggunakan secure-v6-fast-login, jangan mengganti seluruh Code.gs dengan file lama. Ganti hanya fungsi createUser_ dan updateUser_ seperti di bawah.
 
-1. Buka Apps Script yang sedang dipakai deployment aktif.
-2. Cari fungsi:
-   function createUser_(actor, data){ ... }
-3. Ganti fungsi tersebut dengan versi berikut:
+============================================================
+1. FUNGSI createUser_
+============================================================
 
 function createUser_(actor, data){
   if(actor.role!=="HRD" && actor.role!=="KOOR KP") throw new Error("Hanya HRD atau Koor KP yang dapat membuat akun.");
@@ -55,11 +60,78 @@ function createUser_(actor, data){
   return safeUser_(record);
 }
 
-4. Save.
-5. Deploy → Manage deployments → Edit deployment aktif → Version: New version → Deploy.
-6. Pastikan Execute as = Me dan Who has access = Anyone.
+============================================================
+2. GANTI FUNGSI updateUser_ DENGAN VERSI INI
+============================================================
 
-HASIL:
-- HRD: dapat membuat STAF, HRD, dan KOOR KP.
-- KOOR KP: hanya dapat membuat STAF dan otomatis memakai divisinya sendiri.
-- STAF: tidak dapat membuat akun.
+function updateUser_(actor,data){
+  const targetId=String(data.targetId||"");
+  const users=migratePlaintextPasswords_();
+  const user=users.find(u=>u.id===targetId);
+  if(!user) throw new Error("Akun tidak ditemukan.");
+
+  if(actor.role==="KOOR KP"){
+    if(user.id!==actor.id && (user.role!=="STAF" || user.division!==actor.division)){
+      throw new Error("Koor KP hanya dapat mengedit STAF di divisinya.");
+    }
+  }else if(actor.role!=="HRD"){
+    if(user.id!==actor.id) throw new Error("Akses ditolak.");
+  }
+
+  if(data.name!==undefined && String(data.name).trim()){
+    user.name=String(data.name).trim();
+  }
+
+  // Hanya HRD yang boleh mengubah Username/NIM dan divisi STAF.
+  if(actor.role==="HRD" && user.role==="STAF"){
+    if(data.username!==undefined){
+      const newUsername=String(data.username||"").trim();
+      if(!newUsername) throw new Error("Username/NIM tidak boleh kosong.");
+
+      const duplicate=users.some(u=>
+        u.id!==user.id &&
+        String(u.username||"").trim().toLowerCase()===newUsername.toLowerCase()
+      );
+      if(duplicate) throw new Error("NIM/username sudah digunakan oleh akun lain.");
+
+      user.username=newUsername;
+    }
+
+    if(data.division!==undefined){
+      const newDivision=String(data.division||"").trim();
+      if(!newDivision) throw new Error("Divisi wajib diisi untuk akun STAF.");
+      user.division=newDivision;
+    }
+  }
+
+  if(data.password) user.password=hashPassword_(String(data.password));
+
+  objectsToSheet_(SHEET_USERS,users);
+  return safeUser_(user);
+}
+
+============================================================
+3. CARA DEPLOY
+============================================================
+
+1. Buka Google Apps Script deployment aktif NEV Absenku.
+2. Cari createUser_ dan updateUser_.
+3. Ganti kedua fungsi tersebut dengan versi di atas.
+4. Save.
+5. Deploy → Manage deployments.
+6. Edit deployment aktif.
+7. Version → New version.
+8. Deploy.
+9. Pastikan Execute as = Me.
+10. Pastikan Who has access = Anyone.
+
+Setelah itu:
+HRD → Manajemen Akun → pilih staf → tombol pensil.
+
+Form Edit Akun STAF akan menampilkan:
+- Nama Lengkap
+- Username / NIM
+- Divisi
+- Password Baru (opsional)
+
+Role STAF tidak dapat diubah melalui form ini.

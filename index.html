@@ -3724,6 +3724,7 @@ STATE
 
 let currentUser = null;
 let loginRole = "STAF";
+let editingUserId = null;
 let currentQR = { hrd:null, koor:null };
 let html5QrCode = null;
 
@@ -5342,61 +5343,36 @@ function renderUsers(){
     `;
 }
 
-async function editUser(id){
-    if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
-        toast("Akses ditolak.", "error"); return;
+function editUser(id){
+    if(currentUser.role!=="HRD"){
+        toast("Hanya HRD yang dapat mengubah akun staf.", "error"); return;
     }
     const users=load(DB.users);
     const user=users.find(u=>u.id===id);
     if(!user)return;
 
     if(user.role!=="STAF"){
-        toast("Hanya akun STAF yang dapat dikelola dari menu ini.", "error"); return;
-    }
-    if(currentUser.role==="KOOR KP" && user.division!==currentUser.division){
-        toast("Akses ditolak.", "error"); return;
+        toast("Perubahan Username/NIM dan divisi pada menu ini hanya untuk akun STAF.", "error"); return;
     }
 
-    const name=prompt("Nama:", user.name);
-    if(name===null)return;
+    editingUserId=id;
+    const form=document.querySelector("#registerModal form");
+    if(form) form.reset();
 
-    // HRD dapat memindahkan STAF ke divisi lain.
-    // Riwayat absensi lama tetap menyimpan divisi saat absensi dilakukan.
-    let division=user.division || "";
-    if(currentUser.role==="HRD"){
-        const divisionInput=prompt(
-            "Divisi baru (Networking / Cyber / Sysadmin):",
-            user.division || ""
-        );
-        if(divisionInput===null)return;
-        division=divisionInput.trim();
-
-        const allowedDivisions=["Networking","Cyber","Sysadmin"];
-        const matched=allowedDivisions.find(d=>d.toLowerCase()===division.toLowerCase());
-        if(!matched){
-            toast("Divisi tidak valid. Pilih Networking, Cyber, atau Sysadmin.", "error");
-            return;
-        }
-        division=matched;
-    }
-
-    const password=prompt("Password baru (kosongkan jika tidak diubah):", "");
-
-    try{
-        const result=await cloudPost("updateUser", {
-            targetId:id,
-            name:name.trim(),
-            password:password || "",
-            division:division
-        },1);
-        const updated=result.user;
-        const next=users.map(u=>u.id===id ? updated : u);
-        _localSave(DB.users,next);
-        renderUsers();
-        toast("Akun berhasil diperbarui.", "success");
-    }catch(err){
-        toast("Gagal memperbarui akun: "+friendlyCloudError(err), "error");
-    }
+    document.getElementById("registerModalTitle").textContent="Edit Akun STAF";
+    document.getElementById("registerName").value=user.name || "";
+    document.getElementById("registerUsername").value=user.username || "";
+    document.getElementById("registerRole").value="STAF";
+    document.getElementById("registerRole").disabled=true;
+    document.getElementById("registerRoleGroup").classList.add("hidden");
+    document.getElementById("registerDivision").value=user.division || "";
+    document.getElementById("registerDivision").disabled=false;
+    document.getElementById("registerDivision").required=true;
+    document.getElementById("registerPassword").value="";
+    document.getElementById("registerPassword").required=false;
+    const passLabel=document.querySelector("#registerPassword")?.closest(".form-group")?.querySelector("label");
+    if(passLabel) passLabel.textContent="Password Baru (opsional)";
+    document.getElementById("registerModal").classList.add("show");
 }
 
 async function deleteUser(id){
@@ -5483,10 +5459,16 @@ function openRegister(){
         return;
     }
 
+    editingUserId=null;
     const roleSelect=document.getElementById("registerRole");
     const form=document.querySelector("#registerModal form");
     if(form) form.reset();
-    if(roleSelect) roleSelect.value="STAF";
+    if(roleSelect){ roleSelect.value="STAF"; roleSelect.disabled=false; }
+    document.getElementById("registerRoleGroup").classList.remove("hidden");
+    document.getElementById("registerPassword").required=true;
+    const passLabel=document.querySelector("#registerPassword")?.closest(".form-group")?.querySelector("label");
+    if(passLabel) passLabel.textContent="Password *";
+    document.getElementById("registerModalTitle").textContent="Tambah Akun";
     updateRegisterRoleUI();
     document.getElementById("registerModal").classList.add("show");
 }
@@ -5504,6 +5486,40 @@ async function register(event){
     const roleEl=document.getElementById("registerRole");
     let role=roleEl?.value || "STAF";
     let division=document.getElementById("registerDivision").value;
+
+    // MODE EDIT: khusus HRD untuk akun STAF. Username/NIM dan divisi dapat diubah.
+    if(editingUserId){
+        if(currentUser.role!=="HRD"){
+            toast("Hanya HRD yang dapat mengubah Username/NIM dan divisi staf.", "error"); return;
+        }
+        if(!name || !username || !division){
+            toast("Nama, Username/NIM, dan divisi wajib diisi.", "error"); return;
+        }
+
+        try{
+            const result=await cloudPost("updateUser", {
+                targetId:editingUserId,
+                name,
+                username,
+                division,
+                password:password || ""
+            },1);
+            const users=load(DB.users);
+            const next=users.map(u=>u.id===editingUserId ? result.user : u);
+            _localSave(DB.users,next);
+            editingUserId=null;
+            closeModal("registerModal");
+            if(document.querySelector("#registerModal form")) document.querySelector("#registerModal form").reset();
+            document.getElementById("registerPassword").required=true;
+            const passLabel=document.querySelector("#registerPassword")?.closest(".form-group")?.querySelector("label");
+            if(passLabel) passLabel.textContent="Password *";
+            renderUsers();
+            toast("Data staf berhasil diperbarui.", "success");
+        }catch(err){
+            toast("Gagal memperbarui data staf: "+friendlyCloudError(err), "error");
+        }
+        return;
+    }
 
     if(currentUser.role==="KOOR KP") role="STAF";
 
