@@ -28,8 +28,7 @@ const FALLBACK_FOLDER_NAMES = {
   presensi: "NEV Absenku - Foto Presensi"
 };
 
-const CODE_VERSION = "secure-v7.6-account-management";
-const ATTENDANCE_RESET_PROPERTY = "NEV_ATTENDANCE_RESET_AT";
+const CODE_VERSION = "secure-v3";
 
 const SHEET_USERS = "Users";
 const SHEET_SESSIONS = "Sessions";
@@ -212,20 +211,7 @@ function seedUsers_(){
   return seed;
 }
 
-const USERS_CACHE_KEY = "nev-users-cache-v1";
-const USERS_CACHE_TTL = 300; // 5 menit
-
-function invalidateUsersCache_(){
-  CacheService.getScriptCache().remove(USERS_CACHE_KEY);
-}
-
-function getUsersCached_(){
-  const cache=CacheService.getScriptCache();
-  const cached=cache.get(USERS_CACHE_KEY);
-  if(cached){
-    try{return JSON.parse(cached);}catch(e){}
-  }
-
+function migratePlaintextPasswords_(){
   const users=seedUsers_();
   let changed=false;
   users.forEach(u=>{
@@ -235,14 +221,7 @@ function getUsersCached_(){
     }
   });
   if(changed) objectsToSheet_(SHEET_USERS,users);
-
-  cache.put(USERS_CACHE_KEY,JSON.stringify(users),USERS_CACHE_TTL);
   return users;
-}
-
-// Backward-compatible alias. Semua autentikasi sekarang memakai cache.
-function migratePlaintextPasswords_(){
-  return getUsersCached_();
 }
 
 function authUser_(token){
@@ -254,7 +233,7 @@ function authUser_(token){
     throw err;
   }
   const session=JSON.parse(raw);
-  const users=getUsersCached_();
+  const users=migratePlaintextPasswords_();
   const user=users.find(u=>u.id===session.userId);
   if(!user){
     const err=new Error("Akun tidak ditemukan.");
@@ -277,152 +256,30 @@ function requireActor_(body){
 /* =========================================================
 ACCESS FILTER
 ========================================================= */
-function publicSession_(s){
-  if(!s) return null;
-  const out={...s};
-  delete out.token;
-  return out;
-}
-
-function publicAttendance_(a){
-  if(!a) return null;
-  const out={...a};
-  delete out.token;
-  return out;
-}
-
-/* =========================================================
-HISTORY RESET / AUTO ALPHA BOUNDARY
-========================================================= */
-function getAttendanceResetAt_(){
-  const raw=PropertiesService.getScriptProperties().getProperty(ATTENDANCE_RESET_PROPERTY);
-  const n=Number(raw||0);
-  return isFinite(n) && n>0 ? n : 0;
-}
-
-function ensureAttendanceResetMarker_(){
-  const props=PropertiesService.getScriptProperties();
-  const current=sheetToObjects_(SHEET_ATTENDANCE);
-  const existing=Number(props.getProperty(ATTENDANCE_RESET_PROPERTY)||0);
-  if(current.length===0 && !existing){
-    props.setProperty(ATTENDANCE_RESET_PROPERTY,String(Date.now()));
-    return Date.now();
-  }
-  return existing;
-}
-
-function attendanceVisibleAfterReset_(a, resetAt){
-  if(!resetAt) return true;
-  const check=String(a && a.checkIn || "");
-  const t=Date.parse(check);
-  if(!isNaN(t)) return t>=resetAt;
-  // Fallback untuk record lama yang tidak memiliki checkIn ISO.
-  const d=String(a && a.date || "");
-  const resetDate=Utilities.formatDate(new Date(resetAt),"Asia/Jakarta","yyyy-MM-dd");
-  return d>=resetDate;
-}
-
-/* =========================================================
-AUTO ALPHA
-========================================================= */
-function sessionHasEnded_(session, now){
-  const d=String(session.date||"");
-  const end=String(session.end||"");
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(d) || !/^\d{2}:\d{2}$/.test(end)) return false;
-  return d < now.date || (d === now.date && end < now.time);
-}
-
-function ensureAutomaticAlpha_(){
-  const now=wibNow_();
-  const resetAt=ensureAttendanceResetMarker_();
-  const sessions=sheetToObjects_(SHEET_SESSIONS);
-  const users=sheetToObjects_(SHEET_USERS).filter(u=>u.role==="STAF");
-  const attendance=sheetToObjects_(SHEET_ATTENDANCE);
-  const existing=new Set(attendance.map(a=>String(a.sessionId)+"|"+String(a.userId)));
-  const additions=[];
-
-  sessions.forEach(session=>{
-    // Jangan membuat Alpha dari sesi/riwayat yang dibuat sebelum history reset.
-    if(resetAt){
-      const created=Date.parse(String(session.createdAt||""));
-      if(isNaN(created) || created < resetAt) return;
-    }
-    if(!sessionHasEnded_(session,now)) return;
-
-    const eligible=users.filter(u=>
-      session.division==="-" || String(u.division||"")===String(session.division||"")
-    );
-
-    eligible.forEach(user=>{
-      const key=String(session.id)+"|"+String(user.id);
-      if(existing.has(key)) return;
-
-      additions.push({
-        id:makeServerId_("ATT"),
-        sessionId:session.id,
-        token:null,
-        userId:user.id,
-        userName:user.name,
-        username:user.username,
-        activity:session.activity,
-        division:session.division,
-        date:session.date,
-        checkIn:session.date+"T"+session.end+":00+07:00",
-        status:"Alpha",
-        creatorId:session.creatorId,
-        creatorRole:session.creatorRole,
-        lat:null,
-        lng:null,
-        photo:null,
-        permitId:null,
-        approvedFromPermit:false,
-        autoAlpha:true
-      });
-      existing.add(key);
-    });
-  });
-
-  if(additions.length){
-    withLock_(()=>{
-      const latest=sheetToObjects_(SHEET_ATTENDANCE);
-      const latestKeys=new Set(latest.map(a=>String(a.sessionId)+"|"+String(a.userId)));
-      const safeAdditions=additions.filter(a=>{
-        const key=String(a.sessionId)+"|"+String(a.userId);
-        if(latestKeys.has(key)) return false;
-        latestKeys.add(key);
-        return true;
-      });
-      if(safeAdditions.length) objectsToSheet_(SHEET_ATTENDANCE,latest.concat(safeAdditions));
-    });
-  }
-  return additions.length;
-}
-
 function sessionsFor_(user){
   const all=sheetToObjects_(SHEET_SESSIONS);
-  if(user.role==="HRD") return all.map(publicSession_);
-  if(user.role==="KOOR KP") return all
-    .filter(s=>s.activity==="Ngoprek" && s.division===user.division)
-    .map(publicSession_);
-  // STAF tidak perlu menerima token/QR atau seluruh database sesi.
-  // Ia hanya membutuhkan sesi aktif untuk kalender/pengajuan izin.
-  return all.filter(s=>s.active===true || String(s.active).toLowerCase()==="true").map(publicSession_);
+  if(user.role==="HRD") return all;
+  if(user.role==="KOOR KP"){
+    return all.filter(s=>s.creatorId===user.id && s.activity==="Ngoprek" && s.division===user.division);
+  }
+  return all;
 }
 
 function attendanceFor_(user){
-  const resetAt=getAttendanceResetAt_();
-  const all=sheetToObjects_(SHEET_ATTENDANCE).filter(a=>attendanceVisibleAfterReset_(a,resetAt));
-  if(user.role==="HRD") return all.map(publicAttendance_);
-  if(user.role==="KOOR KP") return all
-    .filter(a=>a.activity==="Ngoprek" && a.division===user.division)
-    .map(publicAttendance_);
-  return all.filter(a=>a.userId===user.id).map(publicAttendance_);
+  const all=sheetToObjects_(SHEET_ATTENDANCE);
+  if(user.role==="HRD") return all;
+  if(user.role==="KOOR KP"){
+    return all.filter(a=>a.creatorId===user.id && a.activity==="Ngoprek" && a.division===user.division);
+  }
+  return all.filter(a=>a.userId===user.id);
 }
 
 function permitsFor_(user){
   const all=sheetToObjects_(SHEET_PERMITS);
   if(user.role==="HRD") return all;
-  if(user.role==="KOOR KP") return all.filter(p=>p.sessionActivity==="Ngoprek" && p.sessionDivision===user.division);
+  if(user.role==="KOOR KP"){
+    return all.filter(p=>p.sessionCreatorId===user.id && p.sessionActivity==="Ngoprek");
+  }
   return all.filter(p=>p.userId===user.id);
 }
 
@@ -461,38 +318,6 @@ function savePhotoToDrive_(base64DataUrl,fileNameHint,kind){
   return "https://drive.google.com/file/d/"+file.getId()+"/view";
 }
 
-function driveFileId_(url){
-  const value=String(url||"").trim();
-  let m=value.match(/[?&]id=([A-Za-z0-9_-]+)/);
-  if(!m)m=value.match(/\/file\/d\/([A-Za-z0-9_-]+)/);
-  return m&&m[1]?m[1]:null;
-}
-
-function canViewPhoto_(actor,fileId){
-  if(actor.role==="HRD") return true;
-  const att=sheetToObjects_(SHEET_ATTENDANCE).find(a=>driveFileId_(a.photo)===fileId);
-  if(att){
-    if(actor.role==="STAF") return String(att.userId)===String(actor.id);
-    return actor.role==="KOOR KP" && att.activity==="Ngoprek" && att.division===actor.division;
-  }
-  const permit=sheetToObjects_(SHEET_PERMITS).find(p=>driveFileId_(p.photo)===fileId);
-  if(permit){
-    if(actor.role==="STAF") return String(permit.userId)===String(actor.id);
-    return actor.role==="KOOR KP" && permit.sessionActivity==="Ngoprek" && permit.sessionDivision===actor.division;
-  }
-  return false;
-}
-
-function getPhotoData_(actor,fileId){
-  if(!fileId) throw new Error("ID foto tidak ditemukan.");
-  if(!canViewPhoto_(actor,fileId)) throw new Error("Akses foto ditolak.");
-  let file;
-  try{ file=DriveApp.getFileById(fileId); }catch(err){ throw new Error("File foto tidak ditemukan atau sudah dihapus."); }
-  const blob=file.getBlob();
-  const mime=blob.getContentType()||"image/jpeg";
-  return {ok:true,mimeType:mime,data:Utilities.base64Encode(blob.getBytes())};
-}
-
 function withLock_(fn){
   const lock=LockService.getScriptLock();
   lock.waitLock(30000);
@@ -520,8 +345,7 @@ function doGet(e){
     const action=(e.parameter && e.parameter.action)||"bootstrap";
 
     if(action==="bootstrap"){
-      // Hangatkan cache akun agar request login berikutnya tidak perlu membaca Sheets.
-      getUsersCached_();
+      migratePlaintextPasswords_();
       return jsonResponse_({
         ok:true,
         version:CODE_VERSION,
@@ -529,27 +353,8 @@ function doGet(e){
       });
     }
 
-    if(action==="getSessionToken"){
-      const user=authUser_(e.parameter && e.parameter.authToken);
-      const sessionId=String(e.parameter && e.parameter.sessionId || "");
-      const sessions=sheetToObjects_(SHEET_SESSIONS);
-      const session=sessions.find(s=>s.id===sessionId);
-      if(!session) throw new Error("QR/kegiatan tidak ditemukan.");
-      const allowed = user.role==="HRD" ||
-        (user.role==="KOOR KP" && session.activity==="Ngoprek" && session.division===user.division);
-      if(!allowed) throw new Error("Akses ditolak untuk QR ini.");
-      return jsonResponse_({ok:true, sessionId:session.id, token:String(session.token||"")});
-    }
-
-    if(action==="getPhoto"){
-      const user=authUser_(e.parameter && e.parameter.authToken);
-      const fileId=String(e.parameter && e.parameter.photoId || "");
-      return jsonResponse_(getPhotoData_(user,fileId));
-    }
-
     if(action==="getAll"){
       const user=authUser_(e.parameter && e.parameter.authToken);
-      ensureAutomaticAlpha_();
       return jsonResponse_({
         ok:true,
         version:CODE_VERSION,
@@ -577,21 +382,23 @@ function createUser_(actor, data){
   const name=String(data.name||"").trim();
   const username=String(data.username||"").trim();
   const password=String(data.password||"");
-  const role=String(data.role||"STAF").trim().toUpperCase();
+  let role=String(data.role||"STAF").trim().toUpperCase();
   let division=String(data.division||"").trim();
 
-  const allowedRoles=["STAF","KOOR KP","HRD"];
-  if(!allowedRoles.includes(role)) throw new Error("Role akun tidak valid.");
-  if(actor.role==="KOOR KP" && role!=="STAF") throw new Error("Koor KP hanya dapat membuat akun STAF.");
   if(!name || !username || !password) throw new Error("Nama, username/NIM, dan password wajib diisi.");
+  if(["STAF","KOOR KP","HRD"].indexOf(role)===-1) throw new Error("Role akun tidak valid.");
 
-  // HRD tidak terikat divisi. Akun STAF dan KOOR KP wajib memiliki divisi.
+  // KOOR KP hanya boleh membuat akun STAF di divisinya sendiri.
+  if(actor.role==="KOOR KP"){
+    if(role!=="STAF") throw new Error("Koor KP hanya dapat membuat akun STAF.");
+    division=actor.division;
+  }
+
+  // HRD boleh membuat ketiga role. HRD tidak membutuhkan divisi.
   if(role==="HRD"){
     division=null;
-  }else if(actor.role==="KOOR KP"){
-    division=actor.division;
   }else if(!division){
-    throw new Error("Divisi wajib diisi untuk akun STAF atau KOOR KP.");
+    throw new Error("Divisi wajib diisi untuk akun STAF dan KOOR KP.");
   }
 
   const users=sheetToObjects_(SHEET_USERS);
@@ -601,11 +408,9 @@ function createUser_(actor, data){
 
   const record={
     id:"U-"+Date.now()+"-"+Math.floor(Math.random()*10000),
-    name, username, password:hashPassword_(password),
-    role, division
+    name, username, password:hashPassword_(password), role, division
   };
   appendObject_(SHEET_USERS,record);
-  invalidateUsersCache_();
   return safeUser_(record);
 }
 
@@ -617,6 +422,7 @@ function updateUser_(actor,data){
 
   if(actor.role==="KOOR KP"){
     if(user.id!==actor.id && (user.role!=="STAF" || user.division!==actor.division)) throw new Error("Koor KP hanya dapat mengedit STAF di divisinya.");
+    if(user.id!==actor.id && data.role && String(data.role).toUpperCase()!=="STAF") throw new Error("Koor KP tidak dapat mengubah role STAF.");
   }else if(actor.role!=="HRD"){
     if(user.id!==actor.id) throw new Error("Akses ditolak.");
   }
@@ -624,28 +430,35 @@ function updateUser_(actor,data){
   if(data.name!==undefined && String(data.name).trim()) user.name=String(data.name).trim();
 
   if(data.username!==undefined){
-    const nextUsername=String(data.username).trim();
-    if(!nextUsername) throw new Error("Username/NIM tidak boleh kosong.");
-    if(nextUsername.toLowerCase()!==String(user.username||"").toLowerCase() &&
-       users.some(u=>u.id!==user.id && String(u.username||"").toLowerCase()===nextUsername.toLowerCase())){
+    const username=String(data.username).trim();
+    if(!username) throw new Error("Username/NIM tidak boleh kosong.");
+    if(users.some(u=>u.id!==user.id && String(u.username).toLowerCase()===username.toLowerCase())){
       throw new Error("NIM/username sudah digunakan.");
     }
-    user.username=nextUsername;
+    user.username=username;
   }
 
-  if(actor.role==="HRD" && user.role!=="HRD" && data.division!==undefined){
-    const nextDivision=String(data.division||"").trim();
-    if(!nextDivision) throw new Error("Divisi wajib diisi untuk akun STAF atau KOOR KP.");
-    user.division=nextDivision;
+  if(actor.role==="HRD" && data.role!==undefined){
+    const role=String(data.role).trim().toUpperCase();
+    if(["STAF","KOOR KP","HRD"].indexOf(role)===-1) throw new Error("Role akun tidak valid.");
+    // Jangan biarkan HRD mengubah role akun yang sedang dipakai menjadi non-HRD.
+    if(user.id===actor.id && role!=="HRD") throw new Error("Akun HRD yang sedang login tidak dapat diubah menjadi role lain.");
+    user.role=role;
   }
 
+  if(user.role==="HRD"){
+    user.division=null;
+  }else if(data.division!==undefined && String(data.division).trim()){
+    if(actor.role==="KOOR KP") user.division=actor.division;
+    else user.division=String(data.division).trim();
+  }
+
+  if(user.role!=="HRD" && !user.division) throw new Error("Divisi wajib diisi untuk akun STAF dan KOOR KP.");
   if(data.password) user.password=hashPassword_(String(data.password));
 
   objectsToSheet_(SHEET_USERS,users);
-  invalidateUsersCache_();
   return safeUser_(user);
 }
-
 function deleteUser_(actor,data){
   const id=String(data.targetId||"");
   const users=sheetToObjects_(SHEET_USERS);
@@ -660,7 +473,6 @@ function deleteUser_(actor,data){
   }
 
   objectsToSheet_(SHEET_USERS,users.filter(u=>u.id!==id));
-  invalidateUsersCache_();
   return {ok:true};
 }
 
@@ -673,7 +485,7 @@ function deleteSession_(actor,sessionId){
   if(!session) throw new Error("Kegiatan/QR tidak ditemukan.");
 
   if(actor.role==="KOOR KP"){
-    if(session.activity!=="Ngoprek" || session.division!==actor.division){
+    if(session.creatorId!==actor.id || session.activity!=="Ngoprek" || session.division!==actor.division){
       throw new Error("Koor KP hanya dapat menghapus QR Ngoprek miliknya.");
     }
   }else if(actor.role!=="HRD"){
@@ -686,35 +498,13 @@ function deleteSession_(actor,sessionId){
   return {ok:true};
 }
 
-function deleteAttendanceBulk_(actor,ids){
-  if(!Array.isArray(ids) || !ids.length) throw new Error("Tidak ada data absensi yang dipilih.");
-
-  const wanted=new Set(ids.map(v=>String(v||"").trim()).filter(Boolean));
-  if(!wanted.size) throw new Error("ID absensi tidak valid.");
-
-  const list=sheetToObjects_(SHEET_ATTENDANCE);
-
-  if(actor.role!=="HRD" && actor.role!=="KOOR KP") throw new Error("Akses ditolak.");
-
-  if(actor.role==="KOOR KP") {
-    const unauthorized=list.find(a=>wanted.has(String(a.id||"")) &&
-      (a.activity!=="Ngoprek" || a.division!==actor.division));
-    if(unauthorized) throw new Error("Koor KP hanya dapat menghapus absensi Ngoprek dari divisinya sendiri.");
-  }
-
-  const remaining=list.filter(a=>!wanted.has(String(a.id||"")));
-  const removed=list.length-remaining.length;
-  objectsToSheet_(SHEET_ATTENDANCE,remaining);
-  return {ok:true,removed:removed};
-}
-
 function deleteAttendance_(actor,id){
   const list=sheetToObjects_(SHEET_ATTENDANCE);
   const rec=list.find(a=>a.id===id);
   if(!rec) throw new Error("Data absensi tidak ditemukan.");
 
   if(actor.role==="KOOR KP"){
-    if(rec.activity!=="Ngoprek" || rec.division!==actor.division){
+    if(rec.creatorId!==actor.id || rec.activity!=="Ngoprek" || rec.division!==actor.division){
       throw new Error("Koor KP hanya dapat menghapus absensi Ngoprek miliknya.");
     }
   }else if(actor.role!=="HRD"){
@@ -726,210 +516,26 @@ function deleteAttendance_(actor,id){
 }
 
 /* =========================================================
-SECURE ATTENDANCE / PERMIT HELPERS
+ATTENDANCE / PERMIT HELPERS
 ========================================================= */
-function isFiniteNumber_(v){ return typeof v === "number" && isFinite(v); }
+function addRecord_(sheetName,record,photoKind,isDuplicate,actor){
+  const existing=sheetToObjects_(sheetName).filter(isDuplicate)[0];
+  if(existing)return {ok:true,record:existing,duplicate:true};
 
-function haversineMeters_(lat1,lng1,lat2,lng2){
-  const R=6371000;
-  const toRad=x=>x*Math.PI/180;
-  const dLat=toRad(lat2-lat1), dLng=toRad(lng2-lng1);
-  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
-  return 2*R*Math.asin(Math.min(1,Math.sqrt(a)));
-}
-
-function wibNow_(){
-  const now=new Date();
-  return {
-    date:Utilities.formatDate(now,"Asia/Jakarta","yyyy-MM-dd"),
-    time:Utilities.formatDate(now,"Asia/Jakarta","HH:mm")
-  };
-}
-
-function timeInWindow_(time,start,end){
-  if(!/^\d{2}:\d{2}$/.test(String(start||"")) || !/^\d{2}:\d{2}$/.test(String(end||""))) return false;
-  return String(time)>=String(start) && String(time)<=String(end);
-}
-
-function safePhotoValue_(photo){
-  if(photo===null || photo===undefined || photo==="") return null;
-  const value=String(photo).trim();
-  if(/^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/i.test(value)) return value;
-  if(/^https:\/\/drive\.google\.com\/file\/d\/[A-Za-z0-9_-]+\/view(?:\?.*)?$/i.test(value)) return value;
-  if(/^https:\/\/drive\.google\.com\/thumbnail\?id=[A-Za-z0-9_-]+(?:&.*)?$/i.test(value)) return value;
-  throw new Error("Foto tidak valid.");
-}
-
-function makeServerId_(prefix){ return prefix+"-"+Date.now()+"-"+Utilities.getUuid().slice(0,8); }
-
-function validateSessionForAttendance_(actor,data){
-  const sessionId=String(data.sessionId||"");
-  const suppliedToken=String(data.token||"").trim();
-  if(!sessionId || !suppliedToken) throw new Error("Sesi absensi atau token QR tidak lengkap.");
-
-  const session=sheetToObjects_(SHEET_SESSIONS).find(s=>String(s.id)===sessionId);
-  if(!session) throw new Error("Kegiatan/QR tidak ditemukan.");
-  if(!session.active) throw new Error("QR/kegiatan sudah tidak aktif.");
-  if(String(session.token||"")!==suppliedToken) throw new Error("Token QR tidak valid atau sudah diubah.");
-
-  const now=wibNow_();
-  if(String(session.date)!==now.date) throw new Error("Absensi hanya dapat dilakukan pada tanggal kegiatan.");
-  if(!timeInWindow_(now.time,session.start,session.end)) throw new Error("Absensi dilakukan di luar jam kegiatan.");
-
-  const lat=Number(data.lat), lng=Number(data.lng);
-  if(session.geoEnabled){
-    if(!isFiniteNumber_(lat) || !isFiniteNumber_(lng)) throw new Error("Lokasi wajib dikirim untuk kegiatan ini.");
-    if(!isFiniteNumber_(Number(session.geoLat)) || !isFiniteNumber_(Number(session.geoLng)) || !isFiniteNumber_(Number(session.geoRadius))){
-      throw new Error("Konfigurasi geofence kegiatan tidak valid.");
-    }
-    const distance=haversineMeters_(lat,lng,Number(session.geoLat),Number(session.geoLng));
-    if(distance>Number(session.geoRadius)) throw new Error("Anda berada di luar radius geofence kegiatan.");
-  }
-  return session;
-}
-
-function addAttendanceSecure_(actor,data){
-  if(actor.role!=="STAF" || String(data.userId||"")!==String(actor.id)) throw new Error("Hanya STAF yang dapat mengirim absensinya sendiri.");
-  const session=validateSessionForAttendance_(actor,data);
-  const existing=sheetToObjects_(SHEET_ATTENDANCE).find(a=>String(a.sessionId)===String(session.id) && String(a.userId)===String(actor.id));
-  if(existing) return {ok:true,record:publicAttendance_(existing),duplicate:true};
-
-  const photo=safePhotoValue_(data.photo);
-  const record={
-    id:makeServerId_("ATT"), sessionId:session.id, token:session.token,
-    userId:actor.id, userName:actor.name, username:actor.username,
-    activity:session.activity, division:session.division, date:session.date,
-    checkIn:new Date().toISOString(), status:"Hadir",
-    creatorId:session.creatorId, creatorRole:session.creatorRole,
-    lat:isFiniteNumber_(Number(data.lat)) ? Number(data.lat) : null,
-    lng:isFiniteNumber_(Number(data.lng)) ? Number(data.lng) : null,
-    photo:null, permitId:null, approvedFromPermit:false
-  };
-  if(photo) record.photo=savePhotoToDrive_(photo,actor.username+"_"+session.date+"_"+record.id,"selfie");
-  appendObject_(SHEET_ATTENDANCE,record);
-  return {ok:true,record:publicAttendance_(record)};
-}
-
-function addPermitSecure_(actor,data){
-  if(actor.role!=="STAF" || String(data.userId||"")!==String(actor.id)) throw new Error("Akses ditolak.");
-  const sessionId=String(data.sessionId||"");
-  const session=sheetToObjects_(SHEET_SESSIONS).find(s=>String(s.id)===sessionId);
-  if(!session) throw new Error("Kegiatan tidak ditemukan.");
-  if(String(session.date)!==wibNow_().date) throw new Error("Pengajuan izin/sakit hanya dapat dibuat untuk kegiatan hari ini.");
-  if(session.division!=="-" && String(actor.division||"")!==String(session.division)) throw new Error("Anda bukan anggota divisi kegiatan ini.");
-  if(String(data.sessionActivity||session.activity)!==String(session.activity) || String(data.sessionDivision||session.division)!==String(session.division)) throw new Error("Data kegiatan tidak valid.");
-  const type=String(data.type||"");
-  if(type!=="Izin" && type!=="Sakit") throw new Error("Jenis pengajuan tidak valid.");
-  const reason=String(data.reason||"").trim();
-  if(!reason) throw new Error("Alasan wajib diisi.");
-  const photo=safePhotoValue_(data.photo);
-  if(!photo) throw new Error("Bukti foto wajib dilampirkan.");
-
-  const existing=sheetToObjects_(SHEET_PERMITS).find(p=>String(p.sessionId)===sessionId && String(p.userId)===String(actor.id) && String(p.status)!=="Ditolak");
-  if(existing) return {ok:true,record:existing,duplicate:true};
-
-  const record={
-    id:makeServerId_("PERMIT"), sessionId:session.id, sessionActivity:session.activity,
-    sessionDivision:session.division, sessionDate:session.date, sessionLocation:session.location,
-    sessionCreatorId:session.creatorId, sessionCreatorRole:session.creatorRole,
-    userId:actor.id, userName:actor.name, username:actor.username,
-    type, reason, photo:null, status:"Menunggu", submittedAt:new Date().toISOString(),
-    reviewedBy:null, reviewedByName:null, reviewedAt:null, reviewNote:null
-  };
-  record.photo=savePhotoToDrive_(photo,actor.username+"_"+session.date+"_"+record.id,"permit");
-  appendObject_(SHEET_PERMITS,record);
-  return {ok:true,record:record};
-}
-
-function canReviewPermit_(actor,permit){
-  if(actor.role==="HRD") return true;
-  return actor.role==="KOOR KP" && permit.sessionActivity==="Ngoprek" && permit.sessionDivision===actor.division;
-}
-
-function reviewPermitSecure_(actor,data){
-  const permitId=String(data.permitId||"");
-  const decision=String(data.decision||"");
-  if(decision!=="Disetujui" && decision!=="Ditolak") throw new Error("Keputusan tidak valid.");
-  const permits=sheetToObjects_(SHEET_PERMITS);
-  const permit=permits.find(p=>String(p.id)===permitId);
-  if(!permit) throw new Error("Pengajuan tidak ditemukan.");
-  if(!canReviewPermit_(actor,permit)) throw new Error("Akses ditolak.");
-  if(permit.status!=="Menunggu"){
-    if(permit.status===decision) return {ok:true,permit:permit,attendance:null,duplicate:true};
-    throw new Error("Pengajuan ini sudah diproses.");
+  if(record.photo && String(record.photo).indexOf("data:")===0){
+    record.photo=savePhotoToDrive_(
+      record.photo,
+      (record.username||"user")+"_"+(record.date||record.sessionDate||"")+"_"+(record.id||Date.now()),
+      photoKind
+    );
   }
 
-  permit.status=decision;
-  permit.reviewedBy=actor.id;
-  permit.reviewedByName=actor.name;
-  permit.reviewedAt=new Date().toISOString();
-  permit.reviewNote=String(data.reviewNote||"").trim() || null;
-  objectsToSheet_(SHEET_PERMITS,permits);
-
-  let attendance=null;
-  if(decision==="Disetujui"){
-    const list=sheetToObjects_(SHEET_ATTENDANCE);
-    attendance=list.find(a=>String(a.sessionId)===String(permit.sessionId) && String(a.userId)===String(permit.userId));
-    if(attendance){
-      attendance.status=permit.type;
-      attendance.photo=permit.photo;
-      attendance.permitId=permit.id;
-      attendance.approvedFromPermit=true;
-    }else{
-      attendance={
-        id:makeServerId_("ATT"), sessionId:permit.sessionId, token:null,
-        userId:permit.userId, userName:permit.userName, username:permit.username,
-        activity:permit.sessionActivity, division:permit.sessionDivision, date:permit.sessionDate,
-        checkIn:permit.submittedAt, status:permit.type,
-        creatorId:permit.sessionCreatorId, creatorRole:permit.sessionCreatorRole,
-        lat:null,lng:null,photo:permit.photo,permitId:permit.id,approvedFromPermit:true
-      };
-      list.push(attendance);
-    }
-    objectsToSheet_(SHEET_ATTENDANCE,list);
-  }
-  return {ok:true,permit:permit,attendance:attendance?publicAttendance_(attendance):null};
-}
-
-function mergeAuthorizedAttendance_(actor,incoming){
-  if(actor.role==="STAF") throw new Error("STAF tidak dapat mengubah absensi melalui sinkronisasi umum.");
-  const current=sheetToObjects_(SHEET_ATTENDANCE);
-  const sessions=sheetToObjects_(SHEET_SESSIONS);
-  const users=sheetToObjects_(SHEET_USERS);
-  const byId={}; current.forEach(r=>{if(r.id)byId[r.id]=r;});
-  (incoming||[]).forEach(raw=>{
-    if(!raw) return;
-    const status=String(raw.status||"");
-    if(["Hadir","Izin","Sakit","Alpha"].indexOf(status)<0) throw new Error("Status absensi tidak valid.");
-    const old=raw.id ? byId[raw.id] : null;
-    if(old){
-      if(actor.role==="KOOR KP" && !(old.activity==="Ngoprek" && old.division===actor.division)) throw new Error("Koor KP tidak dapat mengubah absensi di luar divisinya.");
-      old.status=status;
-      byId[old.id]=old;
-      return;
-    }
-
-    const session=sessions.find(s=>String(s.id)===String(raw.sessionId));
-    const user=users.find(u=>String(u.id)===String(raw.userId) && u.role==="STAF");
-    if(!session || !user) throw new Error("Sesi atau staf untuk absensi manual tidak ditemukan.");
-    if(actor.role==="KOOR KP" && !(session.activity==="Ngoprek" && session.division===actor.division)) throw new Error("Koor KP hanya dapat menambah absensi Ngoprek miliknya.");
-    if(session.division!=="-" && String(user.division||"")!==String(session.division)) throw new Error("Staf bukan anggota divisi kegiatan.");
-
-    const duplicate=current.find(a=>String(a.sessionId)===String(session.id) && String(a.userId)===String(user.id));
-    if(duplicate){ duplicate.status=status; byId[duplicate.id]=duplicate; return; }
-
-    const record={
-      id:makeServerId_("ATT"), sessionId:session.id, token:null,
-      userId:user.id, userName:user.name, username:user.username,
-      activity:session.activity, division:session.division, date:session.date,
-      checkIn:new Date().toISOString(), status,
-      creatorId:session.creatorId, creatorRole:session.creatorRole,
-      lat:null,lng:null,photo:null,permitId:null,approvedFromPermit:false,
-      markedManuallyBy:actor.id
-    };
-    byId[record.id]=record;
+  return withLock_(function(){
+    const again=sheetToObjects_(sheetName).filter(isDuplicate)[0];
+    if(again)return {ok:true,record:again,duplicate:true};
+    appendObject_(sheetName,record);
+    return {ok:true,record:record};
   });
-  withLock_(()=>objectsToSheet_(SHEET_ATTENDANCE,Object.values(byId)));
 }
 
 /* =========================================================
@@ -946,7 +552,7 @@ function doPost(e){
       const password=String(body.data && body.data.password || "");
       const role=String(body.data && body.data.role || "");
 
-      const users=getUsersCached_();
+      const users=migratePlaintextPasswords_();
       const hash=hashPassword_(password);
       const user=users.find(u=>
         String(u.username).toLowerCase()===username.toLowerCase() &&
@@ -975,27 +581,15 @@ function doPost(e){
       case "deleteSession":
         return jsonResponse_(withLock_(()=>deleteSession_(actor,String(data.sessionId||""))));
 
-      case "resetAttendanceHistory":{
-        if(actor.role!=="HRD") throw new Error("Hanya HRD yang dapat menghapus seluruh riwayat absensi.");
-        return jsonResponse_(withLock_(()=>{
-          objectsToSheet_(SHEET_ATTENDANCE,[]);
-          PropertiesService.getScriptProperties().setProperty(ATTENDANCE_RESET_PROPERTY,String(Date.now()));
-          return {ok:true,resetAt:Date.now()};
-        }));
-      }
-
       case "deleteAttendance":
         return jsonResponse_(withLock_(()=>deleteAttendance_(actor,String(data.attendanceId||""))));
-
-      case "deleteAttendanceBulk":
-        return jsonResponse_(withLock_(()=>deleteAttendanceBulk_(actor,data.attendanceIds||[])));
 
       case "saveSessions":{
         if(actor.role==="STAF") throw new Error("STAF tidak dapat mengubah sesi.");
         const incoming=data;
         if(actor.role==="KOOR KP"){
           incoming.forEach(s=>{
-            if(s.activity!=="Ngoprek" || s.division!==actor.division){
+            if(s.creatorId!==actor.id || s.activity!=="Ngoprek" || s.division!==actor.division){
               throw new Error("Koor KP hanya dapat menyimpan sesi Ngoprek miliknya.");
             }
           });
@@ -1009,21 +603,43 @@ function doPost(e){
         withLock_(()=>objectToSettingsSheet_(data));
         return jsonResponse_({ok:true});
 
-      case "saveAttendance":
-        mergeAuthorizedAttendance_(actor,data);
+      case "saveAttendance":{
+        if(actor.role==="STAF"){
+          if((data||[]).some(a=>a.userId!==actor.id)) throw new Error("STAF hanya dapat menyimpan absensinya sendiri.");
+        }else if(actor.role==="KOOR KP"){
+          if((data||[]).some(a=>a.creatorId!==actor.id || a.activity!=="Ngoprek" || a.division!==actor.division)){
+            throw new Error("Koor KP hanya dapat mengubah absensi Ngoprek miliknya.");
+          }
+        }else if(actor.role!=="HRD"){
+          throw new Error("Akses ditolak.");
+        }
+        withLock_(()=>mergeObjectsById_(SHEET_ATTENDANCE,data));
         return jsonResponse_({ok:true});
+      }
 
-      case "savePermits":
-        throw new Error("Pengajuan izin/sakit harus dibuat melalui endpoint resmi.");
+      case "savePermits":{
+        if(actor.role==="STAF"){
+          if((data||[]).some(p=>p.userId!==actor.id)) throw new Error("Akses ditolak.");
+        }else if(actor.role==="KOOR KP"){
+          if((data||[]).some(p=>p.sessionCreatorId!==actor.id)) throw new Error("Koor KP hanya dapat mengelola pengajuan miliknya.");
+        }else if(actor.role!=="HRD"){
+          throw new Error("Akses ditolak.");
+        }
+        withLock_(()=>mergeObjectsById_(SHEET_PERMITS,data));
+        return jsonResponse_({ok:true});
+      }
 
-      case "addAttendance":
-        return jsonResponse_(withLock_(()=>addAttendanceSecure_(actor,data)));
+      case "addAttendance":{
+        if(actor.role!=="STAF" || data.userId!==actor.id) throw new Error("Hanya STAF yang dapat mengirim absensi dirinya sendiri.");
+        return jsonResponse_(addRecord_(SHEET_ATTENDANCE,data,"selfie",
+          r=>r.id===data.id || (r.sessionId===data.sessionId && r.userId===data.userId),actor));
+      }
 
-      case "addPermit":
-        return jsonResponse_(withLock_(()=>addPermitSecure_(actor,data)));
-
-      case "reviewPermit":
-        return jsonResponse_(withLock_(()=>reviewPermitSecure_(actor,data)));
+      case "addPermit":{
+        if(actor.role!=="STAF" || data.userId!==actor.id) throw new Error("Akses ditolak.");
+        return jsonResponse_(addRecord_(SHEET_PERMITS,data,"permit",
+          r=>r.id===data.id || (r.sessionId===data.sessionId && r.userId===data.userId && r.status!=="Ditolak"),actor));
+      }
 
       default:
         return jsonResponse_({ok:false,error:"Action tidak dikenali: "+action});

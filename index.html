@@ -1103,7 +1103,7 @@ LOGIN
         <div class="login-brand">
 
             <div class="logo-circle">
-                <img src="nev-logo.webp" alt="NEV Logo">
+                <img src="nev-logo.png" alt="NEV Logo">
             </div>
 
             <h1>NEV Absenku</h1>
@@ -1173,8 +1173,6 @@ LOGIN
 
                     <input
                         id="loginUsername"
-                        name="username"
-                        autocomplete="username"
                         class="form-control"
                         placeholder="Masukkan username"
                         required
@@ -1188,8 +1186,6 @@ LOGIN
 
                     <input
                         id="loginPassword"
-                        name="password"
-                        autocomplete="current-password"
                         type="password"
                         class="form-control"
                         placeholder="Masukkan password"
@@ -1230,7 +1226,7 @@ APP
         <div class="sidebar-logo">
 
             <div class="sidebar-logo-icon">
-                <img src="nev-logo.webp" alt="NEV Logo">
+                <img src="nev-logo.png" alt="NEV Logo">
             </div>
 
             <span>NEV Absenku</span>
@@ -2817,7 +2813,7 @@ APP
                             <h3>Rekap Absensi</h3>
 
                             <p>
-                                Laporan seluruh data absensi. Tombol <b>Hapus Semua Tampil</b> menghapus hanya data yang sedang sesuai filter.
+                                Laporan seluruh data absensi
                             </p>
 
                         </div>
@@ -2839,16 +2835,6 @@ APP
 
                                 <i class="fa-solid fa-file-pdf"></i>
                                 PDF
-
-                            </button>
-
-                            <button
-                                class="btn btn-danger"
-                                style="background:#991b1b;"
-                                onclick="deleteAllVisibleAttendance()">
-
-                                <i class="fa-solid fa-trash-can"></i>
-                                Hapus Semua Tampil
 
                             </button>
 
@@ -2969,17 +2955,7 @@ APP
                     </div>
 
 
-                    <div class="section-card" style="margin-top:15px;">
-                        <div class="section-header">
-                            <div>
-                                <h3>Rekap Jumlah Absensi Setiap Staf</h3>
-                                <p>Jumlah Hadir, Izin, Sakit, dan Alpha per staf. Ringkasan mengikuti filter tanggal/kegiatan/divisi/pencarian.</p>
-                            </div>
-                        </div>
-                        <div id="hrdStaffRecapTable"></div>
-                    </div>
-
-                    <div style="margin-top:15px;" id="hrdReportTable"></div>
+                    <div id="hrdReportTable"></div>
 
                 </div>
 
@@ -3158,9 +3134,6 @@ APP
                             <button class="btn btn-danger" onclick="exportKoorPDF()">
                                 <i class="fa-solid fa-file-pdf"></i> PDF
                             </button>
-                            <button class="btn btn-danger" style="background:#991b1b;" onclick="deleteAllVisibleAttendance()">
-                                <i class="fa-solid fa-trash-can"></i> Hapus Semua Tampil
-                            </button>
                         </div>
 
                     </div>
@@ -3185,17 +3158,7 @@ APP
                         </div>
                     </div>
 
-                    <div class="section-card" style="margin-top:15px;">
-                        <div class="section-header">
-                            <div>
-                                <h3>Rekap Jumlah Absensi Setiap Staf</h3>
-                                <p>Rekap otomatis untuk staf pada divisi divisi akun Koor KP.</p>
-                            </div>
-                        </div>
-                        <div id="koorStaffRecapTable"></div>
-                    </div>
-
-                    <div style="margin-top:15px;" id="koorAttendanceTable"></div>
+                    <div id="koorAttendanceTable"></div>
 
                 </div>
 
@@ -3386,8 +3349,8 @@ REGISTER MODAL
                     <select
                         id="registerRole"
                         class="form-control"
-                        onchange="toggleRegisterDivision()"
-                        required>
+                        required
+                        onchange="toggleRegisterDivision()">
 
                         <option value="STAF">STAF</option>
                         <option value="KOOR KP">KOOR KP</option>
@@ -3746,7 +3709,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 });
 
 function setDefaultDates(){
-    const today = new Intl.DateTimeFormat("en-CA", { timeZone:"Asia/Jakarta", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
+    const today = new Date().toISOString().split("T")[0];
     const ids = ["hrdDate", "koorDate"];
     ids.forEach(id=>{
         const el = document.getElementById(id);
@@ -3765,84 +3728,69 @@ function selectLoginRole(role,button){
     button.classList.add("active");
 }
 
-let loginInProgress = false;
-
 async function login(event){
-    if(event) event.preventDefault();
-    if(loginInProgress) return;
+  event.preventDefault();
 
-    const usernameEl = document.getElementById("loginUsername");
-    const passwordEl = document.getElementById("loginPassword");
-    const btn = document.getElementById("loginSubmitBtn");
-    const username = usernameEl ? usernameEl.value.trim() : "";
-    const password = passwordEl ? passwordEl.value : "";
+  const username = document.getElementById("loginUsername").value.trim();
+  const password = document.getElementById("loginPassword").value;
 
-    if(!username || !password){
-        toast("Username dan password wajib diisi.", "error");
-        return;
+  try{
+    const result = await cloudPost("login", {
+      username: username,
+      password: password,
+      role: loginRole
+    }, 1);
+
+    if(!result || !result.ok || !result.user){
+      toast(
+        result?.error || "Username, password, atau role tidak sesuai.",
+        "error"
+      );
+      return;
     }
 
-    loginInProgress = true;
-    if(btn){
-        btn.disabled = true;
-        btn.classList.add("nev-login-loading");
-        btn.setAttribute("aria-busy","true");
-        btn.setAttribute("aria-label","Memproses login");
-    }
+    currentUser = result.user;
+    if(result.authToken) localStorage.setItem("nev_auth_token", result.authToken);
 
-    // Beri browser kesempatan untuk menggambar spinner SEBELUM request jaringan.
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    localStorage.setItem(
+      "nev_current_user",
+      JSON.stringify(currentUser)
+    );
 
-    try{
-        const result = await cloudPost("login", {
-            username,
-            password,
-            role: loginRole
-        }, 1);
-
-        if(!result || !result.ok || !result.user || !result.authToken){
-            throw new Error(result?.error || "Username, password, atau role tidak sesuai.");
-        }
-
-        localStorage.setItem("nev_auth_token", result.authToken);
-        localStorage.setItem("nev_current_user", JSON.stringify(result.user));
-        currentUser = result.user;
-
-        initializeDatabase();
-        document.getElementById("loginScreen")?.classList.add("hidden");
-        document.getElementById("app")?.classList.remove("hidden");
-        buildSidebar();
-        updateUserUI();
-
-        if(currentUser.role === "STAF") showPage("staf-dashboard");
-        else if(currentUser.role === "HRD") showPage("hrd-dashboard");
-        else showPage("koor-dashboard");
-
-        updateCloudBadge();
-        toast("Login berhasil.", "success");
-
-        // Sinkronisasi berjalan di belakang layar dan TIDAK mengubah status login.
-        queueMicrotask(async()=>{
-            try{
-                await flushCloudQueue();
-                const ok = await fetchCloudAll();
-                if(ok && currentUser) renderAll();
-            }catch(err){
-                console.warn("Sinkronisasi awal gagal:", err);
-            }
-        });
-    }catch(err){
-        console.error("Login error:", err);
-        toast(friendlyCloudError(err), "error");
-    }finally{
-        loginInProgress = false;
-        if(btn){
-            btn.disabled = false;
-            btn.classList.remove("nev-login-loading");
-            btn.removeAttribute("aria-busy");
-            btn.removeAttribute("aria-label");
+    if(typeof fetchCloudAll === "function"){
+        const synced = await fetchCloudAll();
+        if(!synced){
+            localStorage.removeItem("nev_auth_token");
+            localStorage.removeItem("nev_current_user");
+            currentUser = null;
+            toast("Login berhasil tetapi data pusat tidak dapat diambil. Coba lagi.", "error");
+            return;
         }
     }
+
+    document.getElementById("loginScreen").classList.add("hidden");
+    document.getElementById("app").classList.remove("hidden");
+
+    buildSidebar();
+    updateUserUI();
+
+    if(currentUser.role === "STAF"){
+      showPage("staf-dashboard");
+    }
+    else if(currentUser.role === "HRD"){
+      showPage("hrd-dashboard");
+    }
+    else if(currentUser.role === "KOOR KP"){
+      showPage("koor-dashboard");
+    }
+
+  }catch(err){
+    console.error("Login error:", err);
+    toast(
+      "Gagal terhubung ke server. Silakan coba lagi.",
+      "error"
+    );
+  }
 }
 
 function logout(){
@@ -4332,7 +4280,6 @@ function startScanner(){
         errorMessage=>{}
     ).then(()=>{
         updateScannerStatus("Kamera aktif. Arahkan kamera ke QR.", "normal");
-        setupScannerZoom();
     }).catch(error=>{
         html5QrCode=null;
         console.error("Gagal membuka kamera:", error);
@@ -4346,48 +4293,11 @@ function startScanner(){
     });
 }
 
-function setupScannerZoom(){
-    const reader=document.getElementById("reader");
-    if(!reader) return;
-    document.getElementById("scannerZoomControl")?.remove();
-
-    const video=reader.querySelector("video");
-    const track=video?.srcObject?.getVideoTracks?.()[0];
-    const caps=track?.getCapabilities?.() || {};
-    const settings=track?.getSettings?.() || {};
-    const min=Number(caps.zoom?.min ?? 1);
-    const max=Number(caps.zoom?.max ?? 1);
-    const step=Number(caps.zoom?.step ?? 0.1);
-    const current=Number(settings.zoom ?? min);
-
-    const wrap=document.createElement("div");
-    wrap.id="scannerZoomControl";
-    wrap.style.cssText="margin:12px auto 4px;max-width:420px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:12px;background:#fff;display:flex;align-items:center;gap:10px;";
-    if(max>min){
-        wrap.innerHTML=`<i class="fa-solid fa-magnifying-glass-minus"></i><input id="scannerZoomRange" type="range" min="${min}" max="${max}" step="${step}" value="${Math.min(Math.max(current,min),max)}" style="flex:1;"><span id="scannerZoomValue" style="min-width:48px;text-align:right;font-size:12px;font-weight:700;">${Math.round(current*10)/10}×</span><i class="fa-solid fa-magnifying-glass-plus"></i>`;
-        reader.insertAdjacentElement("afterend",wrap);
-        const range=document.getElementById("scannerZoomRange");
-        const value=document.getElementById("scannerZoomValue");
-        range.addEventListener("input",async()=>{
-            const zoom=Number(range.value);
-            value.textContent=`${Math.round(zoom*10)/10}×`;
-            try{
-                if(track?.applyConstraints) await track.applyConstraints({advanced:[{zoom}]});
-                else if(html5QrCode?.applyVideoConstraints) await html5QrCode.applyVideoConstraints({advanced:[{zoom}]});
-            }catch(err){ console.warn("Zoom kamera tidak didukung:",err); }
-        });
-    }else{
-        wrap.innerHTML=`<span style="font-size:12px;color:#666;"><i class="fa-solid fa-circle-info"></i> Zoom kamera tidak didukung oleh perangkat/browser ini.</span>`;
-        reader.insertAdjacentElement("afterend",wrap);
-    }
-}
-
 function stopScanner(){
     if(!html5QrCode) return;
     html5QrCode.stop().then(()=>{
         html5QrCode.clear();
         html5QrCode=null;
-        document.getElementById("scannerZoomControl")?.remove();
         updateScannerStatus("Scanner dihentikan.", "normal");
     }).catch(()=>{ html5QrCode=null; });
 }
@@ -4452,7 +4362,58 @@ function printQR(type){
             <img src="${image}">
             <p>Scan QR menggunakan aplikasi NEV Absenku.</p>
         
-<!-- Login loading is handled by the main page. -->
+<script id="nev-login-loading-script">
+/* =========================================================
+   LOGIN LOADING — tidak mengubah fungsi login/cloud-sync.
+   Hanya memberi feedback visual saat request login berjalan.
+========================================================= */
+(function(){
+    let resetTimer = null;
+
+    function getLoginButton(){
+        return document.getElementById("loginSubmitBtn");
+    }
+
+    function setLoginLoading(loading){
+        const btn = getLoginButton();
+        if(!btn) return;
+        btn.classList.toggle("nev-login-loading", !!loading);
+        btn.disabled = !!loading;
+        btn.setAttribute("aria-busy", loading ? "true" : "false");
+        if(!loading && resetTimer){
+            clearTimeout(resetTimer);
+            resetTimer = null;
+        }
+    }
+
+    document.addEventListener("submit", function(event){
+        const form = event.target;
+        if(!form || !form.querySelector || !form.querySelector("#loginUsername")) return;
+
+        const btn = getLoginButton();
+        if(!btn || btn.classList.contains("nev-login-loading")) return;
+
+        setLoginLoading(true);
+
+        // Pengaman: jika login gagal/terputus tanpa mengubah halaman,
+        // tombol otomatis kembali normal setelah 20 detik.
+        resetTimer = setTimeout(function(){
+            const screen = document.getElementById("loginScreen");
+            if(screen && !screen.classList.contains("hidden")) setLoginLoading(false);
+        }, 20000);
+    }, true);
+
+    // Jika login berhasil, loginScreen diberi class "hidden" oleh aplikasi.
+    // Loader tidak perlu disentuh karena form sudah tidak terlihat.
+    const screen = document.getElementById("loginScreen");
+    if(screen){
+        const observer = new MutationObserver(function(){
+            if(screen.classList.contains("hidden")) setLoginLoading(false);
+        });
+        observer.observe(screen, {attributes:true, attributeFilter:["class"]});
+    }
+})();
+</script>
 
 </body></html>
     `);
@@ -4499,8 +4460,8 @@ async function deleteSession(id,type){
     if(!session)return;
 
     if(currentUser.role==="KOOR KP" &&
-       (session.activity!=="Ngoprek" || session.division!==currentUser.division)){
-        toast("Akses ditolak. QR hanya dapat dikelola dalam divisi Anda.","error");
+       (session.creatorId!==currentUser.id || session.activity!=="Ngoprek" || session.division!==currentUser.division)){
+        toast("Akses ditolak. Koor KP hanya dapat menghapus QR Ngoprek miliknya sendiri.","error");
         return;
     }
     if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
@@ -4578,24 +4539,13 @@ function renderQRSessionList(type){
     `;
 }
 
-async function loadSessionToQR(id,type){
+function loadSessionToQR(id,type){
     const sessions=load(DB.sessions);
     const session=sessions.find(s=>s.id===id);
     if(!session)return;
-
-    try{
-        // Token QR tidak lagi dikirim melalui getAll. Ambil hanya saat HRD/Koor
-        // benar-benar meminta QR tertentu untuk ditampilkan/print.
-        if(!session.token && typeof getCloudSessionToken==="function"){
-            session.token=await getCloudSessionToken(session.id);
-        }
-        if(!session.token) throw new Error("Token QR tidak tersedia.");
-        currentQR[type]=session;
-        renderGeneratedQR(type, session);
-        toast("QR session ditampilkan.", "success");
-    }catch(err){
-        toast("Gagal mengambil QR: "+friendlyCloudError(err),"error");
-    }
+    currentQR[type]=session;
+    renderGeneratedQR(type, session);
+    toast("QR session ditampilkan.", "success");
 }
 
 
@@ -4702,7 +4652,7 @@ function openSessionAttendanceEdit(sessionId,userId){
     const staff=users.find(u=>u.id===userId);
     if(!session || !staff)return;
 
-    if(currentUser.role==="KOOR KP" && (session.activity!=="Ngoprek" || session.division!==currentUser.division)){
+    if(currentUser.role==="KOOR KP" && (session.creatorId!==currentUser.id || session.activity!=="Ngoprek")){
         toast("Koor KP hanya dapat mengubah absensi Ngoprek yang dibuatnya.", "error"); return;
     }
 
@@ -4840,20 +4790,13 @@ function photoCandidates(url){
     ];
 }
 
-async function photoFallback(img){
-    const original = img.dataset.orig || "";
-    const list = photoCandidates(original);
+function photoFallback(img){
+    const list = photoCandidates(img.dataset.orig || "");
     const next = (parseInt(img.dataset.idx || "0", 10)) + 1;
     if(next < list.length){
         img.dataset.idx = String(next);
         img.src = list[next];
-        return;
     }
-    if(!img.dataset.proxyTried && typeof window.nevLoadPhotoProxy === "function"){
-        img.dataset.proxyTried = "1";
-        try{ img.src = await window.nevLoadPhotoProxy(original); return; }catch(err){ console.warn("Proxy foto gagal:",err); }
-    }
-    img.style.opacity = "0.45";
 }
 
 function photoThumbHTML(photo, onclick, alt){
@@ -4909,19 +4852,10 @@ function showPhotoLightbox(title, subtitle, note, photo){
     const img = overlay.querySelector("#photoLightboxImg");
     const err = overlay.querySelector("#photoLightboxError");
     let i = 0;
-    let proxyTried = false;
-    img.onerror = async ()=>{
+    img.onerror = ()=>{
         i++;
-        if(i < list.length){
-            img.src = list[i];
-            return;
-        }
-        if(!proxyTried && typeof window.nevLoadPhotoProxy === "function"){
-            proxyTried = true;
-            try{ img.src = await window.nevLoadPhotoProxy(photo); return; }catch(e){ console.warn("Proxy foto gagal:",e); }
-        }
-        img.style.display = "none";
-        err.style.display = "block";
+        if(i < list.length){ img.src = list[i]; }
+        else { img.style.display = "none"; err.style.display = "block"; }
     };
     img.src = list[0];
 }
@@ -4941,88 +4875,24 @@ function viewProofPhoto(id){
 HRD REPORT & DASHBOARD
 ========================================================= */
 
-function getFilteredHRDAttendance(ignoreStatus=false){
+function renderHRDReport(){
+    if(currentUser?.role!=="HRD")return;
     let data=load(DB.attendance);
-    const date=document.getElementById("filterDate")?.value || "";
-    const activity=document.getElementById("filterActivity")?.value || "";
-    const division=document.getElementById("filterDivision")?.value || "";
-    const status=document.getElementById("filterStatus")?.value || "";
+    const date=document.getElementById("filterDate").value;
+    const activity=document.getElementById("filterActivity").value;
+    const division=document.getElementById("filterDivision").value;
+    const status=document.getElementById("filterStatus").value;
     const search=(document.getElementById("filterSearch")?.value || "").trim().toLowerCase();
 
     if(date) data=data.filter(a=>a.date===date);
     if(activity) data=data.filter(a=>a.activity===activity);
     if(division) data=data.filter(a=>a.division===division);
-    if(!ignoreStatus && status) data=data.filter(a=>a.status===status);
+    if(status) data=data.filter(a=>a.status===status);
     if(search) data=data.filter(a=>
         String(a.userName||"").toLowerCase().includes(search) ||
         String(a.username||"").toLowerCase().includes(search)
     );
-    return data;
-}
 
-function buildStaffRecapTable(staff,attendance){
-    const counts={};
-    staff.forEach(u=>counts[u.id]={
-        name:u.name||"-", username:u.username||"-", division:u.division||"-",
-        hadir:0, izin:0, sakit:0, alpha:0
-    });
-
-    attendance.forEach(a=>{
-        const c=counts[a.userId];
-        if(!c)return;
-        if(a.status==="Hadir") c.hadir++;
-        else if(a.status==="Izin") c.izin++;
-        else if(a.status==="Sakit") c.sakit++;
-        else if(a.status==="Alpha") c.alpha++;
-    });
-
-    const rows=Object.values(counts).sort((a,b)=>a.name.localeCompare(b.name,"id"));
-    if(!rows.length) return emptyHTML("fa-users","Belum ada data staf.");
-
-    return `<div class="table-wrapper">
-        <table>
-            <thead><tr>
-                <th>No</th><th>Nama</th><th>NIM</th><th>Divisi</th>
-                <th>Hadir</th><th>Izin</th><th>Sakit</th><th>Alpha</th><th>Total Sesi</th>
-            </tr></thead>
-            <tbody>${rows.map((r,i)=>{
-                const total=r.hadir+r.izin+r.sakit+r.alpha;
-                return `<tr>
-                    <td>${i+1}</td>
-                    <td><strong>${escapeHTML(r.name)}</strong></td>
-                    <td>${escapeHTML(r.username)}</td>
-                    <td>${escapeHTML(r.division)}</td>
-                    <td><span class="badge badge-hadir">${r.hadir}</span></td>
-                    <td><span class="badge badge-izin">${r.izin}</span></td>
-                    <td><span class="badge badge-sakit">${r.sakit}</span></td>
-                    <td><span class="badge badge-alpha">${r.alpha}</span></td>
-                    <td><strong>${total}</strong></td>
-                </tr>`;
-            }).join("")}</tbody>
-        </table>
-    </div>`;
-}
-
-function renderHRDStaffRecap(){
-    if(currentUser?.role!=="HRD")return;
-    const users=load(DB.users).filter(u=>u.role==="STAF");
-    const attendance=getFilteredHRDAttendance(true);
-    const search=(document.getElementById("filterSearch")?.value||"").trim().toLowerCase();
-    const division=document.getElementById("filterDivision")?.value||"";
-    let staff=users;
-    if(division) staff=staff.filter(u=>u.division===division);
-    if(search) staff=staff.filter(u=>
-        String(u.name||"").toLowerCase().includes(search) ||
-        String(u.username||"").toLowerCase().includes(search)
-    );
-    const el=document.getElementById("hrdStaffRecapTable");
-    if(el) el.innerHTML=buildStaffRecapTable(staff,attendance);
-}
-
-function renderHRDReport(){
-    if(currentUser?.role!=="HRD")return;
-    const data=getFilteredHRDAttendance(false);
-    renderHRDStaffRecap();
     const container=document.getElementById("hrdReportTable");
     if(!data.length){
         container.innerHTML=emptyHTML("fa-table-list", "Tidak ada data sesuai filter."); return;
@@ -5064,8 +4934,8 @@ function renderStafDashboard(){
 }
 
 function renderKoorDashboard(){
-    const sessions=load(DB.sessions).filter(s=> s.activity==="Ngoprek" && s.division===currentUser.division);
-    const attendance=load(DB.attendance).filter(a=> a.activity==="Ngoprek" && a.division===currentUser.division);
+    const sessions=load(DB.sessions).filter(s=> s.creatorId===currentUser.id && s.activity==="Ngoprek");
+    const attendance=load(DB.attendance).filter(a=> a.creatorId===currentUser.id && a.activity==="Ngoprek");
     
     document.getElementById("koorTotalQR").textContent=sessions.length;
     document.getElementById("koorTotalHadir").textContent=attendance.filter(a=>a.status==="Hadir").length;
@@ -5073,33 +4943,23 @@ function renderKoorDashboard(){
     document.getElementById("koorCyber").textContent=attendance.filter(a=>a.division==="Cyber").length;
 }
 
-function getFilteredKoorAttendance(){
+function renderKoorAttendance(){
+    if(currentUser?.role!=="KOOR KP")return;
     let attendance=load(DB.attendance).filter(a=>
+        a.creatorId===currentUser.id &&
         a.activity==="Ngoprek" &&
         a.division===currentUser.division
     );
+
     const date=document.getElementById("koorFilterDate")?.value || "";
     const search=(document.getElementById("koorFilterSearch")?.value || "").trim().toLowerCase();
+
     if(date) attendance=attendance.filter(a=>a.date===date);
     if(search) attendance=attendance.filter(a=>
         String(a.userName||"").toLowerCase().includes(search) ||
         String(a.username||"").toLowerCase().includes(search)
     );
-    return attendance;
-}
 
-function renderKoorStaffRecap(){
-    if(currentUser?.role!=="KOOR KP")return;
-    const users=load(DB.users).filter(u=>u.role==="STAF" && u.division===currentUser.division);
-    const attendance=getFilteredKoorAttendance();
-    const el=document.getElementById("koorStaffRecapTable");
-    if(el) el.innerHTML=buildStaffRecapTable(users,attendance);
-}
-
-function renderKoorAttendance(){
-    if(currentUser?.role!=="KOOR KP")return;
-    const attendance=getFilteredKoorAttendance();
-    renderKoorStaffRecap();
     const container=document.getElementById("koorAttendanceTable");
     if(!attendance.length){
         container.innerHTML=emptyHTML("fa-clipboard-check", "Tidak ada absensi Ngoprek sesuai filter.");
@@ -5130,7 +4990,7 @@ function openEditAttendance(id){
     if(currentUser.role==="STAF"){
         toast("STAF tidak dapat mengubah status absensi.", "error"); return;
     }
-    if(currentUser.role==="KOOR KP" && (record.activity!=="Ngoprek" || record.division!==currentUser.division)){
+    if(currentUser.role==="KOOR KP" && (record.creatorId!==currentUser.id || record.activity!=="Ngoprek")){
         toast("Koor KP hanya dapat mengubah absensi Ngoprek yang dibuatnya.", "error"); return;
     }
 
@@ -5156,7 +5016,7 @@ function saveAttendanceEdit(){
     let record = id ? attendance.find(a=>a.id===id) : null;
 
     if(record){
-        if(currentUser.role==="KOOR KP" && (record.activity!=="Ngoprek" || record.division!==currentUser.division)){
+        if(currentUser.role==="KOOR KP" && (record.creatorId!==currentUser.id || record.activity!=="Ngoprek")){
             toast("Akses ditolak.", "error"); return;
         }
         record.status=status;
@@ -5168,7 +5028,7 @@ function saveAttendanceEdit(){
         const staff=users.find(u=>u.id===userId);
         if(!session || !staff){ closeModal("editAttendanceModal"); return; }
 
-        if(currentUser.role==="KOOR KP" && (session.activity!=="Ngoprek" || session.division!==currentUser.division)){
+        if(currentUser.role==="KOOR KP" && (session.creatorId!==currentUser.id || session.activity!=="Ngoprek")){
             toast("Akses ditolak.", "error"); return;
         }
 
@@ -5196,58 +5056,13 @@ function saveAttendanceEdit(){
     toast("Status absensi berhasil diperbarui.", "success");
 }
 
-async function deleteAllVisibleAttendance(){
-    if(currentUser?.role!=="HRD" && currentUser?.role!=="KOOR KP") {
-        toast("Akses ditolak.","error");
-        return;
-    }
-
-    const data = currentUser.role==="HRD"
-        ? getFilteredHRDAttendance(false)
-        : getFilteredKoorAttendance();
-
-    if(!data.length){
-        toast("Tidak ada data absensi yang sedang tampil untuk dihapus.","error");
-        return;
-    }
-
-    const scope = currentUser.role==="HRD"
-        ? "sesuai filter Rekap Absensi"
-        : `Ngoprek divisi ${currentUser.division||"ini"} sesuai filter`;
-
-    const first = confirm(`Hapus SEMUA ${data.length} data absensi ${scope}?\n\nTindakan ini tidak dapat dibatalkan. Foto di Google Drive tidak ikut dihapus.`);
-    if(!first) return;
-
-    const second = confirm(`KONFIRMASI TERAKHIR\n\nAnda akan menghapus ${data.length} data absensi dari Google Sheets.\n\nLanjutkan?`);
-    if(!second) return;
-
-    const ids=[...new Set(data.map(a=>String(a.id||"").trim()).filter(Boolean))];
-    if(!ids.length){
-        toast("Data tidak memiliki ID yang valid.","error");
-        return;
-    }
-
-    try{
-        await cloudPost("deleteAttendanceBulk",{attendanceIds:ids},1);
-
-        const idSet=new Set(ids);
-        _localSave(DB.attendance,load(DB.attendance).filter(a=>!idSet.has(String(a.id||""))));
-
-        renderAll();
-        if(typeof renderSessionStaffStatus === "function") renderSessionStaffStatus();
-        toast(`${ids.length} data absensi berhasil dihapus.`,"success");
-    }catch(err){
-        toast("Gagal menghapus data absensi: "+friendlyCloudError(err),"error");
-    }
-}
-
 async function deleteAttendance(id){
     const attendance=load(DB.attendance);
     const record=attendance.find(a=>a.id===id);
     if(!record)return;
 
     if(currentUser.role==="KOOR KP" &&
-       (record.activity!=="Ngoprek" || record.division!==currentUser.division)){
+       (record.creatorId!==currentUser.id || record.activity!=="Ngoprek" || record.division!==currentUser.division)){
         toast("Akses ditolak. Anda hanya dapat menghapus absensi Ngoprek milik Anda.","error");
         return;
     }
@@ -5275,22 +5090,19 @@ USERS (HRD & KOOR KP)
 
 function renderUsers(){
     if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP") return;
-    
+
     const users=load(DB.users);
-    let displayUsers = [];
-    
-    // HRD dapat melihat semua akun. Koor KP hanya melihat staf di divisinya.
-    if(currentUser.role==="HRD") {
-        document.getElementById("btnTambahAkun").style.display = "inline-flex";
-        displayUsers = users;
-    } 
-    else if(currentUser.role==="KOOR KP") {
-        document.getElementById("btnTambahAkun").style.display = "inline-flex";
-        displayUsers = users.filter(u => u.role === "STAF" && u.division === currentUser.division);
+    let displayUsers=[];
+
+    if(currentUser.role==="HRD"){
+        document.getElementById("btnTambahAkun").style.display="inline-flex";
+        displayUsers=users;
+    }else{
+        document.getElementById("btnTambahAkun").style.display="inline-flex";
+        displayUsers=users.filter(u=>u.role==="STAF" && u.division===currentUser.division);
     }
 
     const container=document.getElementById("usersTable");
-
     if(!displayUsers.length){
         container.innerHTML=emptyHTML("fa-users-slash", "Belum ada data pengguna yang ditampilkan.");
         return;
@@ -5316,14 +5128,13 @@ function renderUsers(){
                             <td><span class="badge badge-active">${escapeHTML(u.role)}</span></td>
                             <td>${escapeHTML(u.division || "-")}</td>
                             <td>
-                                ${currentUser.role === 'HRD' ? `
-                                <button class="btn btn-outline" style="padding:7px 9px; margin-right: 5px;" onclick="editUser('${u.id}')">
+                                <button class="btn btn-outline" style="padding:7px 9px; margin-right:5px;" onclick="editUser('${u.id}')">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
-                                ` : ''}
+                                ${u.id!==currentUser.id ? `
                                 <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteUser('${u.id}')">
                                     <i class="fa-solid fa-trash"></i>
-                                </button>
+                                </button>` : ''}
                             </td>
                         </tr>
                     `).join("")}
@@ -5335,83 +5146,95 @@ function renderUsers(){
 
 async function editUser(id){
     if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
-        toast("Akses ditolak.", "error"); return;
+        toast("Akses ditolak.","error"); return;
     }
+
     const users=load(DB.users);
     const user=users.find(u=>u.id===id);
     if(!user)return;
 
-    // HRD dapat mengelola seluruh akun. Koor KP hanya dapat mengelola STAF di divisinya.
     if(currentUser.role==="KOOR KP" && (user.role!=="STAF" || user.division!==currentUser.division)){
-        toast("Akses ditolak. Koor KP hanya dapat mengedit STAF di divisinya.", "error"); return;
+        toast("Akses ditolak. Anda hanya dapat mengedit STAF di divisi Anda.","error"); return;
     }
 
-    const name=prompt("Nama lengkap:", user.name);
+    const name=prompt("Nama lengkap:",user.name);
     if(name===null)return;
-
-    const username=prompt("Username / NIM:", user.username);
+    const username=prompt("Username / NIM:",user.username);
     if(username===null)return;
 
+    let role=user.role;
     let division=user.division || "";
-    if(currentUser.role==="HRD" && user.role!=="HRD"){
-        division=prompt("Divisi (Networking / Cyber / Sysadmin):", user.division || "");
-        if(division===null)return;
-        division=division.trim();
-        if(!division){
-            toast("Divisi wajib diisi.", "error"); return;
+
+    if(currentUser.role==="HRD"){
+        const roleInput=prompt("Role (STAF / KOOR KP / HRD):",user.role);
+        if(roleInput===null)return;
+        role=roleInput.trim().toUpperCase();
+        if(!["STAF","KOOR KP","HRD"].includes(role)){
+            toast("Role harus STAF, KOOR KP, atau HRD.","error"); return;
         }
+        if(role!=="HRD"){
+            const divInput=prompt("Divisi (Networking / Cyber / Sysadmin):",user.division || "");
+            if(divInput===null)return;
+            division=divInput.trim();
+        }else{
+            division="";
+        }
+    }else{
+        role="STAF";
+        division=currentUser.division;
     }
 
-    const password=prompt("Password baru (kosongkan jika tidak diubah):", "");
+    const password=prompt("Password baru (kosongkan jika tidak diubah):","");
 
     try{
-        const payload={
+        const result=await cloudPost("updateUser",{
             targetId:id,
             name:name.trim(),
             username:username.trim(),
+            role,
+            division,
             password:password || ""
-        };
-        if(currentUser.role==="HRD" && user.role!=="HRD") payload.division=division;
+        },1);
 
-        const result=await cloudPost("updateUser", payload,1);
-        const updated=result.user;
-        const next=users.map(u=>u.id===id ? updated : u);
+        const next=users.map(u=>u.id===id ? result.user : u);
         _localSave(DB.users,next);
 
         if(currentUser.id===id){
-            currentUser=updated;
+            currentUser=result.user;
             localStorage.setItem("nev_current_user",JSON.stringify(currentUser));
+            buildSidebar();
             updateUserUI();
         }
 
         renderUsers();
-        toast("Akun berhasil diperbarui.", "success");
+        toast("Akun berhasil diperbarui.","success");
     }catch(err){
-        toast("Gagal memperbarui akun: "+friendlyCloudError(err), "error");
+        toast("Gagal memperbarui akun: "+friendlyCloudError(err),"error");
     }
 }
 
 async function deleteUser(id){
-    if(!confirm("Yakin ingin menghapus akun STAF ini?")) return;
     const users=load(DB.users);
     const user=users.find(u=>u.id===id);
     if(!user)return;
-
+    if(user.id===currentUser.id){
+        toast("Akun yang sedang login tidak dapat dihapus.","error"); return;
+    }
     if(currentUser.role==="KOOR KP" && (user.role!=="STAF" || user.division!==currentUser.division)){
-        toast("Akses ditolak. Anda hanya dapat menghapus Staf di divisi Anda.", "error");
-        return;
+        toast("Akses ditolak. Anda hanya dapat menghapus Staf di divisi Anda.","error"); return;
     }
     if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
-        toast("Akses ditolak.", "error"); return;
+        toast("Akses ditolak.","error"); return;
     }
+    if(!confirm(`Yakin ingin menghapus akun ${user.name}?`)) return;
 
     try{
         await cloudPost("deleteUser",{targetId:id},1);
         _localSave(DB.users,users.filter(u=>u.id!==id));
         renderUsers();
-        toast("Akun berhasil dihapus.", "success");
+        toast("Akun berhasil dihapus.","success");
     }catch(err){
-        toast("Gagal menghapus akun: "+friendlyCloudError(err), "error");
+        toast("Gagal menghapus akun: "+friendlyCloudError(err),"error");
     }
 }
 
@@ -5421,16 +5244,12 @@ PEMBUATAN AKUN OLEH HRD / KOOR KP
 ========================================================= */
 
 function toggleRegisterDivision(){
-    const divGroup = document.getElementById("registerDivisionGroup");
-    const divSelect = document.getElementById("registerDivision");
-    const roleSelect = document.getElementById("registerRole");
-    if(!divGroup || !divSelect || !roleSelect) return;
+    const divGroup=document.getElementById("registerDivisionGroup");
+    const divSelect=document.getElementById("registerDivision");
+    const roleSelect=document.getElementById("registerRole");
+    if(!divGroup || !divSelect || !roleSelect || !currentUser)return;
 
-    const isKoor = currentUser?.role==="KOOR KP";
-    const isHRD = currentUser?.role==="HRD";
-
-    // Koor KP hanya boleh membuat STAF.
-    if(isKoor){
+    if(currentUser.role==="KOOR KP"){
         roleSelect.value="STAF";
         roleSelect.disabled=true;
         divSelect.value=currentUser.division || "";
@@ -5440,10 +5259,8 @@ function toggleRegisterDivision(){
         return;
     }
 
-    roleSelect.disabled=!isHRD;
-    const role=roleSelect.value || "STAF";
-
-    // Akun HRD tidak memiliki divisi.
+    roleSelect.disabled=false;
+    const role=roleSelect.value;
     if(role==="HRD"){
         divSelect.value="";
         divSelect.disabled=true;
@@ -5458,22 +5275,14 @@ function toggleRegisterDivision(){
 
 function openRegister(){
     if(!currentUser || (currentUser.role!=="HRD" && currentUser.role!=="KOOR KP")){
-        toast("Hanya HRD atau Koor KP yang dapat membuat akun.", "error");
+        toast("Hanya HRD atau Koor KP yang dapat membuat akun.","error");
         return;
     }
 
-    const roleSelect=document.getElementById("registerRole");
-    const title=document.querySelector("#registerModal .modal-header h3");
     const form=document.querySelector("#registerModal form");
-    if(form) form.reset();
-
-    if(currentUser.role==="KOOR KP"){
-        roleSelect.value="STAF";
-    }else{
-        roleSelect.value="STAF";
-    }
-    if(title) title.textContent="Tambah Akun";
-
+    if(form)form.reset();
+    const roleSelect=document.getElementById("registerRole");
+    if(roleSelect)roleSelect.value="STAF";
     toggleRegisterDivision();
     document.getElementById("registerModal").classList.add("show");
 }
@@ -5482,51 +5291,48 @@ async function register(event){
     event.preventDefault();
 
     if(!currentUser || (currentUser.role!=="HRD" && currentUser.role!=="KOOR KP")){
-        toast("Akses ditolak.", "error"); return;
+        toast("Akses ditolak.","error"); return;
     }
 
     const name=document.getElementById("registerName").value.trim();
     const username=document.getElementById("registerUsername").value.trim();
     const password=document.getElementById("registerPassword").value;
-    const role=document.getElementById("registerRole").value;
+    let role=document.getElementById("registerRole").value;
     let division=document.getElementById("registerDivision").value;
 
-    if(!name || !username || !password || !role){
-        toast("Nama, username/NIM, role, dan password wajib diisi.", "error"); return;
-    }
-
     if(currentUser.role==="KOOR KP"){
-        if(role!=="STAF"){
-            toast("Koor KP hanya dapat membuat akun STAF.", "error"); return;
-        }
+        role="STAF";
         division=currentUser.division;
     }
 
-    if(role!=="HRD" && !division){
-        toast("Divisi wajib dipilih untuk akun STAF atau KOOR KP.", "error"); return;
+    if(!name || !username || !password){
+        toast("Nama, username/NIM, dan password wajib diisi.","error"); return;
     }
-
-    if(role==="HRD") division="";
+    if(role!=="HRD" && !division){
+        toast("Divisi wajib dipilih untuk STAF dan KOOR KP.","error"); return;
+    }
+    if(role==="HRD")division="";
 
     try{
-        const result=await cloudPost("createUser", {
-            name, username, password, division, role
+        const result=await cloudPost("createUser",{
+            name,username,password,division,role
         },1);
 
         const users=load(DB.users);
-        const existingIndex=users.findIndex(u=>u.id===result.user.id);
-        if(existingIndex>=0) users[existingIndex]=result.user;
+        const existing=users.findIndex(u=>u.id===result.user.id);
+        if(existing>=0)users[existing]=result.user;
         else users.push(result.user);
         _localSave(DB.users,users);
 
         closeModal("registerModal");
-        document.querySelector("#registerModal form").reset();
-        document.getElementById("registerRole").disabled=false;
+        const form=document.querySelector("#registerModal form");
+        if(form)form.reset();
+        if(document.getElementById("registerRole"))document.getElementById("registerRole").value="STAF";
         toggleRegisterDivision();
         renderUsers();
-        toast(`Akun ${result.user.role} berhasil dibuat.`, "success");
+        toast(`Akun ${result.user.role} berhasil dibuat.`,"success");
     }catch(err){
-        toast("Gagal membuat akun: "+friendlyCloudError(err), "error");
+        toast("Gagal membuat akun: "+friendlyCloudError(err),"error");
     }
 }
 
@@ -5793,41 +5599,62 @@ function canReviewPermit(permit){
     return false;
 }
 
-async function approvePermit(id){
+function approvePermit(id){
     const permits = load(DB.permits);
     const permit = permits.find(p=>p.id===id);
     if(!permit){ toast("Pengajuan tidak ditemukan.", "error"); return; }
     if(!canReviewPermit(permit)){ toast("Akses ditolak.", "error"); return; }
     if(permit.status!=="Menunggu"){ toast("Pengajuan ini sudah diproses.", "error"); return; }
 
-    try{
-        await cloudPost("reviewPermit", { permitId:id, decision:"Disetujui" }, 1);
-        await fetchCloudAll();
-        renderAll();
-        toast(`Pengajuan ${permit.type} dari ${permit.userName} disetujui.`, "success");
-    }catch(err){
-        toast(`Gagal menyetujui pengajuan: ${friendlyCloudError(err)}`, "error");
+    permit.status = "Disetujui";
+    permit.reviewedBy = currentUser.id;
+    permit.reviewedByName = currentUser.name;
+    permit.reviewedAt = new Date().toISOString();
+    save(DB.permits, permits);
+
+    // Buat/perbarui catatan absensi supaya muncul di Rekap Absensi lengkap dengan bukti fotonya.
+    const attendance = load(DB.attendance);
+    let record = attendance.find(a=> a.sessionId===permit.sessionId && a.userId===permit.userId);
+    if(record){
+        record.status = permit.type;
+        record.photo = permit.photo;
+        record.permitId = permit.id;
+    }else{
+        attendance.push({
+            id: "ATT-"+Date.now(), sessionId: permit.sessionId, token: null,
+            userId: permit.userId, userName: permit.userName, username: permit.username,
+            activity: permit.sessionActivity, division: permit.sessionDivision, date: permit.sessionDate,
+            checkIn: new Date().toISOString(), status: permit.type,
+            creatorId: permit.sessionCreatorId, creatorRole: permit.sessionCreatorRole,
+            lat: null, lng: null, photo: permit.photo,
+            permitId: permit.id, approvedFromPermit: true
+        });
     }
+    save(DB.attendance, attendance);
+
+    renderPermitApproval(currentUser.role==="HRD" ? "hrd" : "koor");
+    renderAll();
+    toast(`Pengajuan ${permit.type} dari ${permit.userName} disetujui.`, "success");
 }
 
-async function rejectPermit(id){
+function rejectPermit(id){
     const permits = load(DB.permits);
     const permit = permits.find(p=>p.id===id);
     if(!permit){ toast("Pengajuan tidak ditemukan.", "error"); return; }
     if(!canReviewPermit(permit)){ toast("Akses ditolak.", "error"); return; }
     if(permit.status!=="Menunggu"){ toast("Pengajuan ini sudah diproses.", "error"); return; }
 
-    const note = prompt("Alasan penolakan (opsional):", "");
-    if(note === null) return;
+    const note = prompt("Alasan penolakan (opsional):", "") || "";
 
-    try{
-        await cloudPost("reviewPermit", { permitId:id, decision:"Ditolak", reviewNote:note.trim() }, 1);
-        await fetchCloudAll();
-        renderAll();
-        toast(`Pengajuan ${permit.type} dari ${permit.userName} ditolak.`, "success");
-    }catch(err){
-        toast(`Gagal menolak pengajuan: ${friendlyCloudError(err)}`, "error");
-    }
+    permit.status = "Ditolak";
+    permit.reviewedBy = currentUser.id;
+    permit.reviewedByName = currentUser.name;
+    permit.reviewedAt = new Date().toISOString();
+    permit.reviewNote = note.trim() || null;
+    save(DB.permits, permits);
+
+    renderPermitApproval(currentUser.role==="HRD" ? "hrd" : "koor");
+    toast(`Pengajuan ${permit.type} dari ${permit.userName} ditolak.`, "success");
 }
 
 function viewPermitPhoto(id){
@@ -5881,7 +5708,19 @@ EXPORT EXCEL
 ========================================================= */
 
 function getKoorFilteredAttendance(){
-    return getFilteredKoorAttendance();
+    let data=load(DB.attendance).filter(a=>
+        a.creatorId===currentUser.id &&
+        a.activity==="Ngoprek" &&
+        a.division===currentUser.division
+    );
+    const date=document.getElementById("koorFilterDate")?.value || "";
+    const search=(document.getElementById("koorFilterSearch")?.value || "").trim().toLowerCase();
+    if(date) data=data.filter(a=>a.date===date);
+    if(search) data=data.filter(a=>
+        String(a.userName||"").toLowerCase().includes(search) ||
+        String(a.username||"").toLowerCase().includes(search)
+    );
+    return data;
 }
 
 function exportKoorExcel(){
@@ -5985,7 +5824,7 @@ HELPERS
 
 function formatTime(dateString){
     try{
-        return new Date(dateString).toLocaleTimeString("id-ID", {timeZone:"Asia/Jakarta", hour:"2-digit", minute:"2-digit"});
+        return new Date(dateString).toLocaleTimeString("id-ID", {hour:"2-digit", minute:"2-digit"});
     }catch(e){ return "-"; }
 }
 
@@ -6061,13 +5900,28 @@ function renderAll(){
    cloud-sync.js SETELAH data akun terbaru selesai disinkronkan dari
    Google Sheets (supaya sesi lama tidak memakai data users yang basi). */
 function restoreLogin(){
-    // V14.1: sesi TIDAK dipulihkan otomatis saat halaman dibuka.
-    // Pengguna harus menekan tombol Masuk setelah mengisi username + password.
-    currentUser = null;
-    document.getElementById("loginScreen")?.classList.remove("hidden");
-    document.getElementById("app")?.classList.add("hidden");
-}
+    const saved=localStorage.getItem("nev_current_user");
+    if(!saved)return;
+    try{
+        const user=JSON.parse(saved);
+        const users=load(DB.users);
+        const valid=users.find(u=>u.id===user.id);
+        if(!valid)return;
 
+        currentUser=valid;
+        document.getElementById("loginScreen").classList.add("hidden");
+        document.getElementById("app").classList.remove("hidden");
+        buildSidebar();
+        updateUserUI();
+
+        if(currentUser.role==="STAF") showPage("staf-dashboard");
+        if(currentUser.role==="HRD") showPage("hrd-dashboard");
+        if(currentUser.role==="KOOR KP") showPage("koor-dashboard");
+        renderAll();
+    }catch(e){
+        localStorage.removeItem("nev_current_user");
+    }
+}
 
 </script>
 
