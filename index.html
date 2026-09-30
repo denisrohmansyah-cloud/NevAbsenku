@@ -3340,7 +3340,7 @@ REGISTER MODAL
 
         <div class="modal-header">
 
-            <h3>Tambah Akun STAF</h3>
+            <h3 id="registerModalTitle">Tambah Akun</h3>
 
             <button
                 class="modal-close"
@@ -3378,7 +3378,20 @@ REGISTER MODAL
 
                 </div>
 
-                <input type="hidden" id="registerRole" value="STAF">
+                <div class="form-group" id="registerRoleGroup">
+
+                    <label>Role *</label>
+
+                    <select
+                        id="registerRole"
+                        class="form-control"
+                        onchange="updateRegisterRoleUI()">
+                        <option value="STAF">STAF</option>
+                        <option value="HRD">HRD</option>
+                        <option value="KOOR KP">KOOR KP</option>
+                    </select>
+
+                </div>
 
                 <div class="form-group" id="registerDivisionGroup">
 
@@ -5394,22 +5407,53 @@ async function deleteUser(id){
 PEMBUATAN AKUN OLEH HRD / KOOR KP
 ========================================================= */
 
-function toggleRegisterDivision(){
-    const divGroup = document.getElementById("registerDivisionGroup");
-    const divSelect = document.getElementById("registerDivision");
-    const roleInput = document.getElementById("registerRole");
-    if(roleInput) roleInput.value = "STAF";
+function updateRegisterRoleUI(){
+    const roleSelect=document.getElementById("registerRole");
+    const roleGroup=document.getElementById("registerRoleGroup");
+    const divGroup=document.getElementById("registerDivisionGroup");
+    const divSelect=document.getElementById("registerDivision");
+    const title=document.getElementById("registerModalTitle");
+    if(!roleSelect || !divGroup || !divSelect) return;
 
+    let role=roleSelect.value || "STAF";
+
+    // Koor KP hanya boleh membuat STAF pada divisinya sendiri.
     if(currentUser?.role==="KOOR KP"){
-        divSelect.value=currentUser.division || "";
-        divSelect.disabled=true;
-        divSelect.required=true;
-        divGroup.classList.remove("hidden");
+        role="STAF";
+        roleSelect.value="STAF";
+        roleSelect.disabled=true;
+        if(roleGroup) roleGroup.classList.add("hidden");
     }else{
+        roleSelect.disabled=false;
+        if(roleGroup) roleGroup.classList.remove("hidden");
+    }
+
+    if(role==="HRD"){
+        divGroup.classList.add("hidden");
+        divSelect.value="";
+        divSelect.disabled=true;
+        divSelect.required=false;
+        if(title) title.textContent="Tambah Akun HRD";
+    }else if(role==="KOOR KP"){
+        divGroup.classList.remove("hidden");
         divSelect.disabled=false;
         divSelect.required=true;
+        if(title) title.textContent="Tambah Akun Koor KP";
+    }else{
         divGroup.classList.remove("hidden");
+        divSelect.required=true;
+        if(currentUser?.role==="KOOR KP"){
+            divSelect.value=currentUser.division || "";
+            divSelect.disabled=true;
+        }else{
+            divSelect.disabled=false;
+        }
+        if(title) title.textContent="Tambah Akun STAF";
     }
+}
+
+function toggleRegisterDivision(){
+    updateRegisterRoleUI();
 }
 
 function openRegister(){
@@ -5417,7 +5461,12 @@ function openRegister(){
         toast("Hanya HRD atau Koor KP yang dapat membuat akun.", "error");
         return;
     }
-    toggleRegisterDivision();
+
+    const roleSelect=document.getElementById("registerRole");
+    const form=document.querySelector("#registerModal form");
+    if(form) form.reset();
+    if(roleSelect) roleSelect.value="STAF";
+    updateRegisterRoleUI();
     document.getElementById("registerModal").classList.add("show");
 }
 
@@ -5431,17 +5480,26 @@ async function register(event){
     const name=document.getElementById("registerName").value.trim();
     const username=document.getElementById("registerUsername").value.trim();
     const password=document.getElementById("registerPassword").value;
+    const roleEl=document.getElementById("registerRole");
+    let role=roleEl?.value || "STAF";
     let division=document.getElementById("registerDivision").value;
 
-    if(!name || !username || !password || !division){
-        toast("Nama, NIM, password, dan divisi wajib diisi.", "error"); return;
+    if(currentUser.role==="KOOR KP") role="STAF";
+
+    if(role==="HRD"){
+        division="";
+    }else if(currentUser.role==="KOOR KP"){
+        division=currentUser.division || "";
     }
 
-    if(currentUser.role==="KOOR KP") division=currentUser.division;
+    if(!name || !username || !password || (role!=="HRD" && !division)){
+        toast(role==="HRD" ? "Nama, username, dan password wajib diisi." : "Nama, username, password, dan divisi wajib diisi.", "error");
+        return;
+    }
 
     try{
         const result=await cloudPost("createUser", {
-            name, username, password, division, role:"STAF"
+            name, username, password, division: division || null, role
         },1);
 
         const users=load(DB.users);
@@ -5449,15 +5507,13 @@ async function register(event){
         _localSave(DB.users,users);
 
         closeModal("registerModal");
-        document.querySelector("#registerModal form").reset();
-        toggleRegisterDivision();
+        if(document.querySelector("#registerModal form")) document.querySelector("#registerModal form").reset();
         renderUsers();
-        toast("Akun STAF berhasil dibuat.", "success");
+        toast(`Akun ${role} berhasil dibuat.`, "success");
     }catch(err){
         toast("Gagal membuat akun: "+friendlyCloudError(err), "error");
     }
 }
-
 
 /* =========================================================
 CALENDAR
