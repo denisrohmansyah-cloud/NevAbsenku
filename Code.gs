@@ -28,7 +28,7 @@ const FALLBACK_FOLDER_NAMES = {
   presensi: "NEV Absenku - Foto Presensi"
 };
 
-const CODE_VERSION = "secure-v7-stable";
+const CODE_VERSION = "secure-v6-fast-login";
 
 const SHEET_USERS = "Users";
 const SHEET_SESSIONS = "Sessions";
@@ -352,38 +352,6 @@ function savePhotoToDrive_(base64DataUrl,fileNameHint,kind){
   return "https://drive.google.com/file/d/"+file.getId()+"/view";
 }
 
-function driveFileId_(url){
-  const value=String(url||"").trim();
-  let m=value.match(/[?&]id=([A-Za-z0-9_-]+)/);
-  if(!m)m=value.match(/\/file\/d\/([A-Za-z0-9_-]+)/);
-  return m&&m[1]?m[1]:null;
-}
-
-function canViewPhoto_(actor,fileId){
-  if(actor.role==="HRD") return true;
-  const att=sheetToObjects_(SHEET_ATTENDANCE).find(a=>driveFileId_(a.photo)===fileId);
-  if(att){
-    if(actor.role==="STAF") return String(att.userId)===String(actor.id);
-    return actor.role==="KOOR KP" && att.creatorId===actor.id && att.activity==="Ngoprek" && att.division===actor.division;
-  }
-  const permit=sheetToObjects_(SHEET_PERMITS).find(p=>driveFileId_(p.photo)===fileId);
-  if(permit){
-    if(actor.role==="STAF") return String(permit.userId)===String(actor.id);
-    return actor.role==="KOOR KP" && permit.sessionCreatorId===actor.id && permit.sessionActivity==="Ngoprek" && permit.sessionDivision===actor.division;
-  }
-  return false;
-}
-
-function getPhotoData_(actor,fileId){
-  if(!fileId) throw new Error("ID foto tidak ditemukan.");
-  if(!canViewPhoto_(actor,fileId)) throw new Error("Akses foto ditolak.");
-  let file;
-  try{ file=DriveApp.getFileById(fileId); }catch(err){ throw new Error("File foto tidak ditemukan atau sudah dihapus."); }
-  const blob=file.getBlob();
-  const mime=blob.getContentType()||"image/jpeg";
-  return {ok:true,mimeType:mime,data:Utilities.base64Encode(blob.getBytes())};
-}
-
 function withLock_(fn){
   const lock=LockService.getScriptLock();
   lock.waitLock(30000);
@@ -430,12 +398,6 @@ function doGet(e){
         (user.role==="KOOR KP" && session.creatorId===user.id && session.activity==="Ngoprek" && session.division===user.division);
       if(!allowed) throw new Error("Akses ditolak untuk QR ini.");
       return jsonResponse_({ok:true, sessionId:session.id, token:String(session.token||"")});
-    }
-
-    if(action==="getPhoto"){
-      const user=authUser_(e.parameter && e.parameter.authToken);
-      const fileId=String(e.parameter && e.parameter.photoId || "");
-      return jsonResponse_(getPhotoData_(user,fileId));
     }
 
     if(action==="getAll"){
@@ -657,8 +619,6 @@ function addPermitSecure_(actor,data){
   const sessionId=String(data.sessionId||"");
   const session=sheetToObjects_(SHEET_SESSIONS).find(s=>String(s.id)===sessionId);
   if(!session) throw new Error("Kegiatan tidak ditemukan.");
-  if(String(session.date)!==wibNow_().date) throw new Error("Pengajuan izin/sakit hanya dapat dibuat untuk kegiatan hari ini.");
-  if(session.division!=="-" && String(actor.division||"")!==String(session.division)) throw new Error("Anda bukan anggota divisi kegiatan ini.");
   if(String(data.sessionActivity||session.activity)!==String(session.activity) || String(data.sessionDivision||session.division)!==String(session.division)) throw new Error("Data kegiatan tidak valid.");
   const type=String(data.type||"");
   if(type!=="Izin" && type!=="Sakit") throw new Error("Jenis pengajuan tidak valid.");
@@ -696,10 +656,7 @@ function reviewPermitSecure_(actor,data){
   const permit=permits.find(p=>String(p.id)===permitId);
   if(!permit) throw new Error("Pengajuan tidak ditemukan.");
   if(!canReviewPermit_(actor,permit)) throw new Error("Akses ditolak.");
-  if(permit.status!=="Menunggu"){
-    if(permit.status===decision) return {ok:true,permit:permit,attendance:null,duplicate:true};
-    throw new Error("Pengajuan ini sudah diproses.");
-  }
+  if(permit.status!=="Menunggu") throw new Error("Pengajuan ini sudah diproses.");
 
   permit.status=decision;
   permit.reviewedBy=actor.id;
@@ -736,42 +693,19 @@ function reviewPermitSecure_(actor,data){
 function mergeAuthorizedAttendance_(actor,incoming){
   if(actor.role==="STAF") throw new Error("STAF tidak dapat mengubah absensi melalui sinkronisasi umum.");
   const current=sheetToObjects_(SHEET_ATTENDANCE);
-  const sessions=sheetToObjects_(SHEET_SESSIONS);
-  const users=sheetToObjects_(SHEET_USERS);
   const byId={}; current.forEach(r=>{if(r.id)byId[r.id]=r;});
   (incoming||[]).forEach(raw=>{
-    if(!raw) return;
-    const status=String(raw.status||"");
-    if(["Hadir","Izin","Sakit","Alpha"].indexOf(status)<0) throw new Error("Status absensi tidak valid.");
-    const old=raw.id ? byId[raw.id] : null;
-    if(old){
-      if(actor.role==="KOOR KP" && !(old.creatorId===actor.id && old.activity==="Ngoprek" && old.division===actor.division)) throw new Error("Koor KP tidak dapat mengubah absensi di luar divisinya.");
-      old.status=status;
-      byId[old.id]=old;
-      return;
-    }
-
-    const session=sessions.find(s=>String(s.id)===String(raw.sessionId));
-    const user=users.find(u=>String(u.id)===String(raw.userId) && u.role==="STAF");
-    if(!session || !user) throw new Error("Sesi atau staf untuk absensi manual tidak ditemukan.");
-    if(actor.role==="KOOR KP" && !(session.creatorId===actor.id && session.activity==="Ngoprek" && session.division===actor.division)) throw new Error("Koor KP hanya dapat menambah absensi Ngoprek miliknya.");
-    if(session.division!=="-" && String(user.division||"")!==String(session.division)) throw new Error("Staf bukan anggota divisi kegiatan.");
-
-    const duplicate=current.find(a=>String(a.sessionId)===String(session.id) && String(a.userId)===String(user.id));
-    if(duplicate){ duplicate.status=status; byId[duplicate.id]=duplicate; return; }
-
-    const record={
-      id:makeServerId_("ATT"), sessionId:session.id, token:null,
-      userId:user.id, userName:user.name, username:user.username,
-      activity:session.activity, division:session.division, date:session.date,
-      checkIn:new Date().toISOString(), status,
-      creatorId:session.creatorId, creatorRole:session.creatorRole,
-      lat:null,lng:null,photo:null,permitId:null,approvedFromPermit:false,
-      markedManuallyBy:actor.id
-    };
-    byId[record.id]=record;
+    if(!raw || !raw.id) return;
+    const old=byId[raw.id];
+    if(!old) throw new Error("Absensi baru harus dibuat melalui endpoint absensi resmi.");
+    if(actor.role==="KOOR KP" && !(old.creatorId===actor.id && old.activity==="Ngoprek" && old.division===actor.division)) throw new Error("Koor KP tidak dapat mengubah absensi di luar divisinya.");
+    const next={...old};
+    if(raw.status!==undefined) next.status=String(raw.status);
+    if(raw.photo!==undefined) next.photo=old.photo;
+    if(actor.role==="HRD" && raw.status!==undefined) next.status=String(raw.status);
+    byId[raw.id]=next;
   });
-  withLock_(()=>objectsToSheet_(SHEET_ATTENDANCE,Object.values(byId)));
+  objectsToSheet_(SHEET_ATTENDANCE,Object.values(byId));
 }
 
 /* =========================================================

@@ -1103,7 +1103,7 @@ LOGIN
         <div class="login-brand">
 
             <div class="logo-circle">
-                <img src="nev-logo.webp" alt="NEV Logo">
+                <img src="nev-logo.png" alt="NEV Logo">
             </div>
 
             <h1>NEV Absenku</h1>
@@ -1226,7 +1226,7 @@ APP
         <div class="sidebar-logo">
 
             <div class="sidebar-logo-icon">
-                <img src="nev-logo.webp" alt="NEV Logo">
+                <img src="nev-logo.png" alt="NEV Logo">
             </div>
 
             <span>NEV Absenku</span>
@@ -3693,7 +3693,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 });
 
 function setDefaultDates(){
-    const today = new Intl.DateTimeFormat("en-CA", { timeZone:"Asia/Jakarta", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
+    const today = new Date().toISOString().split("T")[0];
     const ids = ["hrdDate", "koorDate"];
     ids.forEach(id=>{
         const el = document.getElementById(id);
@@ -3712,67 +3712,94 @@ function selectLoginRole(role,button){
     button.classList.add("active");
 }
 
+/* =========================================================
+LOGIN LOADING — sebelumnya kode ini tersesat di dalam template
+literal printQR() sehingga tidak pernah berjalan (dan bahkan
+merusak keseluruhan skrip karena ada teks penutup tag script
+literal di dalamnya, membuat browser mengira skrip utama
+berakhir di situ). Dipasang di sini, terpasang langsung ke login().
+========================================================= */
+
+function getLoginButton(){
+    return document.getElementById("loginSubmitBtn");
+}
+
+function setLoginLoading(loading){
+    const btn = getLoginButton();
+    if(!btn) return;
+    btn.classList.toggle("nev-login-loading", !!loading);
+    btn.disabled = !!loading;
+    btn.setAttribute("aria-busy", loading ? "true" : "false");
+}
+
 async function login(event){
-    event.preventDefault();
+  event.preventDefault();
+  setLoginLoading(true);
 
-    const username = document.getElementById("loginUsername").value.trim();
-    const password = document.getElementById("loginPassword").value;
-    const btn = document.getElementById("loginSubmitBtn");
+  try{
+  const username = document.getElementById("loginUsername").value.trim();
+  const password = document.getElementById("loginPassword").value;
 
-    if(!username || !password){
-        toast("Username dan password wajib diisi.", "error");
-        return;
+  try{
+    const result = await cloudPost("login", {
+      username: username,
+      password: password,
+      role: loginRole
+    }, 1);
+
+    if(!result || !result.ok || !result.user){
+      toast(
+        result?.error || "Username, password, atau role tidak sesuai.",
+        "error"
+      );
+      return;
     }
 
-    if(btn){
-        btn.disabled = true;
-        btn.classList.add("nev-login-loading");
-        btn.setAttribute("aria-busy","true");
-    }
+    currentUser = result.user;
+    if(result.authToken) localStorage.setItem("nev_auth_token", result.authToken);
 
-    try{
-        const result = await cloudPost("login", { username, password, role:loginRole }, 1);
-        if(!result || !result.ok || !result.user || !result.authToken){
-            throw new Error(result?.error || "Username, password, atau role tidak sesuai.");
-        }
+    localStorage.setItem(
+      "nev_current_user",
+      JSON.stringify(currentUser)
+    );
 
-        localStorage.setItem("nev_auth_token", result.authToken);
-        localStorage.setItem("nev_current_user", JSON.stringify(result.user));
-        currentUser = result.user;
-
-        initializeDatabase();
-        document.getElementById("loginScreen").classList.add("hidden");
-        document.getElementById("app").classList.remove("hidden");
-        buildSidebar();
-        updateUserUI();
-
-        if(currentUser.role === "STAF") showPage("staf-dashboard");
-        else if(currentUser.role === "HRD") showPage("hrd-dashboard");
-        else showPage("koor-dashboard");
-
-        updateCloudBadge();
-        toast("Login berhasil.", "success");
-
-        // Ambil data pusat setelah dashboard tampil; kegagalan sinkron tidak membatalkan login.
-        queueMicrotask(async()=>{
-            try{
-                await flushCloudQueue();
-                const ok = await fetchCloudAll();
-                if(ok && currentUser) renderAll();
-            }catch(err){
-                console.warn("Sinkronisasi awal gagal:", err);
-            }
-        });
-    }catch(err){
-        console.error("Login error:", err);
-        toast(friendlyCloudError(err), "error");
-    }finally{
-        if(btn){
-            btn.disabled = false;
-            btn.classList.remove("nev-login-loading");
-            btn.removeAttribute("aria-busy");
+    if(typeof fetchCloudAll === "function"){
+        const synced = await fetchCloudAll();
+        if(!synced){
+            localStorage.removeItem("nev_auth_token");
+            localStorage.removeItem("nev_current_user");
+            currentUser = null;
+            toast("Login berhasil tetapi data pusat tidak dapat diambil. Coba lagi.", "error");
+            return;
         }
     }
+
+    document.getElementById("loginScreen").classList.add("hidden");
+    document.getElementById("app").classList.remove("hidden");
+
+    buildSidebar();
+    updateUserUI();
+
+    if(currentUser.role === "STAF"){
+      showPage("staf-dashboard");
+    }
+    else if(currentUser.role === "HRD"){
+      showPage("hrd-dashboard");
+    }
+    else if(currentUser.role === "KOOR KP"){
+      showPage("koor-dashboard");
+    }
+
+  }catch(err){
+    console.error("Login error:", err);
+    toast(
+      (err && err.message) ? err.message : "Gagal terhubung ke server. Silakan coba lagi.",
+      "error"
+    );
+  }
+  }finally{
+    setLoginLoading(false);
+  }
 }
 
 function logout(){
@@ -4343,10 +4370,7 @@ function printQR(type){
             <p>${session.date} • ${session.start} - ${session.end}</p>
             <img src="${image}">
             <p>Scan QR menggunakan aplikasi NEV Absenku.</p>
-        
-<!-- Login loading is handled by the main page. -->
-
-</body></html>
+        </body></html>
     `);
     printWindow.document.close();
     printWindow.focus();
@@ -4721,20 +4745,13 @@ function photoCandidates(url){
     ];
 }
 
-async function photoFallback(img){
-    const original = img.dataset.orig || "";
-    const list = photoCandidates(original);
+function photoFallback(img){
+    const list = photoCandidates(img.dataset.orig || "");
     const next = (parseInt(img.dataset.idx || "0", 10)) + 1;
     if(next < list.length){
         img.dataset.idx = String(next);
         img.src = list[next];
-        return;
     }
-    if(!img.dataset.proxyTried && typeof window.nevLoadPhotoProxy === "function"){
-        img.dataset.proxyTried = "1";
-        try{ img.src = await window.nevLoadPhotoProxy(original); return; }catch(err){ console.warn("Proxy foto gagal:",err); }
-    }
-    img.style.opacity = "0.45";
 }
 
 function photoThumbHTML(photo, onclick, alt){
@@ -4790,19 +4807,10 @@ function showPhotoLightbox(title, subtitle, note, photo){
     const img = overlay.querySelector("#photoLightboxImg");
     const err = overlay.querySelector("#photoLightboxError");
     let i = 0;
-    let proxyTried = false;
-    img.onerror = async ()=>{
+    img.onerror = ()=>{
         i++;
-        if(i < list.length){
-            img.src = list[i];
-            return;
-        }
-        if(!proxyTried && typeof window.nevLoadPhotoProxy === "function"){
-            proxyTried = true;
-            try{ img.src = await window.nevLoadPhotoProxy(photo); return; }catch(e){ console.warn("Proxy foto gagal:",e); }
-        }
-        img.style.display = "none";
-        err.style.display = "block";
+        if(i < list.length){ img.src = list[i]; }
+        else { img.style.display = "none"; err.style.display = "block"; }
     };
     img.src = list[0];
 }
@@ -5484,7 +5492,7 @@ function renderPermitApproval(role){
 
 function canReviewPermit(permit){
     if(currentUser.role==="HRD") return true;
-    if(currentUser.role==="KOOR KP") return permit.sessionActivity==="Ngoprek" && permit.sessionCreatorId===currentUser.id;
+    if(currentUser.role==="KOOR KP") return permit.sessionActivity==="Ngoprek" && permit.sessionCreatorId===currentUser.id && permit.sessionDivision===currentUser.division;
     return false;
 }
 
@@ -5497,11 +5505,12 @@ async function approvePermit(id){
 
     try{
         await cloudPost("reviewPermit", { permitId:id, decision:"Disetujui" }, 1);
-        await fetchCloudAll();
+        if(typeof fetchCloudAll==="function") await fetchCloudAll();
+        renderPermitApproval(currentUser.role==="HRD" ? "hrd" : "koor");
         renderAll();
         toast(`Pengajuan ${permit.type} dari ${permit.userName} disetujui.`, "success");
     }catch(err){
-        toast(`Gagal menyetujui pengajuan: ${friendlyCloudError(err)}`, "error");
+        toast("Gagal menyetujui pengajuan: " + friendlyCloudError(err), "error");
     }
 }
 
@@ -5512,16 +5521,15 @@ async function rejectPermit(id){
     if(!canReviewPermit(permit)){ toast("Akses ditolak.", "error"); return; }
     if(permit.status!=="Menunggu"){ toast("Pengajuan ini sudah diproses.", "error"); return; }
 
-    const note = prompt("Alasan penolakan (opsional):", "");
-    if(note === null) return;
+    const note = prompt("Alasan penolakan (opsional):", "") || "";
 
     try{
-        await cloudPost("reviewPermit", { permitId:id, decision:"Ditolak", reviewNote:note.trim() }, 1);
-        await fetchCloudAll();
-        renderAll();
+        await cloudPost("reviewPermit", { permitId:id, decision:"Ditolak", reviewNote: note.trim() || null }, 1);
+        if(typeof fetchCloudAll==="function") await fetchCloudAll();
+        renderPermitApproval(currentUser.role==="HRD" ? "hrd" : "koor");
         toast(`Pengajuan ${permit.type} dari ${permit.userName} ditolak.`, "success");
     }catch(err){
-        toast(`Gagal menolak pengajuan: ${friendlyCloudError(err)}`, "error");
+        toast("Gagal menolak pengajuan: " + friendlyCloudError(err), "error");
     }
 }
 
@@ -5692,7 +5700,7 @@ HELPERS
 
 function formatTime(dateString){
     try{
-        return new Date(dateString).toLocaleTimeString("id-ID", {timeZone:"Asia/Jakarta", hour:"2-digit", minute:"2-digit"});
+        return new Date(dateString).toLocaleTimeString("id-ID", {hour:"2-digit", minute:"2-digit"});
     }catch(e){ return "-"; }
 }
 
