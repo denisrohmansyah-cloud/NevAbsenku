@@ -5,54 +5,32 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NEV Absenku</title>
 
-<!-- Critical connection hints only; non-critical CSS/JS is loaded without blocking first paint. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-<!-- Non-blocking fonts/icons/maps CSS -->
-<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
-<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"></noscript>
-<link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" onload="this.onload=null;this.rel='stylesheet'">
-<noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"></noscript>
-<link rel="preload" as="style" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" onload="this.onload=null;this.rel='stylesheet'">
-<noscript><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"></noscript>
-<link rel="preload" as="style" href="geo-selfie.css" onload="this.onload=null;this.rel='stylesheet'">
-<noscript><link rel="stylesheet" href="geo-selfie.css"></noscript>
+<link rel="stylesheet"
+href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
-<!-- V12: feature libraries are loaded on demand only when the feature is opened. -->
-<script>
-(() => {
-  const _featurePromises = Object.create(null);
-  const _featureCssPromises = Object.create(null);
-  function loadScriptOnce(key, src, test){
-    if(test && test()) return Promise.resolve();
-    if(_featurePromises[key]) return _featurePromises[key];
-    _featurePromises[key] = new Promise((resolve,reject) => {
-      const el=document.createElement('script'); el.src=src; el.async=true; el.crossOrigin='anonymous';
-      el.onload=()=> (test && test()) ? resolve() : reject(new Error(key+' loaded but global was not found'));
-      el.onerror=()=>reject(new Error('Gagal memuat '+key)); document.head.appendChild(el);
-    });
-    return _featurePromises[key];
-  }
-  function loadCssOnce(key,href){
-    if(_featureCssPromises[key]) return _featureCssPromises[key];
-    if(document.querySelector('link[data-lazy-css="'+key+'"]')) return Promise.resolve();
-    _featureCssPromises[key]=new Promise((resolve,reject)=>{
-      const el=document.createElement('link'); el.rel='stylesheet'; el.href=href; el.dataset.lazyCss=key;
-      el.onload=resolve; el.onerror=()=>reject(new Error('Gagal memuat CSS '+key)); document.head.appendChild(el);
-    });
-    return _featureCssPromises[key];
-  }
-  window.ensureQRCode=()=>loadScriptOnce('qrcode','https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',()=>typeof window.QRCode==='function');
-  window.ensureHtml5Qr=()=>loadScriptOnce('html5-qrcode','https://unpkg.com/html5-qrcode',()=>typeof window.Html5Qrcode==='function');
-  window.ensureXLSX=()=>loadScriptOnce('xlsx','https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js',()=>!!window.XLSX);
-  window.ensureJsPDF=async()=>{await loadScriptOnce('jspdf','https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',()=>!!window.jspdf);await loadScriptOnce('jspdf-autotable','https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js',()=>!!window.jspdf);};
-  window.ensureLeaflet=async()=>{await loadCssOnce('leaflet','https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');await loadScriptOnce('leaflet','https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',()=>!!window.L);};
-  window.featureLoadError=(name,err)=>{console.error('[NEV V12] '+name,err);if(typeof window.toast==='function')window.toast('Fitur '+name+' gagal dimuat. Periksa koneksi internet.','error');};
-})();
-</script>
+<!-- QR Generator -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<!-- QR Scanner -->
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+<!-- Excel -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+<!-- PDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+<!-- Peta lokasi kantor (Geofencing) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- File tambahan: lokasi (geofencing) & selfie -->
+<link rel="stylesheet" href="geo-selfie.css">
 
 <style>
 :root{
@@ -1063,6 +1041,53 @@ td{
 @keyframes nevDot{0%,80%,100%{transform:scale(.7);opacity:.4}40%{transform:scale(1.15);opacity:1}}
 
 </style>
+
+<style id="nev-login-loading-style">
+/* =========================================================
+   NEV ABSENKU — LOGIN LOADING ANIMATION
+========================================================= */
+#loginSubmitBtn{
+    position:relative;
+    transition:transform .15s ease, opacity .2s ease;
+}
+#loginSubmitBtn.nev-login-loading{
+    cursor:wait;
+    opacity:.92;
+}
+#loginSubmitBtn.nev-login-loading .nev-login-label{
+    opacity:.9;
+}
+.nev-login-spinner{
+    display:none;
+    width:18px;
+    height:18px;
+    border:3px solid rgba(255,255,255,.38);
+    border-top-color:#fff;
+    border-radius:50%;
+    animation:nevLoginSpin .75s linear infinite;
+    vertical-align:-4px;
+    margin-right:10px;
+}
+#loginSubmitBtn.nev-login-loading .nev-login-spinner{
+    display:inline-block;
+}
+#loginSubmitBtn.nev-login-loading .nev-login-icon{
+    display:none;
+}
+.nev-login-loading-text{
+    display:none;
+}
+#loginSubmitBtn.nev-login-loading .nev-login-loading-text{
+    display:inline;
+}
+#loginSubmitBtn.nev-login-loading .nev-login-normal-text{
+    display:none;
+}
+@keyframes nevLoginSpin{
+    to{transform:rotate(360deg)}
+}
+</style>
+
 </head>
 
 <body>
@@ -1078,7 +1103,7 @@ LOGIN
         <div class="login-brand">
 
             <div class="logo-circle">
-                <img src="nev-logo.webp" width="105" height="105" decoding="async" fetchpriority="high" alt="NEV Logo">
+                <img src="nev-logo.png" alt="NEV Logo">
             </div>
 
             <h1>NEV Absenku</h1>
@@ -1169,9 +1194,11 @@ LOGIN
 
                 </div>
 
-                <button class="btn btn-primary btn-block">
-                    <i class="fa-solid fa-right-to-bracket"></i>
-                    Masuk
+                <button id="loginSubmitBtn" type="submit" class="btn btn-primary btn-block">
+                    <span class="nev-login-spinner" aria-hidden="true"></span>
+                    <i class="fa-solid fa-right-to-bracket nev-login-icon" aria-hidden="true"></i>
+                    <span class="nev-login-normal-text">Masuk</span>
+                    <span class="nev-login-loading-text">Memproses login...</span>
                 </button>
 
             </form>
@@ -1199,7 +1226,7 @@ APP
         <div class="sidebar-logo">
 
             <div class="sidebar-logo-icon">
-                <img src="nev-logo.webp" width="105" height="105" loading="lazy" decoding="async" alt="NEV Logo">
+                <img src="nev-logo.png" alt="NEV Logo">
             </div>
 
             <span>NEV Absenku</span>
@@ -2344,7 +2371,7 @@ APP
 
                     </div>
 
-                    <div id="koorDivisionCardNetworking" class="stat-card" data-division-card="Networking">
+                    <div class="stat-card">
 
                         <div class="stat-icon">
                             <i class="fa-solid fa-network-wired"></i>
@@ -2356,7 +2383,7 @@ APP
 
                     </div>
 
-                    <div id="koorDivisionCardCyber" class="stat-card" data-division-card="Cyber">
+                    <div class="stat-card">
 
                         <div class="stat-icon">
                             <i class="fa-solid fa-shield-halved"></i>
@@ -2398,7 +2425,7 @@ APP
 
                     <div class="grid-3">
 
-                        <div id="koorActivityCardNetworking" class="activity-card" data-division-card="Networking">
+                        <div class="activity-card">
 
                             <div class="activity-icon">
                                 <i class="fa-solid fa-network-wired"></i>
@@ -2413,7 +2440,7 @@ APP
 
                         </div>
 
-                        <div id="koorActivityCardCyber" class="activity-card" data-division-card="Cyber">
+                        <div class="activity-card">
 
                             <div class="activity-icon">
                                 <i class="fa-solid fa-shield-halved"></i>
@@ -2428,7 +2455,7 @@ APP
 
                         </div>
 
-                        <div id="koorActivityCardSysadmin" class="activity-card" data-division-card="Sysadmin">
+                        <div class="activity-card">
 
                             <div class="activity-icon">
                                 <i class="fa-solid fa-server"></i>
@@ -3685,24 +3712,18 @@ function selectLoginRole(role,button){
     button.classList.add("active");
 }
 
-let loginInProgress = false;
-
 async function login(event){
   event.preventDefault();
-  if(loginInProgress) return;
 
   const username = document.getElementById("loginUsername").value.trim();
   const password = document.getElementById("loginPassword").value;
-  const loginButton = document.querySelector('#loginForm button[type="submit"]') || document.querySelector('button[type="submit"]');
-  loginInProgress = true;
-  if(loginButton){ loginButton.disabled=true; loginButton.dataset.oldText=loginButton.innerHTML; loginButton.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Memproses...'; }
 
   try{
-    const result = await cloudLoginFast({
+    const result = await cloudPost("login", {
       username: username,
       password: password,
       role: loginRole
-    });
+    }, 1);
 
     if(!result || !result.ok || !result.user){
       toast(
@@ -3720,9 +3741,17 @@ async function login(event){
       JSON.stringify(currentUser)
     );
 
-    // Jangan menunggu getAll di sini. Login hanya membutuhkan validasi akun
-    // + pembuatan token. Dashboard ditampilkan segera, sedangkan data cloud
-    // dimuat di background agar login terasa cepat.
+    if(typeof fetchCloudAll === "function"){
+        const synced = await fetchCloudAll();
+        if(!synced){
+            localStorage.removeItem("nev_auth_token");
+            localStorage.removeItem("nev_current_user");
+            currentUser = null;
+            toast("Login berhasil tetapi data pusat tidak dapat diambil. Coba lagi.", "error");
+            return;
+        }
+    }
+
     document.getElementById("loginScreen").classList.add("hidden");
     document.getElementById("app").classList.remove("hidden");
 
@@ -3739,31 +3768,12 @@ async function login(event){
       showPage("koor-dashboard");
     }
 
-    // Sinkronisasi pertama berjalan setelah dashboard tampil.
-    // Tidak memblokir proses login.
-    if(typeof fetchCloudAll === "function"){
-        setTimeout(async ()=>{
-            const synced = await fetchCloudAll();
-            if(synced && currentUser) renderAll();
-            else if(!synced && getAuthToken()){
-                // Token invalid/expired akan ditangani fetchCloudAll().
-                updateCloudBadge();
-            }
-        }, 0);
-    }
-
   }catch(err){
     console.error("Login error:", err);
-    const message = err?.name === "AbortError"
-      ? "Server terlalu lama merespons. Silakan coba lagi."
-      : (err?.message || "Gagal terhubung ke server. Silakan coba lagi.");
-    toast(message, "error");
-  }finally{
-    loginInProgress=false;
-    if(loginButton){
-      loginButton.disabled=false;
-      loginButton.innerHTML=loginButton.dataset.oldText || '<i class="fa-solid fa-right-to-bracket"></i> Masuk';
-    }
+    toast(
+      "Gagal terhubung ke server. Silakan coba lagi.",
+      "error"
+    );
   }
 }
 
@@ -3929,7 +3939,7 @@ function updateUserUI(){
 QR GENERATION
 ========================================================= */
 
-async function generateQR(event,creatorRole){
+function generateQR(event,creatorRole){
     event.preventDefault();
     let activity, division, date, start, end, location, notes;
     const geoRole = creatorRole==="HRD" ? "hrd" : "koor";
@@ -4001,7 +4011,7 @@ async function generateQR(event,creatorRole){
     save(DB.sessions,sessions);
     currentQR[creatorRole==="HRD" ? "hrd" : "koor"] = session;
 
-    await renderGeneratedQR(creatorRole==="HRD" ? "hrd" : "koor", session);
+    renderGeneratedQR(creatorRole==="HRD" ? "hrd" : "koor", session);
     if(typeof resetSessionGeoForm==="function") resetSessionGeoForm(geoRole);
     renderAll();
     toast("QR berhasil dibuat otomatis.", "success");
@@ -4063,12 +4073,10 @@ function decodeSessionToken(token){
 RENDER QR
 ========================================================= */
 
-async function renderGeneratedQR(type,session){
+function renderGeneratedQR(type,session){
     const box = document.getElementById(type==="hrd" ? "hrdQrBox" : "koorQrBox");
     const details = document.getElementById(type==="hrd" ? "hrdQrDetails" : "koorQrDetails");
     const actions = document.getElementById(type==="hrd" ? "hrdQrActions" : "koorQrActions");
-
-    try{ await ensureQRCode(); }catch(err){ featureLoadError("QR Generator",err); return; }
 
     box.innerHTML="";
     const qr=document.createElement("div");
@@ -4225,7 +4233,7 @@ function finalizeAttendance(session, token, location, photo){
 SCANNER
 ========================================================= */
 
-async function startScanner(){
+function startScanner(){
     if(currentUser?.role!=="STAF"){
         toast("Fitur scanner hanya tersedia untuk STAF.", "error"); return;
     }
@@ -4249,8 +4257,6 @@ async function startScanner(){
         toast("Browser tidak mendukung kamera.", "error");
         return;
     }
-
-    try{ await ensureHtml5Qr(); }catch(err){ featureLoadError("QR Scanner",err); return; }
 
     html5QrCode = new Html5Qrcode("reader");
     html5QrCode.start({facingMode:"environment"}, {fps:10, qrbox:{width:250, height:250}},
@@ -4339,24 +4345,73 @@ function printQR(type){
             <p>${session.date} • ${session.start} - ${session.end}</p>
             <img src="${image}">
             <p>Scan QR menggunakan aplikasi NEV Absenku.</p>
-        </body></html>
+        
+<script id="nev-login-loading-script">
+/* =========================================================
+   LOGIN LOADING — tidak mengubah fungsi login/cloud-sync.
+   Hanya memberi feedback visual saat request login berjalan.
+========================================================= */
+(function(){
+    let resetTimer = null;
+
+    function getLoginButton(){
+        return document.getElementById("loginSubmitBtn");
+    }
+
+    function setLoginLoading(loading){
+        const btn = getLoginButton();
+        if(!btn) return;
+        btn.classList.toggle("nev-login-loading", !!loading);
+        btn.disabled = !!loading;
+        btn.setAttribute("aria-busy", loading ? "true" : "false");
+        if(!loading && resetTimer){
+            clearTimeout(resetTimer);
+            resetTimer = null;
+        }
+    }
+
+    document.addEventListener("submit", function(event){
+        const form = event.target;
+        if(!form || !form.querySelector || !form.querySelector("#loginUsername")) return;
+
+        const btn = getLoginButton();
+        if(!btn || btn.classList.contains("nev-login-loading")) return;
+
+        setLoginLoading(true);
+
+        // Pengaman: jika login gagal/terputus tanpa mengubah halaman,
+        // tombol otomatis kembali normal setelah 20 detik.
+        resetTimer = setTimeout(function(){
+            const screen = document.getElementById("loginScreen");
+            if(screen && !screen.classList.contains("hidden")) setLoginLoading(false);
+        }, 20000);
+    }, true);
+
+    // Jika login berhasil, loginScreen diberi class "hidden" oleh aplikasi.
+    // Loader tidak perlu disentuh karena form sudah tidak terlihat.
+    const screen = document.getElementById("loginScreen");
+    if(screen){
+        const observer = new MutationObserver(function(){
+            if(screen.classList.contains("hidden")) setLoginLoading(false);
+        });
+        observer.observe(screen, {attributes:true, attributeFilter:["class"]});
+    }
+})();
+</script>
+
+</body></html>
     `);
     printWindow.document.close();
     printWindow.focus();
     setTimeout(()=>{ printWindow.print(); },500);
 }
 
-async function copyToken(type){
+function copyToken(type){
     const session=currentQR[type];
     if(!session)return;
-    try{
-        const token=await ensureSessionToken(session);
-        if(!token) throw new Error("Token QR tidak tersedia.");
-        await navigator.clipboard.writeText(token);
+    navigator.clipboard.writeText(session.token).then(()=>{
         toast("Token berhasil disalin.", "success");
-    }catch(err){
-        toast("Gagal mengambil token QR: "+friendlyCloudError(err),"error");
-    }
+    });
 }
 
 function toggleCurrentQR(type){
@@ -4370,7 +4425,7 @@ function toggleCurrentQR(type){
     save(DB.sessions,sessions);
     currentQR[type]=target;
 
-    renderGeneratedQR(type, target).catch(err=>featureLoadError("QR Generator",err));
+    renderGeneratedQR(type, target);
     renderQRSessionList(type);
     toast(target.active ? "QR diaktifkan." : "QR dinonaktifkan.", "success");
 }
@@ -4468,19 +4523,13 @@ function renderQRSessionList(type){
     `;
 }
 
-async function loadSessionToQR(id,type){
+function loadSessionToQR(id,type){
     const sessions=load(DB.sessions);
     const session=sessions.find(s=>s.id===id);
     if(!session)return;
-    try{
-        await ensureSessionToken(session);
-        if(!session.token) throw new Error("Token QR tidak tersedia.");
-        currentQR[type]=session;
-        await renderGeneratedQR(type, session);
-        toast("QR session ditampilkan.", "success");
-    }catch(err){
-        toast("Gagal mengambil QR: "+friendlyCloudError(err),"error");
-    }
+    currentQR[type]=session;
+    renderGeneratedQR(type, session);
+    toast("QR session ditampilkan.", "success");
 }
 
 
@@ -4682,9 +4731,8 @@ function normalizePhotoUrl(url, size){
   if(!url) return "";
   const value = String(url).trim();
   const id = getDriveFileId(value);
-  if(id) return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w${size || 1000}`;
-  if(/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(value)) return value;
-  return "";
+  if(id) return `https://drive.google.com/thumbnail?id=${id}&sz=w${size || 1000}`;
+  return value;
 }
 
 /* Tanggal hari ini menurut WIB (format YYYY-MM-DD), bukan UTC. */
@@ -4696,7 +4744,7 @@ function getTodayWIB(){
 
 function attendanceProofCell(a){
   const thumb = a.photo
-    ? photoThumbHTML(a.photo, `viewProofPhoto('${escapeJSString(a.id)}')`, "Selfie")
+    ? photoThumbHTML(a.photo, `viewProofPhoto('${a.id}')`, "Selfie")
     : `<span style="color:#aaa;font-size:11px;">-</span>`;
     let locBadge = "";
     if(a.lat!=null && a.lng!=null){
@@ -4735,17 +4783,12 @@ function photoFallback(img){
     }
 }
 
-function escapeJSString(value){
-    return String(value ?? "").replaceAll("\\","\\\\").replaceAll("'","\\'").replaceAll("\r","\\r").replaceAll("\n","\\n");
-}
-
 function photoThumbHTML(photo, onclick, alt){
     const src = normalizePhotoUrl(photo);
-    if(!src) return `<span style="color:#aaa;font-size:11px;">-</span>`;
     const fb = getDriveFileId(photo)
         ? ` data-orig="${escapeHTML(photo)}" data-idx="1" onerror="photoFallback(this)"`
         : "";
-    return `<img src="${escapeHTML(src)}" class="proof-thumb"${fb} onclick="${escapeHTML(onclick)}" alt="${escapeHTML(alt)}">`;
+    return `<img src="${src}" class="proof-thumb"${fb} onclick="${onclick}" alt="${alt}">`;
 }
 
 function closePhotoLightbox(){
@@ -4875,32 +4918,13 @@ function renderStafDashboard(){
 }
 
 function renderKoorDashboard(){
-    if(currentUser?.role!=="KOOR KP") return;
-    const division=String(currentUser.division||"");
-    const sessions=load(DB.sessions).filter(s=>
-        s.creatorId===currentUser.id && s.activity==="Ngoprek" && s.division===division
-    );
-    const attendance=load(DB.attendance).filter(a=>
-        a.creatorId===currentUser.id && a.activity==="Ngoprek" && a.division===division
-    );
-
+    const sessions=load(DB.sessions).filter(s=> s.creatorId===currentUser.id && s.activity==="Ngoprek");
+    const attendance=load(DB.attendance).filter(a=> a.creatorId===currentUser.id && a.activity==="Ngoprek");
+    
     document.getElementById("koorTotalQR").textContent=sessions.length;
     document.getElementById("koorTotalHadir").textContent=attendance.filter(a=>a.status==="Hadir").length;
-    document.getElementById("koorNetworking").textContent=division==="Networking" ? attendance.length : 0;
-    document.getElementById("koorCyber").textContent=division==="Cyber" ? attendance.length : 0;
-
-    document.querySelectorAll('[data-division-card="Networking"],[data-division-card="Cyber"],[data-division-card="Sysadmin"]').forEach(el=>{
-        el.style.display = el.dataset.divisionCard===division ? "" : "none";
-    });
-
-    const koorDivision=document.getElementById("koorDivision");
-    if(koorDivision){
-        koorDivision.value=division;
-        Array.from(koorDivision.options).forEach(opt=>{
-            opt.hidden = !!opt.value && opt.value!==division;
-            opt.disabled = !!opt.value && opt.value!==division;
-        });
-    }
+    document.getElementById("koorNetworking").textContent=attendance.filter(a=>a.division==="Networking").length;
+    document.getElementById("koorCyber").textContent=attendance.filter(a=>a.division==="Cyber").length;
 }
 
 function renderKoorAttendance(){
@@ -5356,36 +5380,31 @@ function resetPermitForm(){
 /* Versi dasar (localStorage saja). Jika cloud-sync.js dimuat & sudah
    dikonfigurasi, fungsi ini akan DITIMPA supaya foto diunggah ke
    Google Drive dulu sebelum pengajuan tersimpan (lihat cloud-sync.js). */
-async function submitPermit(event){
+function submitPermit(event){
     event.preventDefault();
-    if(currentUser?.role!=="STAF"){ toast("Akses ditolak.","error"); return; }
 
     const sessionId = document.getElementById("permitSession").value;
     const type = document.getElementById("permitType").value;
     const reason = document.getElementById("permitReason").value.trim();
-    if(!sessionId){ toast("Pilih kegiatan terlebih dahulu.","error"); return; }
-    if(!reason){ toast("Alasan wajib diisi.","error"); return; }
-    if(!pendingPermitPhoto){ toast("Lampirkan foto bukti terlebih dahulu.","error"); return; }
 
-    const session = load(DB.sessions).find(s=>s.id===sessionId);
-    if(!session){ toast("Kegiatan tidak ditemukan.","error"); return; }
-    if(!cloudSyncEnabled){ toast("Server wajib terhubung untuk mengirim pengajuan.","error"); return; }
+    if(!sessionId){ toast("Pilih kegiatan terlebih dahulu.", "error"); return; }
+    if(!reason){ toast("Alasan wajib diisi.", "error"); return; }
+    if(!pendingPermitPhoto){ toast("Lampirkan foto bukti terlebih dahulu.", "error"); return; }
 
-    cloudSyncBusy=true;
-    try{
-        const permit=buildPermitRecord(session,type,reason,pendingPermitPhoto);
-        const json=await cloudPost("addPermit",permit,1);
-        const saved=json.record||permit;
-        const permits=load(DB.permits).filter(p=>p.id!==saved.id && !(p.sessionId===saved.sessionId && p.userId===saved.userId && p.status!=="Ditolak"));
-        permits.push(saved);
-        _localSave(DB.permits,permits);
-        resetPermitForm();
-        renderPermitHistory();
-        toast(`Pengajuan ${type} berhasil dikirim, menunggu persetujuan.`, "success");
-    }catch(err){
-        toast("Gagal mengirim pengajuan: "+friendlyCloudError(err),"error");
-    }finally{ cloudSyncBusy=false; }
+    const sessions = load(DB.sessions);
+    const session = sessions.find(s=>s.id===sessionId);
+    if(!session){ toast("Kegiatan tidak ditemukan.", "error"); return; }
+
+    const permit = buildPermitRecord(session, type, reason, pendingPermitPhoto);
+    const permits = load(DB.permits);
+    permits.push(permit);
+    save(DB.permits, permits);
+
+    resetPermitForm();
+    renderPermitHistory();
+    toast(`Pengajuan ${type} berhasil dikirim, menunggu persetujuan.`, "success");
 }
+
 function buildPermitRecord(session, type, reason, photo){
     return {
         id: "PERMIT-"+Date.now(),
@@ -5407,7 +5426,7 @@ function permitStatusBadge(status){
 
 function permitProofCell(p){
     return p.photo
-        ? photoThumbHTML(p.photo, `viewPermitPhoto('${escapeJSString(p.id)}')`, "Bukti")
+        ? photoThumbHTML(p.photo, `viewPermitPhoto('${p.id}')`, "Bukti")
         : `<span style="color:#aaa;font-size:11px;">-</span>`;
 }
 
@@ -5506,37 +5525,63 @@ function canReviewPermit(permit){
     return false;
 }
 
-async function reviewPermit(id,decision){
-    if(currentUser?.role!=="HRD" && currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
-    const permits=load(DB.permits);
-    const permit=permits.find(p=>p.id===id);
-    if(!permit){ toast("Pengajuan tidak ditemukan.","error"); return; }
-    if(!canReviewPermit(permit)){ toast("Akses ditolak.","error"); return; }
-    if(permit.status!=="Menunggu"){ toast("Pengajuan ini sudah diproses.","error"); return; }
+function approvePermit(id){
+    const permits = load(DB.permits);
+    const permit = permits.find(p=>p.id===id);
+    if(!permit){ toast("Pengajuan tidak ditemukan.", "error"); return; }
+    if(!canReviewPermit(permit)){ toast("Akses ditolak.", "error"); return; }
+    if(permit.status!=="Menunggu"){ toast("Pengajuan ini sudah diproses.", "error"); return; }
 
-    let reviewNote="";
-    if(decision==="Ditolak") reviewNote=(prompt("Alasan penolakan (opsional):","")||"").trim();
-    cloudSyncBusy=true;
-    try{
-        const json=await cloudPost("reviewPermit",{permitId:id,decision,reviewNote},1);
-        const saved=json.permit||{...permit,status:decision,reviewNote};
-        const nextPermits=load(DB.permits).map(p=>p.id===saved.id?saved:p);
-        _localSave(DB.permits,nextPermits);
-        if(json.attendance){
-            const list=load(DB.attendance).filter(a=>!(a.sessionId===json.attendance.sessionId && a.userId===json.attendance.userId));
-            list.push(json.attendance);
-            _localSave(DB.attendance,list);
-        }
-        renderPermitApproval(currentUser.role==="HRD" ? "hrd" : "koor");
-        renderAll();
-        toast(`Pengajuan ${permit.type} dari ${permit.userName} ${decision.toLowerCase()}.`, "success");
-    }catch(err){
-        toast("Gagal memproses pengajuan: "+friendlyCloudError(err),"error");
-    }finally{ cloudSyncBusy=false; }
+    permit.status = "Disetujui";
+    permit.reviewedBy = currentUser.id;
+    permit.reviewedByName = currentUser.name;
+    permit.reviewedAt = new Date().toISOString();
+    save(DB.permits, permits);
+
+    // Buat/perbarui catatan absensi supaya muncul di Rekap Absensi lengkap dengan bukti fotonya.
+    const attendance = load(DB.attendance);
+    let record = attendance.find(a=> a.sessionId===permit.sessionId && a.userId===permit.userId);
+    if(record){
+        record.status = permit.type;
+        record.photo = permit.photo;
+        record.permitId = permit.id;
+    }else{
+        attendance.push({
+            id: "ATT-"+Date.now(), sessionId: permit.sessionId, token: null,
+            userId: permit.userId, userName: permit.userName, username: permit.username,
+            activity: permit.sessionActivity, division: permit.sessionDivision, date: permit.sessionDate,
+            checkIn: new Date().toISOString(), status: permit.type,
+            creatorId: permit.sessionCreatorId, creatorRole: permit.sessionCreatorRole,
+            lat: null, lng: null, photo: permit.photo,
+            permitId: permit.id, approvedFromPermit: true
+        });
+    }
+    save(DB.attendance, attendance);
+
+    renderPermitApproval(currentUser.role==="HRD" ? "hrd" : "koor");
+    renderAll();
+    toast(`Pengajuan ${permit.type} dari ${permit.userName} disetujui.`, "success");
 }
 
-function approvePermit(id){ return reviewPermit(id,"Disetujui"); }
-function rejectPermit(id){ return reviewPermit(id,"Ditolak"); }
+function rejectPermit(id){
+    const permits = load(DB.permits);
+    const permit = permits.find(p=>p.id===id);
+    if(!permit){ toast("Pengajuan tidak ditemukan.", "error"); return; }
+    if(!canReviewPermit(permit)){ toast("Akses ditolak.", "error"); return; }
+    if(permit.status!=="Menunggu"){ toast("Pengajuan ini sudah diproses.", "error"); return; }
+
+    const note = prompt("Alasan penolakan (opsional):", "") || "";
+
+    permit.status = "Ditolak";
+    permit.reviewedBy = currentUser.id;
+    permit.reviewedByName = currentUser.name;
+    permit.reviewedAt = new Date().toISOString();
+    permit.reviewNote = note.trim() || null;
+    save(DB.permits, permits);
+
+    renderPermitApproval(currentUser.role==="HRD" ? "hrd" : "koor");
+    toast(`Pengajuan ${permit.type} dari ${permit.userName} ditolak.`, "success");
+}
 
 function viewPermitPhoto(id){
     const permit = load(DB.permits).find(p=>p.id===id);
@@ -5604,9 +5649,8 @@ function getKoorFilteredAttendance(){
     return data;
 }
 
-async function exportKoorExcel(){
+function exportKoorExcel(){
     if(currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
-    try{ await ensureXLSX(); }catch(err){ featureLoadError("Excel",err); return; }
     const data=getKoorFilteredAttendance();
     const rows=data.map(a=>({
         "Nama":a.userName, "NIM":a.username, "Kegiatan":a.activity,
@@ -5620,9 +5664,8 @@ async function exportKoorExcel(){
     toast("Rekap Ngoprek berhasil dibuat.","success");
 }
 
-async function exportKoorPDF(){
+function exportKoorPDF(){
     if(currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
-    try{ await ensureJsPDF(); }catch(err){ featureLoadError("PDF",err); return; }
     const data=getKoorFilteredAttendance();
     const {jsPDF}=window.jspdf;
     const doc=new jsPDF("landscape");
@@ -5639,9 +5682,8 @@ async function exportKoorPDF(){
     toast("PDF rekap Ngoprek berhasil dibuat.","success");
 }
 
-async function exportExcel(){
+function exportExcel(){
     if(currentUser.role!=="HRD"){ toast("Hanya HRD yang dapat export data.", "error"); return; }
-    try{ await ensureXLSX(); }catch(err){ featureLoadError("Excel",err); return; }
     let data=load(DB.attendance);
     const date=document.getElementById("filterDate").value;
     const activity=document.getElementById("filterActivity").value;
@@ -5671,9 +5713,8 @@ async function exportExcel(){
 EXPORT PDF
 ========================================================= */
 
-async function exportPDF(){
+function exportPDF(){
     if(currentUser.role!=="HRD"){ toast("Hanya HRD yang dapat export PDF.", "error"); return; }
-    try{ await ensureJsPDF(); }catch(err){ featureLoadError("PDF",err); return; }
     let data=load(DB.attendance);
     const date=document.getElementById("filterDate").value;
     const activity=document.getElementById("filterActivity").value;
@@ -5811,10 +5852,10 @@ function restoreLogin(){
 </script>
 
 <!-- File tambahan: fitur lokasi (geofencing) & selfie capture -->
-<script defer src="geo-selfie.js"></script>
+<script src="geo-selfie.js"></script>
 
 <!-- File tambahan: sinkronisasi terpusat ke Google Sheets & Google Drive -->
-<script defer src="cloud-sync.js"></script>
+<script src="cloud-sync.js"></script>
 
 </body>
 </html>
