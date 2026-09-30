@@ -1,0 +1,65 @@
+NEV Absenku — PATCH BACKEND UNTUK ROLE AKUN
+
+PENTING:
+Jangan mengganti seluruh Code.gs yang sedang aktif dengan Code.gs lama dari arsip jika deployment Anda sekarang sudah menggunakan secure-v6-fast-login.
+Patch ini hanya untuk fungsi createUser_ agar HRD dapat membuat STAF / HRD / KOOR KP.
+
+1. Buka Apps Script yang sedang dipakai deployment aktif.
+2. Cari fungsi:
+   function createUser_(actor, data){ ... }
+3. Ganti fungsi tersebut dengan versi berikut:
+
+function createUser_(actor, data){
+  if(actor.role!=="HRD" && actor.role!=="KOOR KP") throw new Error("Hanya HRD atau Koor KP yang dapat membuat akun.");
+
+  const name=String(data.name||"").trim();
+  const username=String(data.username||"").trim();
+  const password=String(data.password||"");
+  let division=String(data.division||"").trim();
+  let role=String(data.role||"STAF").trim().toUpperCase();
+
+  if(!name || !username || !password) throw new Error("Nama, username, dan password wajib diisi.");
+
+  if(!["STAF","HRD","KOOR KP"].includes(role)){
+    throw new Error("Role tidak valid.");
+  }
+
+  // Koor KP hanya boleh membuat akun STAF di divisinya sendiri.
+  if(actor.role==="KOOR KP"){
+    role="STAF";
+    division=actor.division;
+  }
+
+  // HRD boleh membuat semua role.
+  if(role==="HRD"){
+    division="";
+  }else if(!division){
+    throw new Error("Divisi wajib diisi untuk akun STAF atau KOOR KP.");
+  }
+
+  const users=sheetToObjects_(SHEET_USERS);
+  if(users.some(u=>String(u.username).toLowerCase()===username.toLowerCase())){
+    throw new Error("NIM/username sudah digunakan.");
+  }
+
+  const record={
+    id:"U-"+Date.now()+"-"+Math.floor(Math.random()*10000),
+    name,
+    username,
+    password:hashPassword_(password),
+    role,
+    division:division || null
+  };
+
+  appendObject_(SHEET_USERS,record);
+  return safeUser_(record);
+}
+
+4. Save.
+5. Deploy → Manage deployments → Edit deployment aktif → Version: New version → Deploy.
+6. Pastikan Execute as = Me dan Who has access = Anyone.
+
+HASIL:
+- HRD: dapat membuat STAF, HRD, dan KOOR KP.
+- KOOR KP: hanya dapat membuat STAF dan otomatis memakai divisinya sendiri.
+- STAF: tidak dapat membuat akun.
