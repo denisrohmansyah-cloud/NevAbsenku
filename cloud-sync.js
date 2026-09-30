@@ -123,6 +123,19 @@ function queueIdentity(action,data){
     if(action.startsWith("save")) return action;
     return action+"|"+String(data?.id || ((data?.sessionId||"")+"|"+(data?.userId||"")) || Date.now());
 }
+
+function purgeLegacyAttendanceQueue(){
+    try{
+        const q=readCloudQueue().filter(item=>{
+            const a=String(item?.action||"");
+            return a!=="saveAttendance" && a!=="addAttendance";
+        });
+        writeCloudQueue(q);
+        for(const legacyKey of LEGACY_QUEUE_KEYS) localStorage.removeItem(legacyKey);
+        cloudUnsynced=q.length;
+    }catch(e){}
+}
+
 function enqueueCloud(action,data){
     const q=readCloudQueue();
     const key=queueIdentity(action,data);
@@ -264,17 +277,12 @@ AMBIL SEMUA DATA TERBARU DARI GOOGLE SHEETS
 async function fetchCloudAll(){
     if(!cloudSyncEnabled) return false;
     const token=getAuthToken();
-    // V14.5: Attendance server menjadi sumber kebenaran. Bersihkan cache
+    // V14.6: Attendance server menjadi sumber kebenaran. Bersihkan cache
     // lokal sebelum mengambil snapshot terbaru agar riwayat lama tidak
     // dapat tampil kembali karena cache/queue versi sebelumnya.
     try{
         _localSave(DB.attendance,[]);
-        for(const legacyKey of LEGACY_QUEUE_KEYS) localStorage.removeItem(legacyKey);
-        const q=readCloudQueue().filter(item=>{
-            const a=String(item?.action||"");
-            return a!=="saveAttendance" && a!=="addAttendance";
-        });
-        writeCloudQueue(q);
+        purgeLegacyAttendanceQueue();
     }catch(e){}
 
     if(!token) return false;

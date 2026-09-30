@@ -3805,12 +3805,19 @@ async function login(event){
         updateCloudBadge();
         toast("Login berhasil.", "success");
 
-        // Sinkronisasi berjalan di belakang layar dan TIDAK mengubah status login.
+        // V14.6: Ambil snapshot server TERLEBIH DAHULU.
+        // Jangan flush queue lama sebelum getAll karena queue lama dapat
+        // menghidupkan kembali riwayat absensi yang sudah dihapus dari Sheets.
         queueMicrotask(async()=>{
             try{
-                await flushCloudQueue();
                 const ok = await fetchCloudAll();
-                if(ok && currentUser) renderAll();
+                if(ok && currentUser){
+                    // Setelah snapshot server berhasil, hanya queue non-attendance
+                    // yang boleh diproses ulang. Queue attendance lama dibuang.
+                    purgeLegacyAttendanceQueue();
+                    await flushCloudQueue();
+                    renderAll();
+                }
             }catch(err){
                 console.warn("Sinkronisasi awal gagal:", err);
             }
