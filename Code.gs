@@ -28,7 +28,7 @@ const FALLBACK_FOLDER_NAMES = {
   presensi: "NEV Absenku - Foto Presensi"
 };
 
-const CODE_VERSION = "secure-v7.3-alpha-rekap";
+const CODE_VERSION = "secure-v7.4-reset-absensi";
 
 const SHEET_USERS = "Users";
 const SHEET_SESSIONS = "Sessions";
@@ -308,8 +308,18 @@ function ensureAutomaticAlpha_(){
   const existing=new Set(attendance.map(a=>String(a.sessionId)+"|"+String(a.userId)));
   const additions=[];
 
+  const resetAt=PropertiesService.getScriptProperties().getProperty("ATTENDANCE_RESET_AT") || "";
+
   sessions.forEach(session=>{
     if(!sessionHasEnded_(session,now)) return;
+
+    // Setelah HRD melakukan reset massal, sesi yang sudah berakhir
+    // sebelum waktu reset tidak boleh dibuatkan Alpha kembali.
+    if(resetAt){
+      const endedAt=new Date(String(session.date)+"T"+String(session.end)+":00+07:00");
+      const resetDate=new Date(resetAt);
+      if(!isNaN(endedAt.getTime()) && !isNaN(resetDate.getTime()) && endedAt.getTime() <= resetDate.getTime()) return;
+    }
 
     const eligible=users.filter(u=>
       session.division==="-" || String(u.division||"")===String(session.division||"")
@@ -639,6 +649,40 @@ function deleteAttendance_(actor,id){
 }
 
 /* =========================================================
+RESET SEMUA ABSENSI — HRD ONLY
+========================================================= */
+function clearAllAttendance_(actor){
+  if(actor.role!=="HRD") throw new Error("Hanya HRD yang dapat menghapus seluruh data absensi.");
+
+  return withLock_(()=>{
+    const list=sheetToObjects_(SHEET_ATTENDANCE);
+    const photoIds=[...new Set(list.map(a=>driveFileId_(a.photo)).filter(Boolean))];
+
+    // Hapus/arsipkan foto selfie/presensi yang terkait dengan record absensi.
+    let deletedPhotos=0;
+    photoIds.forEach(fileId=>{
+      try{
+        DriveApp.getFileById(fileId).setTrashed(true);
+        deletedPhotos++;
+      }catch(err){}
+    });
+
+    const sheet=getSheet_(SHEET_ATTENDANCE);
+    const lastRow=sheet.getLastRow();
+    if(lastRow>1){
+      sheet.getRange(2,1,lastRow-1,HEADERS.Attendance.length).clearContent();
+    }
+
+    // Tandai waktu reset agar auto-Alpha tidak langsung mengisi kembali
+    // sesi lama yang sudah selesai sebelum reset. Sesi baru tetap normal.
+    PropertiesService.getScriptProperties().setProperty("ATTENDANCE_RESET_AT",new Date().toISOString());
+
+    return {ok:true,deletedCount:list.length,deletedPhotos};
+  });
+}
+
+
+/* =========================================================
 SECURE ATTENDANCE / PERMIT HELPERS
 ========================================================= */
 function isFiniteNumber_(v){ return typeof v === "number" && isFinite(v); }
@@ -890,6 +934,9 @@ function doPost(e){
 
       case "deleteAttendance":
         return jsonResponse_(withLock_(()=>deleteAttendance_(actor,String(data.attendanceId||""))));
+
+      case "clearAllAttendance":
+        return jsonResponse_(clearAllAttendance_(actor));
 
       case "saveSessions":{
         if(actor.role==="STAF") throw new Error("STAF tidak dapat mengubah sesi.");

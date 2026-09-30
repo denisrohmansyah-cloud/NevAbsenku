@@ -2842,6 +2842,16 @@ APP
 
                             </button>
 
+                            <button
+                                class="btn btn-danger"
+                                style="background:#991b1b;"
+                                onclick="clearAllAttendance()">
+
+                                <i class="fa-solid fa-trash-can"></i>
+                                Hapus Semua Absensi
+
+                            </button>
+
                         </div>
 
                     </div>
@@ -5731,6 +5741,53 @@ async function saveSettings(){
         toast("Pengaturan akun berhasil disimpan.","success");
     }catch(err){
         toast("Gagal menyimpan pengaturan: "+friendlyCloudError(err),"error");
+    }
+}
+
+
+/* =========================================================
+RESET SEMUA DATA ABSENSI — KHUSUS HRD
+========================================================= */
+async function clearAllAttendance(){
+    if(currentUser?.role!=="HRD"){
+        toast("Hanya HRD yang dapat menghapus seluruh data absensi.","error");
+        return;
+    }
+
+    const attendance=load(DB.attendance);
+    if(!attendance.length){
+        toast("Tidak ada data absensi untuk dihapus.","normal");
+        return;
+    }
+
+    const answer=prompt(
+        `PERINGATAN! Ini akan menghapus ${attendance.length} data absensi beserta foto absensi yang terkait dari server.\n\nQR/kegiatan, akun staf, dan data izin/sakit TIDAK dihapus.\n\nKetik HAPUS untuk melanjutkan:`
+    );
+    if(answer!=="HAPUS") return;
+
+    const btn=document.querySelector('button[onclick="clearAllAttendance()"]');
+    const oldHTML=btn?.innerHTML;
+    if(btn){
+        btn.disabled=true;
+        btn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Menghapus...';
+    }
+
+    try{
+        const result=await cloudPost("clearAllAttendance",{},1);
+        if(!result?.ok) throw new Error(result?.error||"Gagal menghapus data absensi.");
+
+        _localSave(DB.attendance,[]);
+        cloudUnsynced=0;
+        cloudLastError="";
+        renderAll();
+        toast(`Semua data absensi berhasil dihapus (${Number(result.deletedCount||0)} data).`,"success");
+    }catch(err){
+        toast("Gagal menghapus seluruh absensi: "+friendlyCloudError(err),"error");
+    }finally{
+        if(btn){
+            btn.disabled=false;
+            btn.innerHTML=oldHTML||'<i class="fa-solid fa-trash-can"></i> Hapus Semua Absensi';
+        }
     }
 }
 
