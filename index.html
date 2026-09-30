@@ -4283,6 +4283,7 @@ function startScanner(){
         errorMessage=>{}
     ).then(()=>{
         updateScannerStatus("Kamera aktif. Arahkan kamera ke QR.", "normal");
+        setupScannerZoom();
     }).catch(error=>{
         html5QrCode=null;
         console.error("Gagal membuka kamera:", error);
@@ -4296,11 +4297,48 @@ function startScanner(){
     });
 }
 
+function setupScannerZoom(){
+    const reader=document.getElementById("reader");
+    if(!reader) return;
+    document.getElementById("scannerZoomControl")?.remove();
+
+    const video=reader.querySelector("video");
+    const track=video?.srcObject?.getVideoTracks?.()[0];
+    const caps=track?.getCapabilities?.() || {};
+    const settings=track?.getSettings?.() || {};
+    const min=Number(caps.zoom?.min ?? 1);
+    const max=Number(caps.zoom?.max ?? 1);
+    const step=Number(caps.zoom?.step ?? 0.1);
+    const current=Number(settings.zoom ?? min);
+
+    const wrap=document.createElement("div");
+    wrap.id="scannerZoomControl";
+    wrap.style.cssText="margin:12px auto 4px;max-width:420px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:12px;background:#fff;display:flex;align-items:center;gap:10px;";
+    if(max>min){
+        wrap.innerHTML=`<i class="fa-solid fa-magnifying-glass-minus"></i><input id="scannerZoomRange" type="range" min="${min}" max="${max}" step="${step}" value="${Math.min(Math.max(current,min),max)}" style="flex:1;"><span id="scannerZoomValue" style="min-width:48px;text-align:right;font-size:12px;font-weight:700;">${Math.round(current*10)/10}×</span><i class="fa-solid fa-magnifying-glass-plus"></i>`;
+        reader.insertAdjacentElement("afterend",wrap);
+        const range=document.getElementById("scannerZoomRange");
+        const value=document.getElementById("scannerZoomValue");
+        range.addEventListener("input",async()=>{
+            const zoom=Number(range.value);
+            value.textContent=`${Math.round(zoom*10)/10}×`;
+            try{
+                if(track?.applyConstraints) await track.applyConstraints({advanced:[{zoom}]});
+                else if(html5QrCode?.applyVideoConstraints) await html5QrCode.applyVideoConstraints({advanced:[{zoom}]});
+            }catch(err){ console.warn("Zoom kamera tidak didukung:",err); }
+        });
+    }else{
+        wrap.innerHTML=`<span style="font-size:12px;color:#666;"><i class="fa-solid fa-circle-info"></i> Zoom kamera tidak didukung oleh perangkat/browser ini.</span>`;
+        reader.insertAdjacentElement("afterend",wrap);
+    }
+}
+
 function stopScanner(){
     if(!html5QrCode) return;
     html5QrCode.stop().then(()=>{
         html5QrCode.clear();
         html5QrCode=null;
+        document.getElementById("scannerZoomControl")?.remove();
         updateScannerStatus("Scanner dihentikan.", "normal");
     }).catch(()=>{ html5QrCode=null; });
 }
@@ -4412,8 +4450,8 @@ async function deleteSession(id,type){
     if(!session)return;
 
     if(currentUser.role==="KOOR KP" &&
-       (session.creatorId!==currentUser.id || session.activity!=="Ngoprek" || session.division!==currentUser.division)){
-        toast("Akses ditolak. Koor KP hanya dapat menghapus QR Ngoprek miliknya sendiri.","error");
+       (session.activity!=="Ngoprek" || session.division!==currentUser.division)){
+        toast("Akses ditolak. QR hanya dapat dikelola dalam divisi Anda.","error");
         return;
     }
     if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
@@ -4491,13 +4529,24 @@ function renderQRSessionList(type){
     `;
 }
 
-function loadSessionToQR(id,type){
+async function loadSessionToQR(id,type){
     const sessions=load(DB.sessions);
     const session=sessions.find(s=>s.id===id);
     if(!session)return;
-    currentQR[type]=session;
-    renderGeneratedQR(type, session);
-    toast("QR session ditampilkan.", "success");
+
+    try{
+        // Token QR tidak lagi dikirim melalui getAll. Ambil hanya saat HRD/Koor
+        // benar-benar meminta QR tertentu untuk ditampilkan/print.
+        if(!session.token && typeof getCloudSessionToken==="function"){
+            session.token=await getCloudSessionToken(session.id);
+        }
+        if(!session.token) throw new Error("Token QR tidak tersedia.");
+        currentQR[type]=session;
+        renderGeneratedQR(type, session);
+        toast("QR session ditampilkan.", "success");
+    }catch(err){
+        toast("Gagal mengambil QR: "+friendlyCloudError(err),"error");
+    }
 }
 
 
@@ -4604,7 +4653,7 @@ function openSessionAttendanceEdit(sessionId,userId){
     const staff=users.find(u=>u.id===userId);
     if(!session || !staff)return;
 
-    if(currentUser.role==="KOOR KP" && (session.creatorId!==currentUser.id || session.activity!=="Ngoprek")){
+    if(currentUser.role==="KOOR KP" && (session.activity!=="Ngoprek" || session.division!==currentUser.division)){
         toast("Koor KP hanya dapat mengubah absensi Ngoprek yang dibuatnya.", "error"); return;
     }
 
@@ -4902,8 +4951,8 @@ function renderStafDashboard(){
 }
 
 function renderKoorDashboard(){
-    const sessions=load(DB.sessions).filter(s=> s.creatorId===currentUser.id && s.activity==="Ngoprek");
-    const attendance=load(DB.attendance).filter(a=> a.creatorId===currentUser.id && a.activity==="Ngoprek");
+    const sessions=load(DB.sessions).filter(s=> s.activity==="Ngoprek" && s.division===currentUser.division);
+    const attendance=load(DB.attendance).filter(a=> a.activity==="Ngoprek" && a.division===currentUser.division);
     
     document.getElementById("koorTotalQR").textContent=sessions.length;
     document.getElementById("koorTotalHadir").textContent=attendance.filter(a=>a.status==="Hadir").length;
@@ -4914,7 +4963,6 @@ function renderKoorDashboard(){
 function renderKoorAttendance(){
     if(currentUser?.role!=="KOOR KP")return;
     let attendance=load(DB.attendance).filter(a=>
-        a.creatorId===currentUser.id &&
         a.activity==="Ngoprek" &&
         a.division===currentUser.division
     );
@@ -4958,7 +5006,7 @@ function openEditAttendance(id){
     if(currentUser.role==="STAF"){
         toast("STAF tidak dapat mengubah status absensi.", "error"); return;
     }
-    if(currentUser.role==="KOOR KP" && (record.creatorId!==currentUser.id || record.activity!=="Ngoprek")){
+    if(currentUser.role==="KOOR KP" && (record.activity!=="Ngoprek" || record.division!==currentUser.division)){
         toast("Koor KP hanya dapat mengubah absensi Ngoprek yang dibuatnya.", "error"); return;
     }
 
@@ -4984,7 +5032,7 @@ function saveAttendanceEdit(){
     let record = id ? attendance.find(a=>a.id===id) : null;
 
     if(record){
-        if(currentUser.role==="KOOR KP" && (record.creatorId!==currentUser.id || record.activity!=="Ngoprek")){
+        if(currentUser.role==="KOOR KP" && (record.activity!=="Ngoprek" || record.division!==currentUser.division)){
             toast("Akses ditolak.", "error"); return;
         }
         record.status=status;
@@ -4996,7 +5044,7 @@ function saveAttendanceEdit(){
         const staff=users.find(u=>u.id===userId);
         if(!session || !staff){ closeModal("editAttendanceModal"); return; }
 
-        if(currentUser.role==="KOOR KP" && (session.creatorId!==currentUser.id || session.activity!=="Ngoprek")){
+        if(currentUser.role==="KOOR KP" && (session.activity!=="Ngoprek" || session.division!==currentUser.division)){
             toast("Akses ditolak.", "error"); return;
         }
 
@@ -5030,7 +5078,7 @@ async function deleteAttendance(id){
     if(!record)return;
 
     if(currentUser.role==="KOOR KP" &&
-       (record.creatorId!==currentUser.id || record.activity!=="Ngoprek" || record.division!==currentUser.division)){
+       (record.activity!=="Ngoprek" || record.division!==currentUser.division)){
         toast("Akses ditolak. Anda hanya dapat menghapus absensi Ngoprek milik Anda.","error");
         return;
     }

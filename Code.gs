@@ -294,7 +294,7 @@ function sessionsFor_(user){
   const all=sheetToObjects_(SHEET_SESSIONS);
   if(user.role==="HRD") return all.map(publicSession_);
   if(user.role==="KOOR KP") return all
-    .filter(s=>s.creatorId===user.id && s.activity==="Ngoprek" && s.division===user.division)
+    .filter(s=>s.activity==="Ngoprek" && s.division===user.division)
     .map(publicSession_);
   // STAF tidak perlu menerima token/QR atau seluruh database sesi.
   // Ia hanya membutuhkan sesi aktif untuk kalender/pengajuan izin.
@@ -305,7 +305,7 @@ function attendanceFor_(user){
   const all=sheetToObjects_(SHEET_ATTENDANCE);
   if(user.role==="HRD") return all.map(publicAttendance_);
   if(user.role==="KOOR KP") return all
-    .filter(a=>a.creatorId===user.id && a.activity==="Ngoprek" && a.division===user.division)
+    .filter(a=>a.activity==="Ngoprek" && a.division===user.division)
     .map(publicAttendance_);
   return all.filter(a=>a.userId===user.id).map(publicAttendance_);
 }
@@ -313,7 +313,7 @@ function attendanceFor_(user){
 function permitsFor_(user){
   const all=sheetToObjects_(SHEET_PERMITS);
   if(user.role==="HRD") return all;
-  if(user.role==="KOOR KP") return all.filter(p=>p.sessionCreatorId===user.id && p.sessionActivity==="Ngoprek" && p.sessionDivision===user.division);
+  if(user.role==="KOOR KP") return all.filter(p=>p.sessionActivity==="Ngoprek" && p.sessionDivision===user.division);
   return all.filter(p=>p.userId===user.id);
 }
 
@@ -364,12 +364,12 @@ function canViewPhoto_(actor,fileId){
   const att=sheetToObjects_(SHEET_ATTENDANCE).find(a=>driveFileId_(a.photo)===fileId);
   if(att){
     if(actor.role==="STAF") return String(att.userId)===String(actor.id);
-    return actor.role==="KOOR KP" && att.creatorId===actor.id && att.activity==="Ngoprek" && att.division===actor.division;
+    return actor.role==="KOOR KP" && att.activity==="Ngoprek" && att.division===actor.division;
   }
   const permit=sheetToObjects_(SHEET_PERMITS).find(p=>driveFileId_(p.photo)===fileId);
   if(permit){
     if(actor.role==="STAF") return String(permit.userId)===String(actor.id);
-    return actor.role==="KOOR KP" && permit.sessionCreatorId===actor.id && permit.sessionActivity==="Ngoprek" && permit.sessionDivision===actor.division;
+    return actor.role==="KOOR KP" && permit.sessionActivity==="Ngoprek" && permit.sessionDivision===actor.division;
   }
   return false;
 }
@@ -427,7 +427,7 @@ function doGet(e){
       const session=sessions.find(s=>s.id===sessionId);
       if(!session) throw new Error("QR/kegiatan tidak ditemukan.");
       const allowed = user.role==="HRD" ||
-        (user.role==="KOOR KP" && session.creatorId===user.id && session.activity==="Ngoprek" && session.division===user.division);
+        (user.role==="KOOR KP" && session.activity==="Ngoprek" && session.division===user.division);
       if(!allowed) throw new Error("Akses ditolak untuk QR ini.");
       return jsonResponse_({ok:true, sessionId:session.id, token:String(session.token||"")});
     }
@@ -537,7 +537,7 @@ function deleteSession_(actor,sessionId){
   if(!session) throw new Error("Kegiatan/QR tidak ditemukan.");
 
   if(actor.role==="KOOR KP"){
-    if(session.creatorId!==actor.id || session.activity!=="Ngoprek" || session.division!==actor.division){
+    if(session.activity!=="Ngoprek" || session.division!==actor.division){
       throw new Error("Koor KP hanya dapat menghapus QR Ngoprek miliknya.");
     }
   }else if(actor.role!=="HRD"){
@@ -556,7 +556,7 @@ function deleteAttendance_(actor,id){
   if(!rec) throw new Error("Data absensi tidak ditemukan.");
 
   if(actor.role==="KOOR KP"){
-    if(rec.creatorId!==actor.id || rec.activity!=="Ngoprek" || rec.division!==actor.division){
+    if(rec.activity!=="Ngoprek" || rec.division!==actor.division){
       throw new Error("Koor KP hanya dapat menghapus absensi Ngoprek miliknya.");
     }
   }else if(actor.role!=="HRD"){
@@ -685,7 +685,7 @@ function addPermitSecure_(actor,data){
 
 function canReviewPermit_(actor,permit){
   if(actor.role==="HRD") return true;
-  return actor.role==="KOOR KP" && permit.sessionActivity==="Ngoprek" && permit.sessionCreatorId===actor.id && permit.sessionDivision===actor.division;
+  return actor.role==="KOOR KP" && permit.sessionActivity==="Ngoprek" && permit.sessionDivision===actor.division;
 }
 
 function reviewPermitSecure_(actor,data){
@@ -745,7 +745,7 @@ function mergeAuthorizedAttendance_(actor,incoming){
     if(["Hadir","Izin","Sakit","Alpha"].indexOf(status)<0) throw new Error("Status absensi tidak valid.");
     const old=raw.id ? byId[raw.id] : null;
     if(old){
-      if(actor.role==="KOOR KP" && !(old.creatorId===actor.id && old.activity==="Ngoprek" && old.division===actor.division)) throw new Error("Koor KP tidak dapat mengubah absensi di luar divisinya.");
+      if(actor.role==="KOOR KP" && !(old.activity==="Ngoprek" && old.division===actor.division)) throw new Error("Koor KP tidak dapat mengubah absensi di luar divisinya.");
       old.status=status;
       byId[old.id]=old;
       return;
@@ -754,7 +754,7 @@ function mergeAuthorizedAttendance_(actor,incoming){
     const session=sessions.find(s=>String(s.id)===String(raw.sessionId));
     const user=users.find(u=>String(u.id)===String(raw.userId) && u.role==="STAF");
     if(!session || !user) throw new Error("Sesi atau staf untuk absensi manual tidak ditemukan.");
-    if(actor.role==="KOOR KP" && !(session.creatorId===actor.id && session.activity==="Ngoprek" && session.division===actor.division)) throw new Error("Koor KP hanya dapat menambah absensi Ngoprek miliknya.");
+    if(actor.role==="KOOR KP" && !(session.activity==="Ngoprek" && session.division===actor.division)) throw new Error("Koor KP hanya dapat menambah absensi Ngoprek miliknya.");
     if(session.division!=="-" && String(user.division||"")!==String(session.division)) throw new Error("Staf bukan anggota divisi kegiatan.");
 
     const duplicate=current.find(a=>String(a.sessionId)===String(session.id) && String(a.userId)===String(user.id));
@@ -825,7 +825,7 @@ function doPost(e){
         const incoming=data;
         if(actor.role==="KOOR KP"){
           incoming.forEach(s=>{
-            if(s.creatorId!==actor.id || s.activity!=="Ngoprek" || s.division!==actor.division){
+            if(s.activity!=="Ngoprek" || s.division!==actor.division){
               throw new Error("Koor KP hanya dapat menyimpan sesi Ngoprek miliknya.");
             }
           });

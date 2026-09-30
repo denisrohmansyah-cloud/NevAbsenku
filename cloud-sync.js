@@ -193,6 +193,16 @@ async function cloudPost(action, data, retries){
     throw lastErr;
 }
 
+async function getCloudSessionToken(sessionId){
+    if(!cloudSyncEnabled || !getAuthToken()) throw new Error("Sesi login tidak tersedia.");
+    const url=`${CLOUD_SCRIPT_URL}?action=getSessionToken&sessionId=${encodeURIComponent(sessionId)}&authToken=${encodeURIComponent(getAuthToken())}&_=${Date.now()}`;
+    const res=await fetch(url,{cache:"no-store"});
+    const json=await res.json();
+    if(json?.authExpired){ clearAuthSession(); throw new Error(json.error||"Sesi login telah berakhir."); }
+    if(!json?.ok) throw new Error(json?.error||"Token QR tidak dapat diambil.");
+    return String(json.token||"");
+}
+
 function friendlyCloudError(err){
     const msg = String((err && err.message) || err || "");
     if(/failed to fetch|networkerror|load failed|network request failed/i.test(msg)){
