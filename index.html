@@ -5359,6 +5359,27 @@ async function editUser(id){
 
     const name=prompt("Nama:", user.name);
     if(name===null)return;
+
+    // HRD dapat memindahkan STAF ke divisi lain.
+    // Riwayat absensi lama tetap menyimpan divisi saat absensi dilakukan.
+    let division=user.division || "";
+    if(currentUser.role==="HRD"){
+        const divisionInput=prompt(
+            "Divisi baru (Networking / Cyber / Sysadmin):",
+            user.division || ""
+        );
+        if(divisionInput===null)return;
+        division=divisionInput.trim();
+
+        const allowedDivisions=["Networking","Cyber","Sysadmin"];
+        const matched=allowedDivisions.find(d=>d.toLowerCase()===division.toLowerCase());
+        if(!matched){
+            toast("Divisi tidak valid. Pilih Networking, Cyber, atau Sysadmin.", "error");
+            return;
+        }
+        division=matched;
+    }
+
     const password=prompt("Password baru (kosongkan jika tidak diubah):", "");
 
     try{
@@ -5366,7 +5387,7 @@ async function editUser(id){
             targetId:id,
             name:name.trim(),
             password:password || "",
-            division:user.division
+            division:division
         },1);
         const updated=result.user;
         const next=users.map(u=>u.id===id ? updated : u);
