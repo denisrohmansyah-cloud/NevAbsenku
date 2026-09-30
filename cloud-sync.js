@@ -62,8 +62,8 @@ let cloudUnsynced = 0;        // explicit failed-write queue only
 let cloudFlushing = false;
 let cloudLastFlushAt = 0;
 const CLOUD_POLL_MS = 30000;
-const CLOUD_QUEUE_KEY = "nev_sync_queue_v14_5";
-const LEGACY_QUEUE_KEYS = ["nev_sync_queue_v13", "nev_sync_queue_v14_3", "nev_sync_queue_v14_2", "nev_sync_queue_v14_4"];
+const CLOUD_QUEUE_KEY = "nev_sync_queue_v14_7";
+const LEGACY_QUEUE_KEYS = ["nev_sync_queue_v13", "nev_sync_queue_v14_1", "nev_sync_queue_v14_2", "nev_sync_queue_v14_3", "nev_sync_queue_v14_4", "nev_sync_queue_v14_5", "nev_sync_queue_v14_6", "nev_sync_queue"];
 
 
 /* =========================================================
@@ -281,8 +281,11 @@ async function fetchCloudAll(){
     // lokal sebelum mengambil snapshot terbaru agar riwayat lama tidak
     // dapat tampil kembali karena cache/queue versi sebelumnya.
     try{
+        // HARD RESET LOCAL: server adalah satu-satunya sumber kebenaran.
+        // Kosongkan cache dan queue attendance SEBELUM halaman dirender.
         _localSave(DB.attendance,[]);
         purgeLegacyAttendanceQueue();
+        if(typeof renderAll === "function" && currentUser) renderAll();
     }catch(e){}
 
     if(!token) return false;
@@ -312,6 +315,8 @@ async function fetchCloudAll(){
         return true;
     }catch(err){
         if(err?.authExpired) forceLoginScreen("Sesi login telah berakhir. Silakan login kembali.");
+        // Jangan biarkan tabel lama tetap tampil jika snapshot server gagal.
+        try{ _localSave(DB.attendance,[]); if(typeof renderAll === "function" && currentUser) renderAll(); }catch(e){}
         console.error("Gagal mengambil data dari Google Sheets:",err);
         cloudLastError=friendlyCloudError(err);
         updateCloudBadge();
