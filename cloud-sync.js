@@ -62,8 +62,8 @@ let cloudUnsynced = 0;        // explicit failed-write queue only
 let cloudFlushing = false;
 let cloudLastFlushAt = 0;
 const CLOUD_POLL_MS = 30000;
-const CLOUD_QUEUE_KEY = "nev_sync_queue_v14_9";
-const LEGACY_QUEUE_KEYS = ["nev_sync_queue_v13", "nev_sync_queue_v14_1", "nev_sync_queue_v14_2", "nev_sync_queue_v14_3", "nev_sync_queue_v14_4", "nev_sync_queue_v14_5", "nev_sync_queue_v14_6", "nev_sync_queue"];
+const CLOUD_QUEUE_KEY = "nev_sync_queue_v14_5";
+const LEGACY_QUEUE_KEYS = ["nev_sync_queue_v13", "nev_sync_queue_v14_3", "nev_sync_queue_v14_2", "nev_sync_queue_v14_4"];
 
 
 /* =========================================================
@@ -123,19 +123,6 @@ function queueIdentity(action,data){
     if(action.startsWith("save")) return action;
     return action+"|"+String(data?.id || ((data?.sessionId||"")+"|"+(data?.userId||"")) || Date.now());
 }
-
-function purgeLegacyAttendanceQueue(){
-    try{
-        const q=readCloudQueue().filter(item=>{
-            const a=String(item?.action||"");
-            return a!=="saveAttendance" && a!=="addAttendance";
-        });
-        writeCloudQueue(q);
-        for(const legacyKey of LEGACY_QUEUE_KEYS) localStorage.removeItem(legacyKey);
-        cloudUnsynced=q.length;
-    }catch(e){}
-}
-
 function enqueueCloud(action,data){
     const q=readCloudQueue();
     const key=queueIdentity(action,data);
@@ -207,13 +194,13 @@ async function cloudPost(action, data, retries){
     throw lastErr;
 }
 
-async function cloudPostProtected(action, data, retries){
-    return cloudPost(action, data, retries);
-}
-
 async function getCloudSessionToken(sessionId){
     if(!cloudSyncEnabled || !getAuthToken()) throw new Error("Sesi login tidak tersedia.");
-    const json=await cloudPostProtected("getSessionToken",{sessionId:String(sessionId||"")},1);
+    const url=`${CLOUD_SCRIPT_URL}?action=getSessionToken&sessionId=${encodeURIComponent(sessionId)}&authToken=${encodeURIComponent(getAuthToken())}&_=${Date.now()}`;
+    const res=await fetch(url,{cache:"no-store"});
+    const json=await res.json();
+    if(json?.authExpired){ clearAuthSession(); throw new Error(json.error||"Sesi login telah berakhir."); }
+    if(!json?.ok) throw new Error(json?.error||"Token QR tidak dapat diambil.");
     return String(json.token||"");
 }
 
@@ -277,20 +264,23 @@ AMBIL SEMUA DATA TERBARU DARI GOOGLE SHEETS
 async function fetchCloudAll(){
     if(!cloudSyncEnabled) return false;
     const token=getAuthToken();
-    // V14.9: Attendance server menjadi sumber kebenaran. Bersihkan cache
+    // V14.5: Attendance server menjadi sumber kebenaran. Bersihkan cache
     // lokal sebelum mengambil snapshot terbaru agar riwayat lama tidak
     // dapat tampil kembali karena cache/queue versi sebelumnya.
     try{
-        // HARD RESET LOCAL: server adalah satu-satunya sumber kebenaran.
-        // Kosongkan cache dan queue attendance SEBELUM halaman dirender.
         _localSave(DB.attendance,[]);
-        purgeLegacyAttendanceQueue();
-        if(typeof renderAll === "function" && currentUser) renderAll();
+        for(const legacyKey of LEGACY_QUEUE_KEYS) localStorage.removeItem(legacyKey);
+        const q=readCloudQueue().filter(item=>{
+            const a=String(item?.action||"");
+            return a!=="saveAttendance" && a!=="addAttendance";
+        });
+        writeCloudQueue(q);
     }catch(e){}
 
     if(!token) return false;
     try{
-        const json=await cloudPostProtected("getAll",{},1);
+        const res=await fetch(`${CLOUD_SCRIPT_URL}?action=getAll&authToken=${encodeURIComponent(token)}&_=${Date.now()}`,{cache:"no-store"});
+        const json=await res.json();
         if(json && json.authExpired){
             clearAuthSession();
             forceLoginScreen("Sesi login telah berakhir. Silakan login kembali.");
@@ -314,8 +304,6 @@ async function fetchCloudAll(){
         return true;
     }catch(err){
         if(err?.authExpired) forceLoginScreen("Sesi login telah berakhir. Silakan login kembali.");
-        // Jangan biarkan tabel lama tetap tampil jika snapshot server gagal.
-        try{ _localSave(DB.attendance,[]); if(typeof renderAll === "function" && currentUser) renderAll(); }catch(e){}
         console.error("Gagal mengambil data dari Google Sheets:",err);
         cloudLastError=friendlyCloudError(err);
         updateCloudBadge();
@@ -384,37 +372,6 @@ function updateCloudBadge(){
     el.style.background = bg;
     el.style.color = fg;
 }
-
-
-/* =========================================================
-   HRD: RESET TOTAL RIWAYAT ABSENSI
-   Server menjadi sumber kebenaran. Setelah reset, cache/queue lokal
-   dibersihkan dan dashboard langsung dirender ulang.
-========================================================= */
-async function resetAttendanceHistoryNow(){
-    if(currentUser?.role !== "HRD"){ toast("Hanya HRD yang dapat mereset riwayat absensi.","error"); return; }
-    const yes = confirm("HAPUS SEMUA RIWAYAT ABSENSI?\n\nSemua data pada sheet Attendance akan dihapus permanen. Data Users, Sessions, dan Permits tidak dihapus.\n\nLanjutkan?");
-    if(!yes) return;
-    try{
-        cloudSyncBusy=true;
-        const json=await cloudPost("resetAttendanceHistory",{},1);
-        if(!json?.ok) throw new Error(json?.error||"Reset gagal.");
-        _localSave(DB.attendance,[]);
-        try{ localStorage.removeItem(CLOUD_QUEUE_KEY); }catch(e){}
-        for(const k of LEGACY_QUEUE_KEYS){ try{localStorage.removeItem(k);}catch(e){} }
-        cloudUnsynced=0;
-        cloudLastError=null;
-        cloudLastSyncAt=new Date();
-        updateCloudBadge();
-        if(typeof renderAll === "function") renderAll();
-        toast("Semua riwayat absensi berhasil dihapus.","success");
-    }catch(err){
-        console.error(err);
-        toast("Gagal mereset riwayat: "+friendlyCloudError(err),"error");
-    }finally{ cloudSyncBusy=false; }
-}
-
-window.resetAttendanceHistoryNow = resetAttendanceHistoryNow;
 
 async function manualCloudRefresh(silent){
     if(!cloudSyncEnabled || cloudSyncBusy) return;
@@ -534,7 +491,8 @@ window.nevLoadPhotoProxy = async function(photo){
     const fileId=m&&m[1];
     const token=getAuthToken();
     if(!fileId || !token) throw new Error("Foto atau sesi tidak valid.");
-    const json=await cloudPostProtected("getPhoto",{photoId:String(fileId||"")},1);
+    const res=await fetch(`${CLOUD_SCRIPT_URL}?action=getPhoto&photoId=${encodeURIComponent(fileId)}&authToken=${encodeURIComponent(token)}&_=${Date.now()}`,{cache:"no-store"});
+    const json=await res.json();
     if(json?.authExpired){ forceLoginScreen("Sesi login telah berakhir. Silakan login kembali."); throw new Error("Sesi login berakhir."); }
     if(!json?.ok || !json.data) throw new Error(json?.error||"Foto tidak dapat diambil.");
     return `data:${json.mimeType||"image/jpeg"};base64,${json.data}`;

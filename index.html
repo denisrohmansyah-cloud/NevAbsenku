@@ -1934,22 +1934,14 @@ APP
 
                         </div>
 
-                        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
-                            <button
-                                class="btn btn-primary"
-                                onclick="showPage('hrd-qr')">
-                                <i class="fa-solid fa-qrcode"></i>
-                                Buat QR
-                            </button>
-                            <button
-                                class="btn btn-danger"
-                                type="button"
-                                onclick="resetAttendanceHistoryNow()"
-                                title="Hapus seluruh riwayat absensi dari server dan browser">
-                                <i class="fa-solid fa-trash"></i>
-                                Bersihkan Riwayat
-                            </button>
-                        </div>
+                        <button
+                            class="btn btn-primary"
+                            onclick="showPage('hrd-qr')">
+
+                            <i class="fa-solid fa-qrcode"></i>
+                            Buat QR
+
+                        </button>
 
                     </div>
 
@@ -2825,7 +2817,7 @@ APP
                             <h3>Rekap Absensi</h3>
 
                             <p>
-                                Laporan seluruh data absensi.
+                                Laporan seluruh data absensi. Tombol <b>Hapus Semua Tampil</b> menghapus hanya data yang sedang sesuai filter.
                             </p>
 
                         </div>
@@ -2850,6 +2842,15 @@ APP
 
                             </button>
 
+                            <button
+                                class="btn btn-danger"
+                                style="background:#991b1b;"
+                                onclick="deleteAllVisibleAttendance()">
+
+                                <i class="fa-solid fa-trash-can"></i>
+                                Hapus Semua Tampil
+
+                            </button>
 
                         </div>
 
@@ -3340,7 +3341,7 @@ REGISTER MODAL
 
         <div class="modal-header">
 
-            <h3 id="registerModalTitle">Tambah Akun</h3>
+            <h3>Tambah Akun STAF</h3>
 
             <button
                 class="modal-close"
@@ -3378,17 +3379,20 @@ REGISTER MODAL
 
                 </div>
 
-                <div class="form-group" id="registerRoleGroup">
+                <div class="form-group">
 
                     <label>Role *</label>
 
                     <select
                         id="registerRole"
                         class="form-control"
-                        onchange="updateRegisterRoleUI()">
+                        onchange="toggleRegisterDivision()"
+                        required>
+
                         <option value="STAF">STAF</option>
-                        <option value="HRD">HRD</option>
                         <option value="KOOR KP">KOOR KP</option>
+                        <option value="HRD">HRD</option>
+
                     </select>
 
                 </div>
@@ -3724,7 +3728,6 @@ STATE
 
 let currentUser = null;
 let loginRole = "STAF";
-let editingUserId = null;
 let currentQR = { hrd:null, koor:null };
 let html5QrCode = null;
 
@@ -3818,19 +3821,12 @@ async function login(event){
         updateCloudBadge();
         toast("Login berhasil.", "success");
 
-        // V14.6: Ambil snapshot server TERLEBIH DAHULU.
-        // Jangan flush queue lama sebelum getAll karena queue lama dapat
-        // menghidupkan kembali riwayat absensi yang sudah dihapus dari Sheets.
+        // Sinkronisasi berjalan di belakang layar dan TIDAK mengubah status login.
         queueMicrotask(async()=>{
             try{
+                await flushCloudQueue();
                 const ok = await fetchCloudAll();
-                if(ok && currentUser){
-                    // Setelah snapshot server berhasil, hanya queue non-attendance
-                    // yang boleh diproses ulang. Queue attendance lama dibuang.
-                    purgeLegacyAttendanceQueue();
-                    await flushCloudQueue();
-                    renderAll();
-                }
+                if(ok && currentUser) renderAll();
             }catch(err){
                 console.warn("Sinkronisasi awal gagal:", err);
             }
@@ -5036,13 +5032,7 @@ function renderHRDReport(){
 
 function renderHRDDashboard(){
     const users=load(DB.users);
-    // Jangan tampilkan record legacy/malformed yang tidak memiliki identitas
-    // dan tanggal valid. Data server tetap menjadi sumber kebenaran.
-    const attendance=load(DB.attendance).filter(a=>
-        a && a.id && a.userId && a.sessionId &&
-        /^\d{4}-\d{2}-\d{2}$/.test(String(a.date||"")) &&
-        ["Hadir","Izin","Sakit","Alpha"].includes(String(a.status||""))
-    );
+    const attendance=load(DB.attendance);
     const staff=users.filter(u=>u.role==="STAF");
     
     document.getElementById("hrdTotalStaff").textContent=staff.length;
@@ -5343,36 +5333,62 @@ function renderUsers(){
     `;
 }
 
-function editUser(id){
-    if(currentUser.role!=="HRD"){
-        toast("Hanya HRD yang dapat mengubah akun staf.", "error"); return;
+async function editUser(id){
+    if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
+        toast("Akses ditolak.", "error"); return;
     }
     const users=load(DB.users);
     const user=users.find(u=>u.id===id);
     if(!user)return;
 
-    if(user.role!=="STAF"){
-        toast("Perubahan Username/NIM dan divisi pada menu ini hanya untuk akun STAF.", "error"); return;
+    // HRD dapat mengelola seluruh akun. Koor KP hanya dapat mengelola STAF di divisinya.
+    if(currentUser.role==="KOOR KP" && (user.role!=="STAF" || user.division!==currentUser.division)){
+        toast("Akses ditolak. Koor KP hanya dapat mengedit STAF di divisinya.", "error"); return;
     }
 
-    editingUserId=id;
-    const form=document.querySelector("#registerModal form");
-    if(form) form.reset();
+    const name=prompt("Nama lengkap:", user.name);
+    if(name===null)return;
 
-    document.getElementById("registerModalTitle").textContent="Edit Akun STAF";
-    document.getElementById("registerName").value=user.name || "";
-    document.getElementById("registerUsername").value=user.username || "";
-    document.getElementById("registerRole").value="STAF";
-    document.getElementById("registerRole").disabled=true;
-    document.getElementById("registerRoleGroup").classList.add("hidden");
-    document.getElementById("registerDivision").value=user.division || "";
-    document.getElementById("registerDivision").disabled=false;
-    document.getElementById("registerDivision").required=true;
-    document.getElementById("registerPassword").value="";
-    document.getElementById("registerPassword").required=false;
-    const passLabel=document.querySelector("#registerPassword")?.closest(".form-group")?.querySelector("label");
-    if(passLabel) passLabel.textContent="Password Baru (opsional)";
-    document.getElementById("registerModal").classList.add("show");
+    const username=prompt("Username / NIM:", user.username);
+    if(username===null)return;
+
+    let division=user.division || "";
+    if(currentUser.role==="HRD" && user.role!=="HRD"){
+        division=prompt("Divisi (Networking / Cyber / Sysadmin):", user.division || "");
+        if(division===null)return;
+        division=division.trim();
+        if(!division){
+            toast("Divisi wajib diisi.", "error"); return;
+        }
+    }
+
+    const password=prompt("Password baru (kosongkan jika tidak diubah):", "");
+
+    try{
+        const payload={
+            targetId:id,
+            name:name.trim(),
+            username:username.trim(),
+            password:password || ""
+        };
+        if(currentUser.role==="HRD" && user.role!=="HRD") payload.division=division;
+
+        const result=await cloudPost("updateUser", payload,1);
+        const updated=result.user;
+        const next=users.map(u=>u.id===id ? updated : u);
+        _localSave(DB.users,next);
+
+        if(currentUser.id===id){
+            currentUser=updated;
+            localStorage.setItem("nev_current_user",JSON.stringify(currentUser));
+            updateUserUI();
+        }
+
+        renderUsers();
+        toast("Akun berhasil diperbarui.", "success");
+    }catch(err){
+        toast("Gagal memperbarui akun: "+friendlyCloudError(err), "error");
+    }
 }
 
 async function deleteUser(id){
@@ -5404,53 +5420,40 @@ async function deleteUser(id){
 PEMBUATAN AKUN OLEH HRD / KOOR KP
 ========================================================= */
 
-function updateRegisterRoleUI(){
-    const roleSelect=document.getElementById("registerRole");
-    const roleGroup=document.getElementById("registerRoleGroup");
-    const divGroup=document.getElementById("registerDivisionGroup");
-    const divSelect=document.getElementById("registerDivision");
-    const title=document.getElementById("registerModalTitle");
-    if(!roleSelect || !divGroup || !divSelect) return;
+function toggleRegisterDivision(){
+    const divGroup = document.getElementById("registerDivisionGroup");
+    const divSelect = document.getElementById("registerDivision");
+    const roleSelect = document.getElementById("registerRole");
+    if(!divGroup || !divSelect || !roleSelect) return;
 
-    let role=roleSelect.value || "STAF";
+    const isKoor = currentUser?.role==="KOOR KP";
+    const isHRD = currentUser?.role==="HRD";
 
-    // Koor KP hanya boleh membuat STAF pada divisinya sendiri.
-    if(currentUser?.role==="KOOR KP"){
-        role="STAF";
+    // Koor KP hanya boleh membuat STAF.
+    if(isKoor){
         roleSelect.value="STAF";
         roleSelect.disabled=true;
-        if(roleGroup) roleGroup.classList.add("hidden");
-    }else{
-        roleSelect.disabled=false;
-        if(roleGroup) roleGroup.classList.remove("hidden");
+        divSelect.value=currentUser.division || "";
+        divSelect.disabled=true;
+        divSelect.required=true;
+        divGroup.classList.remove("hidden");
+        return;
     }
 
+    roleSelect.disabled=!isHRD;
+    const role=roleSelect.value || "STAF";
+
+    // Akun HRD tidak memiliki divisi.
     if(role==="HRD"){
-        divGroup.classList.add("hidden");
         divSelect.value="";
         divSelect.disabled=true;
         divSelect.required=false;
-        if(title) title.textContent="Tambah Akun HRD";
-    }else if(role==="KOOR KP"){
-        divGroup.classList.remove("hidden");
+        divGroup.classList.add("hidden");
+    }else{
         divSelect.disabled=false;
         divSelect.required=true;
-        if(title) title.textContent="Tambah Akun Koor KP";
-    }else{
         divGroup.classList.remove("hidden");
-        divSelect.required=true;
-        if(currentUser?.role==="KOOR KP"){
-            divSelect.value=currentUser.division || "";
-            divSelect.disabled=true;
-        }else{
-            divSelect.disabled=false;
-        }
-        if(title) title.textContent="Tambah Akun STAF";
     }
-}
-
-function toggleRegisterDivision(){
-    updateRegisterRoleUI();
 }
 
 function openRegister(){
@@ -5459,17 +5462,19 @@ function openRegister(){
         return;
     }
 
-    editingUserId=null;
     const roleSelect=document.getElementById("registerRole");
+    const title=document.querySelector("#registerModal .modal-header h3");
     const form=document.querySelector("#registerModal form");
     if(form) form.reset();
-    if(roleSelect){ roleSelect.value="STAF"; roleSelect.disabled=false; }
-    document.getElementById("registerRoleGroup").classList.remove("hidden");
-    document.getElementById("registerPassword").required=true;
-    const passLabel=document.querySelector("#registerPassword")?.closest(".form-group")?.querySelector("label");
-    if(passLabel) passLabel.textContent="Password *";
-    document.getElementById("registerModalTitle").textContent="Tambah Akun";
-    updateRegisterRoleUI();
+
+    if(currentUser.role==="KOOR KP"){
+        roleSelect.value="STAF";
+    }else{
+        roleSelect.value="STAF";
+    }
+    if(title) title.textContent="Tambah Akun";
+
+    toggleRegisterDivision();
     document.getElementById("registerModal").classList.add("show");
 }
 
@@ -5483,70 +5488,43 @@ async function register(event){
     const name=document.getElementById("registerName").value.trim();
     const username=document.getElementById("registerUsername").value.trim();
     const password=document.getElementById("registerPassword").value;
-    const roleEl=document.getElementById("registerRole");
-    let role=roleEl?.value || "STAF";
+    const role=document.getElementById("registerRole").value;
     let division=document.getElementById("registerDivision").value;
 
-    // MODE EDIT: khusus HRD untuk akun STAF. Username/NIM dan divisi dapat diubah.
-    if(editingUserId){
-        if(currentUser.role!=="HRD"){
-            toast("Hanya HRD yang dapat mengubah Username/NIM dan divisi staf.", "error"); return;
-        }
-        if(!name || !username || !division){
-            toast("Nama, Username/NIM, dan divisi wajib diisi.", "error"); return;
-        }
-
-        try{
-            const result=await cloudPost("updateUser", {
-                targetId:editingUserId,
-                name,
-                username,
-                division,
-                password:password || ""
-            },1);
-            const users=load(DB.users);
-            const next=users.map(u=>u.id===editingUserId ? result.user : u);
-            _localSave(DB.users,next);
-            editingUserId=null;
-            closeModal("registerModal");
-            if(document.querySelector("#registerModal form")) document.querySelector("#registerModal form").reset();
-            document.getElementById("registerPassword").required=true;
-            const passLabel=document.querySelector("#registerPassword")?.closest(".form-group")?.querySelector("label");
-            if(passLabel) passLabel.textContent="Password *";
-            renderUsers();
-            toast("Data staf berhasil diperbarui.", "success");
-        }catch(err){
-            toast("Gagal memperbarui data staf: "+friendlyCloudError(err), "error");
-        }
-        return;
+    if(!name || !username || !password || !role){
+        toast("Nama, username/NIM, role, dan password wajib diisi.", "error"); return;
     }
 
-    if(currentUser.role==="KOOR KP") role="STAF";
-
-    if(role==="HRD"){
-        division="";
-    }else if(currentUser.role==="KOOR KP"){
-        division=currentUser.division || "";
+    if(currentUser.role==="KOOR KP"){
+        if(role!=="STAF"){
+            toast("Koor KP hanya dapat membuat akun STAF.", "error"); return;
+        }
+        division=currentUser.division;
     }
 
-    if(!name || !username || !password || (role!=="HRD" && !division)){
-        toast(role==="HRD" ? "Nama, username, dan password wajib diisi." : "Nama, username, password, dan divisi wajib diisi.", "error");
-        return;
+    if(role!=="HRD" && !division){
+        toast("Divisi wajib dipilih untuk akun STAF atau KOOR KP.", "error"); return;
     }
+
+    if(role==="HRD") division="";
 
     try{
         const result=await cloudPost("createUser", {
-            name, username, password, division: division || null, role
+            name, username, password, division, role
         },1);
 
         const users=load(DB.users);
-        users.push(result.user);
+        const existingIndex=users.findIndex(u=>u.id===result.user.id);
+        if(existingIndex>=0) users[existingIndex]=result.user;
+        else users.push(result.user);
         _localSave(DB.users,users);
 
         closeModal("registerModal");
-        if(document.querySelector("#registerModal form")) document.querySelector("#registerModal form").reset();
+        document.querySelector("#registerModal form").reset();
+        document.getElementById("registerRole").disabled=false;
+        toggleRegisterDivision();
         renderUsers();
-        toast(`Akun ${role} berhasil dibuat.`, "success");
+        toast(`Akun ${result.user.role} berhasil dibuat.`, "success");
     }catch(err){
         toast("Gagal membuat akun: "+friendlyCloudError(err), "error");
     }
