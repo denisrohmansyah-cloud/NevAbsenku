@@ -450,6 +450,15 @@ async function submitPermit(event){
 }
 
 
+(function(){
+    if(!document.getElementById("nevLoginSpinStyle")){
+        const st=document.createElement("style");
+        st.id="nevLoginSpinStyle";
+        st.textContent="@keyframes nevLoginSpin{to{transform:rotate(360deg)}}";
+        document.head.appendChild(st);
+    }
+})();
+
 /* =========================================================
 LOGIN V13 — login tidak diblokir oleh getAll. Data pusat dimuat di background.
 ========================================================= */
@@ -463,8 +472,13 @@ window.login = async function(event){
     const username=(userEl&&userEl.value||"").trim();
     const password=(passEl&&passEl.value)||"";
     if(!username || !password){ toast("Username dan password wajib diisi.","error"); return; }
-    const btn=event.submitter || document.querySelector('#loginForm button[type="submit"]');
-    if(btn) btn.disabled=true;
+    const btn=event.submitter || document.querySelector('#loginForm button[type="submit"]') || document.querySelector('#loginScreen form button[type="submit"]');
+    const btnOriginalHTML = btn ? btn.innerHTML : "";
+    if(btn){
+        btn.disabled=true;
+        btn.setAttribute("aria-busy","true");
+        btn.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:3px solid rgba(255,255,255,.38);border-top-color:#fff;border-radius:50%;animation:nevLoginSpin .75s linear infinite;vertical-align:-4px;margin-right:10px;"></span>Memproses login...';
+    }
     try{
         const result=await cloudPost("login",{username,password,role},1);
         if(!result || !result.ok) throw new Error(result&&result.error||"Login gagal.");
@@ -487,7 +501,13 @@ window.login = async function(event){
     }catch(err){
         console.error(err);
         toast(friendlyCloudError(err),"error");
-    }finally{ if(btn) btn.disabled=false; }
+    }finally{
+        if(btn){
+            btn.disabled=false;
+            btn.removeAttribute("aria-busy");
+            btn.innerHTML=btnOriginalHTML;
+        }
+    }
 };
 
 
