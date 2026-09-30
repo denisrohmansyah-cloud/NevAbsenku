@@ -23,3 +23,15 @@ Masuk → **Rekap Absensi** → atur filter jika perlu → klik **Hapus Semua Ta
 Masuk → **Absensi Ngoprek** → atur filter jika perlu → klik **Hapus Semua Tampil**.
 
 Jika ingin benar-benar menghapus semua record absensi HRD, pastikan seluruh filter berada pada **Semua** sebelum menekan tombol.
+
+
+## V14.4 Clean History Fix
+
+Perbaikan khusus untuk kondisi ketika data Attendance sudah dihapus dari Google Sheets tetapi riwayat lama masih muncul di browser.
+
+- Queue sinkronisasi versi lama tidak digunakan lagi.
+- Jika endpoint server mengembalikan `attendance: []`, cache `nev_attendance` di browser juga dikosongkan.
+- Polling sekarang mengambil data server terlebih dahulu sebelum mencoba mengirim queue, sehingga data lama tidak dapat hidup kembali dari queue.
+- Data baru setelah V14.4 tetap dapat disinkronkan melalui queue baru.
+
+Setelah mengganti `cloud-sync.js`, lakukan `Ctrl + Shift + R`. Jika browser masih menyimpan cache lama, gunakan DevTools → Application → Storage → Clear site data sekali saja.

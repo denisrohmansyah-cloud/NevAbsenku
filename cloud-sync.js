@@ -62,7 +62,8 @@ let cloudUnsynced = 0;        // explicit failed-write queue only
 let cloudFlushing = false;
 let cloudLastFlushAt = 0;
 const CLOUD_POLL_MS = 30000;
-const CLOUD_QUEUE_KEY = "nev_sync_queue_v13";
+const CLOUD_QUEUE_KEY = "nev_sync_queue_v14_4";
+const LEGACY_QUEUE_KEYS = ["nev_sync_queue_v13", "nev_sync_queue_v14_3", "nev_sync_queue_v14_2"];
 
 
 /* =========================================================
@@ -274,6 +275,19 @@ async function fetchCloudAll(){
         }
         if(!json || !json.ok) throw new Error((json&&json.error)||"Respons tidak valid");
         sanitizeCloudData(json);
+
+        // V14.4: jangan hidupkan kembali riwayat lama dari localStorage/queue.
+        // Jika server sudah kosong, browser juga harus kosong. Queue versi lama
+        // yang berisi snapshot Attendance dibuang sebelum data server diterapkan.
+        for(const legacyKey of LEGACY_QUEUE_KEYS){
+            try{ localStorage.removeItem(legacyKey); }catch(e){}
+        }
+        if(Array.isArray(json.attendance) && json.attendance.length===0){
+            _localSave(DB.attendance,[]);
+            const q=readCloudQueue().filter(item=>!/^saveAttendance\b|^addAttendance\b/.test(String(item?.action||"")));
+            writeCloudQueue(q);
+        }
+
         _localSave(DB.users,json.users||[]);
         _localSave(DB.sessions,json.sessions||[]);
         _localSave(DB.attendance,json.attendance||[]);
@@ -316,8 +330,8 @@ function startCloudPolling(){
     if(!cloudSyncEnabled || cloudPollTimer) return;
     cloudPollTimer=setInterval(async()=>{
         if(cloudSyncBusy || !getAuthToken()) return;
-        await flushCloudQueue();
         const ok=await fetchCloudAll();
+        if(ok) await flushCloudQueue();
         if(ok && currentUser) renderAll();
     }, CLOUD_POLL_MS);
 }
@@ -358,8 +372,8 @@ function updateCloudBadge(){
 
 async function manualCloudRefresh(silent){
     if(!cloudSyncEnabled || cloudSyncBusy) return;
-    await flushCloudQueue();
     const ok = await fetchCloudAll();
+    if(ok) await flushCloudQueue();
     if(ok && currentUser) renderAll();
     if(!silent) toast(ok ? "Data berhasil disegarkan dari Google Sheets." : "Gagal mengambil data dari Google Sheets.", ok ? "success" : "error");
 }
