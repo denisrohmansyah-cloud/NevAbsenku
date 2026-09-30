@@ -13,16 +13,6 @@
    formatTime, finalizeAttendance, stopScanner, renderAll, dll).
 ========================================================= */
 
-function ensureLeaflet(){
-    if(window.L) return Promise.resolve(window.L);
-    return Promise.reject(new Error("Leaflet belum tersedia. Pastikan leaflet.js termuat."));
-}
-
-function featureLoadError(name, err){
-    console.error(`Gagal memuat fitur ${name}:`, err);
-    if(typeof toast === "function") toast(`Fitur ${name} belum siap. Muat ulang halaman dan coba lagi.`, "error");
-}
-
 let officeMapInstance = null;
 let officeMarker = null;
 let officeCircle = null;
@@ -127,8 +117,7 @@ async function initSessionGeoPicker(role){
 function updateSessionRadiusPreview(role){
     const picker = sessionGeoPickers[role];
     if(!picker) return;
-    const radius = parseFloat(document.getElementById(`${role}GeoRadius`).value);
-    if(!Number.isFinite(radius) || radius <= 0) return;
+    const radius = parseFloat(document.getElementById(`${role}GeoRadius`).value) || 0;
     picker.circle.setRadius(radius);
 }
 
@@ -200,7 +189,7 @@ function checkGeofence(session){
         // Lokasi & radius khusus kegiatan ini (diatur HRD/Koor KP saat membuat QR)
         // selalu diprioritaskan di atas pengaturan Lokasi & Radius Kantor yang global.
         const sessionGeo = (session && session.geoEnabled && session.geoLat!=null && session.geoLng!=null)
-            ? { lat: session.geoLat, lng: session.geoLng, radius: Number(session.geoRadius) > 0 ? Number(session.geoRadius) : 100 }
+            ? { lat: session.geoLat, lng: session.geoLng, radius: session.geoRadius || 100 }
             : null;
 
         const officeGeo = (settings.geofenceEnabled && settings.officeLat!=null && settings.officeLng!=null)
@@ -338,7 +327,6 @@ function saveOfficeLocation(){
     const latVal = document.getElementById("officeLat").value;
     const lngVal = document.getElementById("officeLng").value;
     const radius = parseFloat(document.getElementById("officeRadius").value) || 100;
-    if(!Number.isFinite(radius) || radius <= 0){ toast("Radius harus lebih besar dari 0 meter.", "error"); return; }
     const enabled = document.getElementById("geofenceEnabled").checked;
 
     const lat = parseFloat(latVal);
@@ -365,17 +353,15 @@ SELFIE + VERIFIKASI LOKASI SAAT ABSEN (STAF)
 ========================================================= */
 
 function beginAttendanceCapture(session, token){
-    pendingAttendance = { session, token, location:null, locationOk:null, photo:null };
+    pendingAttendance = { session, token, location:null, locationOk:true, photo:null };
 
     const video = document.getElementById("selfieVideo");
     const preview = document.getElementById("selfiePreview");
     const statusEl = document.getElementById("selfieLocationStatus");
-    const submitBtn = document.getElementById("selfieSubmitBtn");
 
     document.getElementById("selfieCaptureBtn").classList.remove("hidden");
     document.getElementById("selfieRetakeBtn").classList.add("hidden");
     document.getElementById("selfieSubmitBtn").classList.add("hidden");
-    if(submitBtn) submitBtn.disabled = true;
     preview.classList.add("hidden");
     video.classList.remove("hidden");
 
@@ -385,37 +371,24 @@ function beginAttendanceCapture(session, token){
 
     document.getElementById("selfieModal").classList.add("show");
 
-    if(!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-        toast("Kamera selfie membutuhkan HTTPS/localhost dan dukungan getUserMedia.", "error");
-        closeSelfieModal();
-        return;
-    }
-
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal:"user" } }, audio:false })
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio:false })
         .then(stream=>{
-            if(!pendingAttendance){ stream.getTracks().forEach(t=>t.stop()); return; }
             selfieStream = stream;
             video.srcObject = stream;
-            video.play().catch(()=>{});
         })
-        .catch(err=>{
-            console.error("Selfie camera error:",err);
-            const msg = err?.name === "NotAllowedError"
-                ? "Izin kamera ditolak. Aktifkan izin kamera untuk situs ini."
-                : err?.name === "NotFoundError"
-                    ? "Kamera depan tidak ditemukan."
-                    : "Tidak dapat mengakses kamera selfie. Pastikan izin kamera aktif dan gunakan HTTPS.";
-            toast(msg, "error");
+        .catch(()=>{
+            toast("Tidak dapat mengakses kamera depan untuk selfie. Pastikan izin kamera aktif dan halaman dibuka lewat HTTPS.", "error");
             closeSelfieModal();
         });
 
     checkGeofence(session).then(result=>{
-        if(!pendingAttendance) return;
+        if(!pendingAttendance) return; // modal sudah ditutup duluan
         pendingAttendance.location = result.location;
+
         const originLabel = result.source==="session" ? "kegiatan ini" : "kantor";
 
         if(result.enforced){
-            pendingAttendance.locationOk = !!result.ok;
+            pendingAttendance.locationOk = result.ok;
             if(result.ok){
                 statusEl.textContent = `Lokasi valid (±${Math.round(result.distance)} m dari titik ${originLabel}).`;
                 statusEl.style.background = "#dcfce7"; statusEl.style.color = "#15803d";
@@ -433,23 +406,10 @@ function beginAttendanceCapture(session, token){
                 : "Lokasi tidak tersedia, namun validasi radius tidak diaktifkan sehingga absen tetap dapat dilanjutkan.";
             statusEl.style.background = "#f7f7f7"; statusEl.style.color = "#555";
         }
-
-        if(submitBtn) submitBtn.disabled = !(pendingAttendance.locationOk === true);
-    }).catch(err=>{
-        console.error("Geofence error:",err);
-        if(!pendingAttendance) return;
-        pendingAttendance.locationOk = false;
-        statusEl.textContent = "Gagal memeriksa lokasi. Silakan coba lagi.";
-        statusEl.style.background = "#fee2e2"; statusEl.style.color = "#b91c1c";
-        if(submitBtn) submitBtn.disabled = true;
     });
 }
 
 function captureSelfie(){
-    if(!pendingAttendance || pendingAttendance.locationOk !== true){
-        toast("Tunggu verifikasi lokasi selesai dan pastikan lokasi valid.", "error");
-        return;
-    }
     const video = document.getElementById("selfieVideo");
     const canvas = document.getElementById("selfieCanvas");
 
@@ -479,7 +439,6 @@ function captureSelfie(){
     document.getElementById("selfieCaptureBtn").classList.add("hidden");
     document.getElementById("selfieRetakeBtn").classList.remove("hidden");
     document.getElementById("selfieSubmitBtn").classList.remove("hidden");
-    document.getElementById("selfieSubmitBtn").disabled = pendingAttendance.locationOk !== true;
 }
 
 function retakeSelfie(){
@@ -500,8 +459,8 @@ async function submitAttendanceWithSelfie(){
         toast("Ambil foto selfie terlebih dahulu.", "error");
         return;
     }
-    if(pendingAttendance.locationOk !== true){
-        toast("Absensi ditolak: verifikasi lokasi belum valid atau Anda berada di luar radius.", "error");
+    if(pendingAttendance.locationOk === false){
+        toast("Absensi ditolak: Anda berada di luar radius kantor.", "error");
         return;
     }
 
