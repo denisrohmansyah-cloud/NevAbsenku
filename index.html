@@ -2959,7 +2959,17 @@ APP
                     </div>
 
 
-                    <div id="hrdReportTable"></div>
+                    <div class="section-card" style="margin-top:15px;">
+                        <div class="section-header">
+                            <div>
+                                <h3>Rekap Jumlah Absensi Setiap Staf</h3>
+                                <p>Jumlah Hadir, Izin, Sakit, dan Alpha per staf. Ringkasan mengikuti filter tanggal/kegiatan/divisi/pencarian.</p>
+                            </div>
+                        </div>
+                        <div id="hrdStaffRecapTable"></div>
+                    </div>
+
+                    <div style="margin-top:15px;" id="hrdReportTable"></div>
 
                 </div>
 
@@ -3162,7 +3172,17 @@ APP
                         </div>
                     </div>
 
-                    <div id="koorAttendanceTable"></div>
+                    <div class="section-card" style="margin-top:15px;">
+                        <div class="section-header">
+                            <div>
+                                <h3>Rekap Jumlah Absensi Setiap Staf</h3>
+                                <p>Rekap otomatis untuk staf pada divisi divisi akun Koor KP.</p>
+                            </div>
+                        </div>
+                        <div id="koorStaffRecapTable"></div>
+                    </div>
+
+                    <div style="margin-top:15px;" id="koorAttendanceTable"></div>
 
                 </div>
 
@@ -4892,24 +4912,88 @@ function viewProofPhoto(id){
 HRD REPORT & DASHBOARD
 ========================================================= */
 
-function renderHRDReport(){
-    if(currentUser?.role!=="HRD")return;
+function getFilteredHRDAttendance(ignoreStatus=false){
     let data=load(DB.attendance);
-    const date=document.getElementById("filterDate").value;
-    const activity=document.getElementById("filterActivity").value;
-    const division=document.getElementById("filterDivision").value;
-    const status=document.getElementById("filterStatus").value;
+    const date=document.getElementById("filterDate")?.value || "";
+    const activity=document.getElementById("filterActivity")?.value || "";
+    const division=document.getElementById("filterDivision")?.value || "";
+    const status=document.getElementById("filterStatus")?.value || "";
     const search=(document.getElementById("filterSearch")?.value || "").trim().toLowerCase();
 
     if(date) data=data.filter(a=>a.date===date);
     if(activity) data=data.filter(a=>a.activity===activity);
     if(division) data=data.filter(a=>a.division===division);
-    if(status) data=data.filter(a=>a.status===status);
+    if(!ignoreStatus && status) data=data.filter(a=>a.status===status);
     if(search) data=data.filter(a=>
         String(a.userName||"").toLowerCase().includes(search) ||
         String(a.username||"").toLowerCase().includes(search)
     );
+    return data;
+}
 
+function buildStaffRecapTable(staff,attendance){
+    const counts={};
+    staff.forEach(u=>counts[u.id]={
+        name:u.name||"-", username:u.username||"-", division:u.division||"-",
+        hadir:0, izin:0, sakit:0, alpha:0
+    });
+
+    attendance.forEach(a=>{
+        const c=counts[a.userId];
+        if(!c)return;
+        if(a.status==="Hadir") c.hadir++;
+        else if(a.status==="Izin") c.izin++;
+        else if(a.status==="Sakit") c.sakit++;
+        else if(a.status==="Alpha") c.alpha++;
+    });
+
+    const rows=Object.values(counts).sort((a,b)=>a.name.localeCompare(b.name,"id"));
+    if(!rows.length) return emptyHTML("fa-users","Belum ada data staf.");
+
+    return `<div class="table-wrapper">
+        <table>
+            <thead><tr>
+                <th>No</th><th>Nama</th><th>NIM</th><th>Divisi</th>
+                <th>Hadir</th><th>Izin</th><th>Sakit</th><th>Alpha</th><th>Total Sesi</th>
+            </tr></thead>
+            <tbody>${rows.map((r,i)=>{
+                const total=r.hadir+r.izin+r.sakit+r.alpha;
+                return `<tr>
+                    <td>${i+1}</td>
+                    <td><strong>${escapeHTML(r.name)}</strong></td>
+                    <td>${escapeHTML(r.username)}</td>
+                    <td>${escapeHTML(r.division)}</td>
+                    <td><span class="badge badge-hadir">${r.hadir}</span></td>
+                    <td><span class="badge badge-izin">${r.izin}</span></td>
+                    <td><span class="badge badge-sakit">${r.sakit}</span></td>
+                    <td><span class="badge badge-alpha">${r.alpha}</span></td>
+                    <td><strong>${total}</strong></td>
+                </tr>`;
+            }).join("")}</tbody>
+        </table>
+    </div>`;
+}
+
+function renderHRDStaffRecap(){
+    if(currentUser?.role!=="HRD")return;
+    const users=load(DB.users).filter(u=>u.role==="STAF");
+    const attendance=getFilteredHRDAttendance(true);
+    const search=(document.getElementById("filterSearch")?.value||"").trim().toLowerCase();
+    const division=document.getElementById("filterDivision")?.value||"";
+    let staff=users;
+    if(division) staff=staff.filter(u=>u.division===division);
+    if(search) staff=staff.filter(u=>
+        String(u.name||"").toLowerCase().includes(search) ||
+        String(u.username||"").toLowerCase().includes(search)
+    );
+    const el=document.getElementById("hrdStaffRecapTable");
+    if(el) el.innerHTML=buildStaffRecapTable(staff,attendance);
+}
+
+function renderHRDReport(){
+    if(currentUser?.role!=="HRD")return;
+    const data=getFilteredHRDAttendance(false);
+    renderHRDStaffRecap();
     const container=document.getElementById("hrdReportTable");
     if(!data.length){
         container.innerHTML=emptyHTML("fa-table-list", "Tidak ada data sesuai filter."); return;
@@ -4960,22 +5044,33 @@ function renderKoorDashboard(){
     document.getElementById("koorCyber").textContent=attendance.filter(a=>a.division==="Cyber").length;
 }
 
-function renderKoorAttendance(){
-    if(currentUser?.role!=="KOOR KP")return;
+function getFilteredKoorAttendance(){
     let attendance=load(DB.attendance).filter(a=>
         a.activity==="Ngoprek" &&
         a.division===currentUser.division
     );
-
     const date=document.getElementById("koorFilterDate")?.value || "";
     const search=(document.getElementById("koorFilterSearch")?.value || "").trim().toLowerCase();
-
     if(date) attendance=attendance.filter(a=>a.date===date);
     if(search) attendance=attendance.filter(a=>
         String(a.userName||"").toLowerCase().includes(search) ||
         String(a.username||"").toLowerCase().includes(search)
     );
+    return attendance;
+}
 
+function renderKoorStaffRecap(){
+    if(currentUser?.role!=="KOOR KP")return;
+    const users=load(DB.users).filter(u=>u.role==="STAF" && u.division===currentUser.division);
+    const attendance=getFilteredKoorAttendance();
+    const el=document.getElementById("koorStaffRecapTable");
+    if(el) el.innerHTML=buildStaffRecapTable(users,attendance);
+}
+
+function renderKoorAttendance(){
+    if(currentUser?.role!=="KOOR KP")return;
+    const attendance=getFilteredKoorAttendance();
+    renderKoorStaffRecap();
     const container=document.getElementById("koorAttendanceTable");
     if(!attendance.length){
         container.innerHTML=emptyHTML("fa-clipboard-check", "Tidak ada absensi Ngoprek sesuai filter.");
@@ -5645,19 +5740,7 @@ EXPORT EXCEL
 ========================================================= */
 
 function getKoorFilteredAttendance(){
-    let data=load(DB.attendance).filter(a=>
-        a.creatorId===currentUser.id &&
-        a.activity==="Ngoprek" &&
-        a.division===currentUser.division
-    );
-    const date=document.getElementById("koorFilterDate")?.value || "";
-    const search=(document.getElementById("koorFilterSearch")?.value || "").trim().toLowerCase();
-    if(date) data=data.filter(a=>a.date===date);
-    if(search) data=data.filter(a=>
-        String(a.userName||"").toLowerCase().includes(search) ||
-        String(a.username||"").toLowerCase().includes(search)
-    );
-    return data;
+    return getFilteredKoorAttendance();
 }
 
 function exportKoorExcel(){

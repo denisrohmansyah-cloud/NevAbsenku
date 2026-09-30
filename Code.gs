@@ -28,7 +28,7 @@ const FALLBACK_FOLDER_NAMES = {
   presensi: "NEV Absenku - Foto Presensi"
 };
 
-const CODE_VERSION = "secure-v7-stable";
+const CODE_VERSION = "secure-v7.3-alpha-rekap";
 
 const SHEET_USERS = "Users";
 const SHEET_SESSIONS = "Sessions";
@@ -290,6 +290,76 @@ function publicAttendance_(a){
   return out;
 }
 
+/* =========================================================
+AUTO ALPHA
+========================================================= */
+function sessionHasEnded_(session, now){
+  const d=String(session.date||"");
+  const end=String(session.end||"");
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d) || !/^\d{2}:\d{2}$/.test(end)) return false;
+  return d < now.date || (d === now.date && end < now.time);
+}
+
+function ensureAutomaticAlpha_(){
+  const now=wibNow_();
+  const sessions=sheetToObjects_(SHEET_SESSIONS);
+  const users=sheetToObjects_(SHEET_USERS).filter(u=>u.role==="STAF");
+  const attendance=sheetToObjects_(SHEET_ATTENDANCE);
+  const existing=new Set(attendance.map(a=>String(a.sessionId)+"|"+String(a.userId)));
+  const additions=[];
+
+  sessions.forEach(session=>{
+    if(!sessionHasEnded_(session,now)) return;
+
+    const eligible=users.filter(u=>
+      session.division==="-" || String(u.division||"")===String(session.division||"")
+    );
+
+    eligible.forEach(user=>{
+      const key=String(session.id)+"|"+String(user.id);
+      if(existing.has(key)) return;
+
+      additions.push({
+        id:makeServerId_("ATT"),
+        sessionId:session.id,
+        token:null,
+        userId:user.id,
+        userName:user.name,
+        username:user.username,
+        activity:session.activity,
+        division:session.division,
+        date:session.date,
+        checkIn:session.date+"T"+session.end+":00+07:00",
+        status:"Alpha",
+        creatorId:session.creatorId,
+        creatorRole:session.creatorRole,
+        lat:null,
+        lng:null,
+        photo:null,
+        permitId:null,
+        approvedFromPermit:false,
+        autoAlpha:true
+      });
+      existing.add(key);
+    });
+  });
+
+  if(additions.length){
+    withLock_(()=>{
+      const latest=sheetToObjects_(SHEET_ATTENDANCE);
+      const latestKeys=new Set(latest.map(a=>String(a.sessionId)+"|"+String(a.userId)));
+      const safeAdditions=additions.filter(a=>{
+        const key=String(a.sessionId)+"|"+String(a.userId);
+        if(latestKeys.has(key)) return false;
+        latestKeys.add(key);
+        return true;
+      });
+      if(safeAdditions.length) objectsToSheet_(SHEET_ATTENDANCE,latest.concat(safeAdditions));
+    });
+  }
+  return additions.length;
+}
+
 function sessionsFor_(user){
   const all=sheetToObjects_(SHEET_SESSIONS);
   if(user.role==="HRD") return all.map(publicSession_);
@@ -440,6 +510,7 @@ function doGet(e){
 
     if(action==="getAll"){
       const user=authUser_(e.parameter && e.parameter.authToken);
+      ensureAutomaticAlpha_();
       return jsonResponse_({
         ok:true,
         version:CODE_VERSION,
