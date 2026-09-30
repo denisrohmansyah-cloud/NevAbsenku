@@ -23,7 +23,7 @@
       - Saat STAF absen (ambil selfie), foto diunggah ke Google
         Drive lebih dulu lewat Apps Script, baru linknya dicatat
         di Google Sheets (bukan base64 mentah).
-      - Setiap 30 detik, aplikasi menarik ulang data terbaru dari
+      - Setiap ~20 detik, aplikasi menarik ulang data terbaru dari
         Google Sheets, supaya QR/absensi yang dibuat di HP lain
         ikut terlihat di perangkat ini.
 
@@ -53,38 +53,16 @@ let cloudPollTimer = null;
 let cloudSyncBusy = false;
 
 // Diagnostik sinkronisasi (ditampilkan sebagai lencana di pojok kiri bawah)
-const EXPECTED_SERVER_VERSION = "secure-v5";
+// Server version is discovered from bootstrap; no hard-coded version gate.
+const EXPECTED_SERVER_VERSION = null;
 let cloudServerVersion = null;
 let cloudLastSyncAt = null;
 let cloudLastError = null;
-let cloudUnsynced = 0;        // jumlah item pada queue sinkronisasi eksplisit
+let cloudUnsynced = 0;        // explicit failed-write queue only
 let cloudFlushing = false;
 let cloudLastFlushAt = 0;
-const SYNC_QUEUE_KEY = "nev_sync_queue_v11";
-
-function loadSyncQueue(){
-    try{
-        const q = JSON.parse(localStorage.getItem(SYNC_QUEUE_KEY) || "[]");
-        return Array.isArray(q) ? q : [];
-    }catch(e){ return []; }
-}
-function saveSyncQueue(q){
-    localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(q || []));
-    cloudUnsynced = Array.isArray(q) ? q.length : 0;
-    updateCloudBadge();
-}
-function queueSync(type, payload){
-    if(!payload || !payload.id) return;
-    const q = loadSyncQueue();
-    const idx = q.findIndex(x=>x.type===type && x.id===payload.id);
-    const item = {type, id:payload.id, payload};
-    if(idx >= 0) q[idx] = item; else q.push(item);
-    saveSyncQueue(q);
-}
-function removeQueued(type, id){
-    const q = loadSyncQueue().filter(x=>!(x.type===type && x.id===id));
-    saveSyncQueue(q);
-}
+const CLOUD_POLL_MS = 30000;
+const CLOUD_QUEUE_KEY = "nev_sync_queue_v13";
 
 
 /* =========================================================
@@ -131,51 +109,30 @@ function cloudPayload(action, data){
     return JSON.stringify(body);
 }
 
+function readCloudQueue(){
+    try{ const q=JSON.parse(localStorage.getItem(CLOUD_QUEUE_KEY)||"[]"); return Array.isArray(q)?q:[]; }catch(e){ return []; }
+}
+function writeCloudQueue(q){ localStorage.setItem(CLOUD_QUEUE_KEY, JSON.stringify(q.slice(-100))); cloudUnsynced=q.length; updateCloudBadge(); }
+function enqueueCloud(action,data){
+    const q=readCloudQueue();
+    q.push({id:action+"|"+(data&&data.id||Date.now()),action,data,queuedAt:Date.now()});
+    writeCloudQueue(q);
+}
+
 function pushToCloud(key, data){
     if(!cloudSyncEnabled) return;
     const action = CLOUD_ACTION_BY_KEY[key];
     if(!action || !getAuthToken()) return;
-
-    // Write-through tanpa retry beruntun. Jika gagal, masukkan ke queue;
-    // queue hanya diproses pada siklus sinkronisasi 30 detik berikutnya.
-    cloudPost(action, data, 0).then(()=>{
-        if(data && data.id) removeQueued(action, data.id);
+    cloudPost(action, data, 1).then(()=>{
+        cloudLastError=null;
+        updateCloudBadge();
     }).catch(err=>{
         console.error("Gagal sinkron ke Google Sheets:", err);
-        queueSync(action, data);
+        enqueueCloud(action,data);
+        cloudLastError=friendlyCloudError(err);
     });
 }
 
-
-/* =========================================================
-LOGIN CEPAT
-Login hanya melakukan satu request. Tidak menunggu getAll dan tidak retry
-otomatis 1.5 detik jika request pertama gagal. Data cloud dimuat setelah dashboard tampil.
-========================================================= */
-async function cloudLoginFast(data){
-    const controller = new AbortController();
-    const timer = setTimeout(()=>controller.abort(), 10000);
-    try{
-        const res = await fetch(CLOUD_SCRIPT_URL, {
-            method: "POST",
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({action:"login", data:data}),
-            signal: controller.signal
-        });
-        const text = await res.text();
-        let json;
-        try{ json=JSON.parse(text); }
-        catch(e){ throw new Error("Respons server bukan JSON."); }
-        if(!json.ok){
-            const err=new Error(json.error || "Username, password, atau role tidak sesuai.");
-            err.fatal=true;
-            throw err;
-        }
-        return json;
-    }finally{
-        clearTimeout(timer);
-    }
-}
 
 /* =========================================================
 KIRIM KE APPS SCRIPT (dengan percobaan ulang & pesan error jelas)
@@ -276,46 +233,15 @@ async function fetchCloudAll(){
         if(!json || !json.ok) throw new Error((json && json.error) || "Respons tidak valid");
         sanitizeCloudData(json);
 
-        // Jangan lagi menebak data "belum terkirim" hanya karena ada record lokal
-        // yang belum muncul di server. Itu menyebabkan false-positive seperti
-        // "1 data belum terkirim" pada data lama/cache divisi lain. Pending hanya
-        // berasal dari queue eksplisit yang dibuat ketika POST benar-benar gagal.
         const serverAtt = json.attendance || [];
         const serverPer = json.permits || [];
-        let nextUsers = json.users || [];
-        let nextSessions = json.sessions || [];
-        let nextAttendance = serverAtt.slice();
-        let nextPermits = serverPer.slice();
-
-        // Pertahanan kedua di browser: Koor KP tidak boleh menyimpan cache divisi lain.
-        if(currentUser?.role === "KOOR KP"){
-            const div = String(currentUser.division || "");
-            nextUsers = nextUsers.filter(u=>u.id===currentUser.id || (u.role==="STAF" && u.division===div));
-            nextSessions = nextSessions.filter(s=>s.creatorId===currentUser.id && s.activity==="Ngoprek" && s.division===div);
-            nextAttendance = nextAttendance.filter(a=>a.creatorId===currentUser.id && a.activity==="Ngoprek" && a.division===div);
-            nextPermits = nextPermits.filter(p=>p.sessionCreatorId===currentUser.id && p.sessionActivity==="Ngoprek" && p.sessionDivision===div);
-        }
-
-        _localSave(DB.users, nextUsers);
-        _localSave(DB.sessions, nextSessions);
-        _localSave(DB.attendance, nextAttendance);
+        _localSave(DB.users, json.users || []);
+        _localSave(DB.sessions, json.sessions || []);
+        _localSave(DB.attendance, serverAtt);
         _localSave(DB.settings, json.settings || { officeLat:null, officeLng:null, radius:100, geofenceEnabled:false });
-        _localSave(DB.permits, nextPermits);
-
-        // Rekonsiliasi queue: item yang ternyata sudah ada di server langsung dihapus.
-        const queue = loadSyncQueue();
-        const attIds = new Set(serverAtt.map(a=>a.id));
-        const attKeys = new Set(serverAtt.map(a=>a.sessionId + "|" + a.userId));
-        const perIds = new Set(serverPer.map(p=>p.id));
-        const remaining = queue.filter(item=>{
-            if(item.type === "addAttendance") {
-                const a = item.payload || {};
-                return !(attIds.has(item.id) || attKeys.has((a.sessionId||"") + "|" + (a.userId||"")));
-            }
-            if(item.type === "addPermit") return !perIds.has(item.id);
-            return true;
-        });
-        saveSyncQueue(remaining);
+        _localSave(DB.permits, serverPer);
+        cloudUnsynced = readCloudQueue().length;
+        if(cloudUnsynced) flushCloudQueue();
 
         cloudServerVersion = json.version || null;
         cloudLastSyncAt = new Date();
@@ -330,61 +256,31 @@ async function fetchCloudAll(){
     }
 }
 
-/**
- * Kirim queue yang benar-benar gagal. Tidak melakukan getAll tambahan setelahnya.
- * Satu item = satu POST. Tidak ada retry 1.5 detik. Siklus berikutnya 30 detik lagi.
- */
-async function flushSyncQueue(){
+async function flushCloudQueue(){
     if(cloudFlushing || !getAuthToken()) return;
-    const now = Date.now();
-    if(now - cloudLastFlushAt < 30000) return;
-    const queue = loadSyncQueue();
-    if(!queue.length){ cloudUnsynced = 0; updateCloudBadge(); return; }
-
-    cloudFlushing = true;
-    cloudLastFlushAt = now;
-    updateCloudBadge();
-    const remaining = [];
+    const q=readCloudQueue();
+    if(!q.length) return;
+    cloudFlushing=true; cloudLastFlushAt=Date.now();
     try{
-        for(const item of queue){
-            try{
-                await cloudPost(item.type, item.payload, 0);
-                // Jika server menerima duplicate, cloudPost tetap dianggap sukses.
-            }catch(e){
-                console.error("Queue sinkronisasi gagal:", e);
-                remaining.push(item);
-            }
+        const keep=[];
+        for(const item of q){
+            try{ await cloudPost(item.action,item.data,1); }
+            catch(e){ keep.push(item); }
         }
-    }finally{
-        cloudFlushing = false;
-        saveSyncQueue(remaining);
-        cloudUnsynced = remaining.length;
-        updateCloudBadge();
-    }
+        writeCloudQueue(keep);
+        if(keep.length===0) cloudLastError=null;
+    }finally{ cloudFlushing=false; }
 }
-
-const AUTO_SYNC_INTERVAL_MS = 30000; // 30 detik
-let autoSyncRunning = false;
 
 function startCloudPolling(){
     if(!cloudSyncEnabled || cloudPollTimer) return;
-
-    // Tepat satu request getAll otomatis setiap 30 detik.
-    cloudPollTimer = setInterval(async ()=>{
-        if(autoSyncRunning || cloudSyncBusy || !getAuthToken()) return;
-        autoSyncRunning = true;
-        try{
-            const ok = await fetchCloudAll();
-            if(ok){
-                await flushSyncQueue();
-                if(currentUser) renderAll();
-            }
-        }finally{
-            autoSyncRunning = false;
-        }
-    }, AUTO_SYNC_INTERVAL_MS);
+    cloudPollTimer=setInterval(async()=>{
+        if(cloudSyncBusy || !getAuthToken()) return;
+        await flushCloudQueue();
+        const ok=await fetchCloudAll();
+        if(ok && currentUser) renderAll();
+    }, CLOUD_POLL_MS);
 }
-
 
 /* =========================================================
 LENCANA STATUS SINKRONISASI (pojok kiri bawah)
@@ -399,7 +295,7 @@ function updateCloudBadge(){
         el = document.createElement("button");
         el.id = "cloudBadge";
         el.type = "button";
-        el.style.cssText = "position:fixed;left:12px;bottom:12px;z-index:9999;border:0;border-radius:999px;padding:8px 14px;font:600 12px Inter,sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);max-width:calc(100vw - 24px);";
+        el.style.cssText = "position:fixed;left:12px;bottom:78px;z-index:9999;border:0;border-radius:999px;padding:8px 14px;font:600 12px Inter,sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);max-width:calc(100vw - 24px);";
         el.onclick = ()=> manualCloudRefresh(false);
         document.body.appendChild(el);
     }
@@ -411,8 +307,6 @@ function updateCloudBadge(){
         text = "⏳ " + cloudUnsynced + " data belum terkirim ke server — sedang dikirim ulang…"; bg = "#ef6c00";
     }else if(cloudLastError){
         text = "⚠ Gagal sinkron — ketuk untuk coba lagi"; bg = "#c62828";
-    }else if(cloudServerVersion !== EXPECTED_SERVER_VERSION){
-        text = "⚠ Code.gs di server masih versi lama — Deploy ulang (New version)"; bg = "#ef6c00";
     }else{
         const t = cloudLastSyncAt ? cloudLastSyncAt.toLocaleTimeString("id-ID") : "-";
         text = "☁ Tersinkron " + t + " · ketuk untuk segarkan"; bg = "#2e7d32";
@@ -427,26 +321,6 @@ async function manualCloudRefresh(silent){
     const ok = await fetchCloudAll();
     if(ok && currentUser) renderAll();
     if(!silent) toast(ok ? "Data berhasil disegarkan dari Google Sheets." : "Gagal mengambil data dari Google Sheets.", ok ? "success" : "error");
-}
-
-async function fetchSessionToken(sessionId){
-    if(!cloudSyncEnabled || !getAuthToken()) throw new Error("Sesi login tidak tersedia.");
-    const url = `${CLOUD_SCRIPT_URL}?action=getSessionToken&sessionId=${encodeURIComponent(sessionId)}&authToken=${encodeURIComponent(getAuthToken())}`;
-    const res = await fetch(url);
-    const json = await res.json();
-    if(!json || !json.ok) throw new Error((json && json.error) || "Token QR tidak dapat diambil.");
-    return String(json.token || "");
-}
-
-async function ensureSessionToken(session){
-    if(!session) return "";
-    if(session._runtimeToken) return session._runtimeToken;
-    if(session.token) return session.token;
-    const token = await fetchSessionToken(session.id);
-    if(token){
-        session._runtimeToken = token;
-    }
-    return token;
 }
 
 
@@ -464,7 +338,7 @@ async function finalizeAttendance(session, token, location, photo){
     }
 
     const record = {
-        id: "ATT-"+Date.now(), sessionId: session.id, token: token,
+        id: "ATT-"+Date.now(), sessionId: session.id, token: session.token,
         userId: currentUser.id, userName: currentUser.name, username: currentUser.username,
         activity: session.activity, division: session.division, date: session.date,
         checkIn: new Date().toISOString(), status: "Hadir",
@@ -490,12 +364,21 @@ async function finalizeAttendance(session, token, location, photo){
     toast("Mengunggah foto & menyimpan absensi ke Google Sheets...", "normal");
 
     try{
-        const json = await cloudPost("addAttendance", record, 0);
-        const saved = json.record || record;
-        removeQueued("addAttendance", saved.id || record.id);
-        const list = load(DB.attendance).filter(a=>!(a.sessionId===saved.sessionId && a.userId===saved.userId));
-        list.push(saved);
-        _localSave(DB.attendance, list);
+        const json = await cloudPost("addAttendance", record);
+
+        const saved = json.record || record; // record.photo sudah berupa link Drive dari server
+
+        // Verifikasi: tarik ulang dari Google Sheets & pastikan barisnya benar-benar ada.
+        const refreshed = await fetchCloudAll();
+        const list = load(DB.attendance);
+        const found = list.some(a=> a.id===saved.id || (a.sessionId===saved.sessionId && a.userId===saved.userId));
+        if(refreshed && !found){
+            throw new Error("absensi terkirim tetapi belum terbaca di Google Sheets. Pastikan Code.gs sudah di-deploy ulang (New version)");
+        }
+        if(!found){
+            list.push(saved);
+            _localSave(DB.attendance, list); // fetch gagal: simpan di cache lokal saja
+        }
 
         toast(`Absensi ${session.activity} berhasil & terverifikasi di Google Sheets.`, "success");
         updateScannerStatus(`Berhasil hadir: ${session.activity}${session.division!=="-" ? " • "+session.division : ""}`, "success");
@@ -504,8 +387,7 @@ async function finalizeAttendance(session, token, location, photo){
         renderAll();
     }catch(err){
         console.error("Gagal menyimpan absensi ke Google Sheets:", err);
-        queueSync("addAttendance", record);
-        toast(`Absensi disimpan sebagai pending dan akan dicoba lagi pada sinkronisasi 30 detik berikutnya.`, "error");
+        toast(`Gagal menyimpan absensi: ${friendlyCloudError(err)}. Silakan coba lagi.`, "error");
     }finally{
         cloudSyncBusy = false;
     }
@@ -549,10 +431,9 @@ async function submitPermit(event){
     toast("Mengunggah foto bukti & mengirim pengajuan ke Google Sheets...", "normal");
 
     try{
-        const json = await cloudPost("addPermit", permit, 0);
+        const json = await cloudPost("addPermit", permit);
 
-        const saved = json.record || permit;
-        removeQueued("addPermit", saved.id || permit.id);
+        const saved = json.record || permit; // record.photo sudah berupa link Drive dari server
         const list = load(DB.permits);
         list.push(saved);
         _localSave(DB.permits, list); // cache lokal saja, sudah tersimpan di server
@@ -562,12 +443,52 @@ async function submitPermit(event){
         toast(`Pengajuan ${type} berhasil dikirim & tersimpan di Google Sheets.`, "success");
     }catch(err){
         console.error("Gagal mengirim pengajuan izin/sakit ke Google Sheets:", err);
-        queueSync("addPermit", permit);
-        toast(`Pengajuan disimpan sebagai pending dan akan dicoba lagi pada sinkronisasi 30 detik berikutnya.`, "error");
+        toast(`Gagal mengirim pengajuan: ${friendlyCloudError(err)}. Silakan coba lagi.`, "error");
     }finally{
         cloudSyncBusy = false;
     }
 }
+
+
+/* =========================================================
+LOGIN V13 — login tidak diblokir oleh getAll. Data pusat dimuat di background.
+========================================================= */
+const _nevOriginalLogin = window.login;
+window.login = async function(event){
+    event.preventDefault();
+    const roleEl=document.getElementById("loginRole");
+    const userEl=document.getElementById("loginUsername");
+    const passEl=document.getElementById("loginPassword");
+    const role=(typeof loginRole!=="undefined" ? loginRole : (roleEl&&roleEl.value)) || "STAF";
+    const username=(userEl&&userEl.value||"").trim();
+    const password=(passEl&&passEl.value)||"";
+    if(!username || !password){ toast("Username dan password wajib diisi.","error"); return; }
+    const btn=event.submitter || document.querySelector('#loginForm button[type="submit"]');
+    if(btn) btn.disabled=true;
+    try{
+        const result=await cloudPost("login",{username,password,role},1);
+        if(!result || !result.ok) throw new Error(result&&result.error||"Login gagal.");
+        localStorage.setItem("nev_auth_token",result.authToken||"");
+        localStorage.setItem("nev_current_user",JSON.stringify(result.user));
+        currentUser=result.user;
+        initializeDatabase();
+        document.getElementById("loginScreen")?.classList.add("hidden");
+        document.getElementById("app")?.classList.remove("hidden");
+        buildSidebar(); updateUserUI();
+        if(currentUser.role==="STAF") showPage("staf-dashboard");
+        else if(currentUser.role==="HRD") showPage("hrd-dashboard");
+        else showPage("koor-dashboard");
+        updateCloudBadge();
+        queueMicrotask(async()=>{
+            const ok=await fetchCloudAll();
+            if(ok && currentUser) renderAll();
+        });
+        toast("Login berhasil.","success");
+    }catch(err){
+        console.error(err);
+        toast(friendlyCloudError(err),"error");
+    }finally{ if(btn) btn.disabled=false; }
+};
 
 
 /* =========================================================
@@ -604,59 +525,34 @@ selesai diambil — supaya perangkat mana pun selalu mulai dengan
 data terpusat yang sama, bukan data lokal yang mungkin basi.
 ========================================================= */
 
-async function bootWithCloud(){
-    if(!cloudSyncEnabled){
-        initializeDatabase();
-        startCloudPolling();
-        return;
-    }
-
+async function bootWithCloudV13(){
     initializeDatabase();
-
-    const savedToken = getAuthToken();
-    const savedUser = localStorage.getItem("nev_current_user");
-
-    // Restore login dari cache lokal tanpa menunggu Google Apps Script.
-    // Validasi token dilakukan di background agar halaman tidak terasa lambat.
+    const savedToken=getAuthToken();
+    const savedUser=localStorage.getItem("nev_current_user");
+    try{
+        const res=await fetch(`${CLOUD_SCRIPT_URL}?action=bootstrap&_=${Date.now()}`,{cache:"no-store"});
+        const boot=await res.json();
+        if(boot&&boot.ok){
+            cloudServerVersion=boot.version||null;
+            _localSave(DB.settings,boot.settings||{officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
+        }
+    }catch(e){ console.warn("Bootstrap cloud gagal:",e); }
     if(savedToken && savedUser){
         try{
-            currentUser = JSON.parse(savedUser);
-            document.getElementById("loginScreen").classList.add("hidden");
-            document.getElementById("app").classList.remove("hidden");
-            buildSidebar();
-            updateUserUI();
-            if(currentUser.role==="STAF") showPage("staf-dashboard");
-            else if(currentUser.role==="HRD") showPage("hrd-dashboard");
-            else if(currentUser.role==="KOOR KP") showPage("koor-dashboard");
-            renderAll();
-
-            // Validasi token + sinkronisasi data di background.
-            setTimeout(async ()=>{
-                const ok = await fetchCloudAll();
-                if(ok && currentUser) renderAll();
-            }, 0);
-        }catch(e){
-            clearAuthSession();
-            currentUser = null;
-        }
-    }
-
-    // Bootstrap settings/version tidak boleh memblokir login/dashboard.
-    setTimeout(async ()=>{
-        try{
-            const res = await fetch(`${CLOUD_SCRIPT_URL}?action=bootstrap`);
-            const boot = await res.json();
-            if(boot && boot.ok){
-                cloudServerVersion = boot.version || cloudServerVersion;
-                _localSave(DB.settings, boot.settings || {officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
-                updateCloudBadge();
+            currentUser=JSON.parse(savedUser);
+            const ok=await fetchCloudAll();
+            if(ok){
+                const valid=(load(DB.users)||[]).find(u=>u.id===currentUser.id);
+                if(valid){ currentUser=valid; localStorage.setItem("nev_current_user",JSON.stringify(valid)); document.getElementById("loginScreen")?.classList.add("hidden"); document.getElementById("app")?.classList.remove("hidden"); buildSidebar(); updateUserUI(); if(currentUser.role==="STAF")showPage("staf-dashboard"); else if(currentUser.role==="HRD")showPage("hrd-dashboard"); else showPage("koor-dashboard"); }
+                else { clearAuthSession(); currentUser=null; }
             }
-        }catch(e){
-            console.warn("Bootstrap cloud gagal:",e);
-        }
-    }, 0);
-
+        }catch(e){ console.warn("Restore login gagal:",e); clearAuthSession(); currentUser=null; }
+    }
     startCloudPolling();
+    updateCloudBadge();
+    if(currentUser) renderAll();
 }
+
+
 setInterval(updateCloudBadge, 2000);
-bootWithCloud();
+bootWithCloudV13();
