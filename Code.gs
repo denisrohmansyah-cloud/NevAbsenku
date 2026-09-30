@@ -28,7 +28,7 @@ const FALLBACK_FOLDER_NAMES = {
   presensi: "NEV Absenku - Foto Presensi"
 };
 
-const CODE_VERSION = "secure-v7.4-reset-absensi";
+const CODE_VERSION = "secure-v7.3-alpha-rekap";
 
 const SHEET_USERS = "Users";
 const SHEET_SESSIONS = "Sessions";
@@ -308,18 +308,8 @@ function ensureAutomaticAlpha_(){
   const existing=new Set(attendance.map(a=>String(a.sessionId)+"|"+String(a.userId)));
   const additions=[];
 
-  const resetAt=PropertiesService.getScriptProperties().getProperty("ATTENDANCE_RESET_AT") || "";
-
   sessions.forEach(session=>{
     if(!sessionHasEnded_(session,now)) return;
-
-    // Setelah HRD melakukan reset massal, sesi yang sudah berakhir
-    // sebelum waktu reset tidak boleh dibuatkan Alpha kembali.
-    if(resetAt){
-      const endedAt=new Date(String(session.date)+"T"+String(session.end)+":00+07:00");
-      const resetDate=new Date(resetAt);
-      if(!isNaN(endedAt.getTime()) && !isNaN(resetDate.getTime()) && endedAt.getTime() <= resetDate.getTime()) return;
-    }
 
     const eligible=users.filter(u=>
       session.division==="-" || String(u.division||"")===String(session.division||"")
@@ -631,6 +621,28 @@ function deleteSession_(actor,sessionId){
   return {ok:true};
 }
 
+function deleteAttendanceBulk_(actor,ids){
+  if(!Array.isArray(ids) || !ids.length) throw new Error("Tidak ada data absensi yang dipilih.");
+
+  const wanted=new Set(ids.map(v=>String(v||"").trim()).filter(Boolean));
+  if(!wanted.size) throw new Error("ID absensi tidak valid.");
+
+  const list=sheetToObjects_(SHEET_ATTENDANCE);
+
+  if(actor.role!=="HRD" && actor.role!=="KOOR KP") throw new Error("Akses ditolak.");
+
+  if(actor.role==="KOOR KP") {
+    const unauthorized=list.find(a=>wanted.has(String(a.id||"")) &&
+      (a.activity!=="Ngoprek" || a.division!==actor.division));
+    if(unauthorized) throw new Error("Koor KP hanya dapat menghapus absensi Ngoprek dari divisinya sendiri.");
+  }
+
+  const remaining=list.filter(a=>!wanted.has(String(a.id||"")));
+  const removed=list.length-remaining.length;
+  objectsToSheet_(SHEET_ATTENDANCE,remaining);
+  return {ok:true,removed:removed};
+}
+
 function deleteAttendance_(actor,id){
   const list=sheetToObjects_(SHEET_ATTENDANCE);
   const rec=list.find(a=>a.id===id);
@@ -647,40 +659,6 @@ function deleteAttendance_(actor,id){
   objectsToSheet_(SHEET_ATTENDANCE,list.filter(a=>a.id!==id));
   return {ok:true};
 }
-
-/* =========================================================
-RESET SEMUA ABSENSI — HRD ONLY
-========================================================= */
-function clearAllAttendance_(actor){
-  if(actor.role!=="HRD") throw new Error("Hanya HRD yang dapat menghapus seluruh data absensi.");
-
-  return withLock_(()=>{
-    const list=sheetToObjects_(SHEET_ATTENDANCE);
-    const photoIds=[...new Set(list.map(a=>driveFileId_(a.photo)).filter(Boolean))];
-
-    // Hapus/arsipkan foto selfie/presensi yang terkait dengan record absensi.
-    let deletedPhotos=0;
-    photoIds.forEach(fileId=>{
-      try{
-        DriveApp.getFileById(fileId).setTrashed(true);
-        deletedPhotos++;
-      }catch(err){}
-    });
-
-    const sheet=getSheet_(SHEET_ATTENDANCE);
-    const lastRow=sheet.getLastRow();
-    if(lastRow>1){
-      sheet.getRange(2,1,lastRow-1,HEADERS.Attendance.length).clearContent();
-    }
-
-    // Tandai waktu reset agar auto-Alpha tidak langsung mengisi kembali
-    // sesi lama yang sudah selesai sebelum reset. Sesi baru tetap normal.
-    PropertiesService.getScriptProperties().setProperty("ATTENDANCE_RESET_AT",new Date().toISOString());
-
-    return {ok:true,deletedCount:list.length,deletedPhotos};
-  });
-}
-
 
 /* =========================================================
 SECURE ATTENDANCE / PERMIT HELPERS
@@ -935,8 +913,8 @@ function doPost(e){
       case "deleteAttendance":
         return jsonResponse_(withLock_(()=>deleteAttendance_(actor,String(data.attendanceId||""))));
 
-      case "clearAllAttendance":
-        return jsonResponse_(clearAllAttendance_(actor));
+      case "deleteAttendanceBulk":
+        return jsonResponse_(withLock_(()=>deleteAttendanceBulk_(actor,data.attendanceIds||[])));
 
       case "saveSessions":{
         if(actor.role==="STAF") throw new Error("STAF tidak dapat mengubah sesi.");

@@ -1,68 +1,25 @@
-# NEV Absenku V14.3 — Auto Alpha & Rekap per Staf
+# NEV Absenku V14.3 — Bulk Delete Attendance
 
-V14.3 melanjutkan V14.2 dan menambahkan dua fitur utama:
+## Perubahan tambahan
+- HRD memiliki tombol **Hapus Semua Tampil** di halaman Rekap Absensi.
+- Koor KP memiliki tombol **Hapus Semua Tampil** di halaman Absensi Ngoprek.
+- Penghapusan mengikuti filter yang sedang aktif; jadi hanya data yang sedang tampil yang dihapus.
+- Penghapusan memerlukan dua kali konfirmasi.
+- Penghapusan diproses di Google Apps Script agar data Google Sheets ikut terhapus.
+- Koor KP hanya dapat menghapus data Ngoprek dari divisinya sendiri.
+- Foto di Google Drive **tidak ikut dihapus**; yang dihapus adalah record absensinya di Google Sheets.
 
-## 1. Auto Alpha
+## Deploy
+1. Ganti `index.html` di GitHub Pages.
+2. Ganti `Code.gs` di Google Apps Script.
+3. Deploy Apps Script sebagai **New version**.
+4. Reload website dengan `Ctrl + Shift + R`.
 
-Setiap sesi absensi yang **sudah melewati jam selesai** akan diperiksa oleh backend.
-Untuk setiap STAF yang memang menjadi peserta sesi tersebut dan belum memiliki
-record absensi, sistem otomatis membuat record dengan:
-
-- Status: `Alpha`
-- `checkIn`: waktu selesai sesi
-- `autoAlpha`: `true`
-
-Aturan peserta:
-- Sesi dengan divisi tertentu → hanya STAF pada divisi tersebut.
-- Sesi dengan divisi `-` → seluruh STAF.
-- Sesi yang belum selesai → belum dibuat Alpha.
-- Jika STAF sudah Hadir/Izin/Sakit → tidak dibuat Alpha.
-- Jika izin/sakit kemudian disetujui, record Alpha yang ada akan diperbarui menjadi `Izin` atau `Sakit` oleh proses persetujuan yang sudah ada.
-
-Proses Auto Alpha dijalankan saat endpoint `getAll` dipanggil, sehingga data tetap tersimpan di Google Sheets dan tidak hanya dihitung di browser.
-
-## 2. Rekap jumlah absensi setiap staf
-
+## Cara menggunakan
 ### HRD
-Menu **Rekap Absensi** sekarang menampilkan tabel:
-- Nama
-- NIM
-- Divisi
-- Hadir
-- Izin
-- Sakit
-- Alpha
-- Total Sesi
-
-Ringkasan mengikuti filter tanggal, kegiatan, divisi, dan pencarian staf. Filter Status hanya memengaruhi tabel detail di bawahnya.
+Masuk → **Rekap Absensi** → atur filter jika perlu → klik **Hapus Semua Tampil**.
 
 ### Koor KP
-Menu **Absensi Ngoprek** menampilkan rekap yang sama, tetapi hanya untuk STAF pada divisi Koor KP yang sedang login.
+Masuk → **Absensi Ngoprek** → atur filter jika perlu → klik **Hapus Semua Tampil**.
 
-Koor KP tidak menerima data Ngoprek divisi lain karena pembatasan tetap dilakukan di backend.
-
-## File yang diperbarui
-
-Upload ke GitHub Pages:
-- `index.html`
-- `cloud-sync.js`
-- `geo-selfie.js`
-- `geo-selfie.css`
-- `nev-logo.webp`
-
-Update Apps Script:
-- `Code.gs`
-
-## Deploy wajib
-
-Karena Auto Alpha berjalan di backend:
-
-1. Buka Apps Script.
-2. Ganti seluruh isi `Code.gs` dengan versi V14.3.
-3. Simpan.
-4. **Deploy → Manage deployments → Edit → Version: New version → Deploy**.
-5. URL Web App tetap sama.
-6. Upload file frontend ke GitHub Pages.
-7. Lakukan `Ctrl + Shift + R`.
-
-Versi backend: `secure-v7.3-alpha-rekap`.
+Jika ingin benar-benar menghapus semua record absensi HRD, pastikan seluruh filter berada pada **Semua** sebelum menekan tombol.

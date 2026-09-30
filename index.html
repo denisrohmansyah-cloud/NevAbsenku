@@ -2817,7 +2817,7 @@ APP
                             <h3>Rekap Absensi</h3>
 
                             <p>
-                                Laporan seluruh data absensi
+                                Laporan seluruh data absensi. Tombol <b>Hapus Semua Tampil</b> menghapus hanya data yang sedang sesuai filter.
                             </p>
 
                         </div>
@@ -2845,10 +2845,10 @@ APP
                             <button
                                 class="btn btn-danger"
                                 style="background:#991b1b;"
-                                onclick="clearAllAttendance()">
+                                onclick="deleteAllVisibleAttendance()">
 
                                 <i class="fa-solid fa-trash-can"></i>
-                                Hapus Semua Absensi
+                                Hapus Semua Tampil
 
                             </button>
 
@@ -3157,6 +3157,9 @@ APP
                             </button>
                             <button class="btn btn-danger" onclick="exportKoorPDF()">
                                 <i class="fa-solid fa-file-pdf"></i> PDF
+                            </button>
+                            <button class="btn btn-danger" style="background:#991b1b;" onclick="deleteAllVisibleAttendance()">
+                                <i class="fa-solid fa-trash-can"></i> Hapus Semua Tampil
                             </button>
                         </div>
 
@@ -5177,6 +5180,51 @@ function saveAttendanceEdit(){
     toast("Status absensi berhasil diperbarui.", "success");
 }
 
+async function deleteAllVisibleAttendance(){
+    if(currentUser?.role!=="HRD" && currentUser?.role!=="KOOR KP") {
+        toast("Akses ditolak.","error");
+        return;
+    }
+
+    const data = currentUser.role==="HRD"
+        ? getFilteredHRDAttendance(false)
+        : getFilteredKoorAttendance();
+
+    if(!data.length){
+        toast("Tidak ada data absensi yang sedang tampil untuk dihapus.","error");
+        return;
+    }
+
+    const scope = currentUser.role==="HRD"
+        ? "sesuai filter Rekap Absensi"
+        : `Ngoprek divisi ${currentUser.division||"ini"} sesuai filter`;
+
+    const first = confirm(`Hapus SEMUA ${data.length} data absensi ${scope}?\n\nTindakan ini tidak dapat dibatalkan. Foto di Google Drive tidak ikut dihapus.`);
+    if(!first) return;
+
+    const second = confirm(`KONFIRMASI TERAKHIR\n\nAnda akan menghapus ${data.length} data absensi dari Google Sheets.\n\nLanjutkan?`);
+    if(!second) return;
+
+    const ids=[...new Set(data.map(a=>String(a.id||"").trim()).filter(Boolean))];
+    if(!ids.length){
+        toast("Data tidak memiliki ID yang valid.","error");
+        return;
+    }
+
+    try{
+        await cloudPost("deleteAttendanceBulk",{attendanceIds:ids},1);
+
+        const idSet=new Set(ids);
+        _localSave(DB.attendance,load(DB.attendance).filter(a=>!idSet.has(String(a.id||""))));
+
+        renderAll();
+        if(typeof renderSessionStaffStatus === "function") renderSessionStaffStatus();
+        toast(`${ids.length} data absensi berhasil dihapus.`,"success");
+    }catch(err){
+        toast("Gagal menghapus data absensi: "+friendlyCloudError(err),"error");
+    }
+}
+
 async function deleteAttendance(id){
     const attendance=load(DB.attendance);
     const record=attendance.find(a=>a.id===id);
@@ -5741,53 +5789,6 @@ async function saveSettings(){
         toast("Pengaturan akun berhasil disimpan.","success");
     }catch(err){
         toast("Gagal menyimpan pengaturan: "+friendlyCloudError(err),"error");
-    }
-}
-
-
-/* =========================================================
-RESET SEMUA DATA ABSENSI — KHUSUS HRD
-========================================================= */
-async function clearAllAttendance(){
-    if(currentUser?.role!=="HRD"){
-        toast("Hanya HRD yang dapat menghapus seluruh data absensi.","error");
-        return;
-    }
-
-    const attendance=load(DB.attendance);
-    if(!attendance.length){
-        toast("Tidak ada data absensi untuk dihapus.","normal");
-        return;
-    }
-
-    const answer=prompt(
-        `PERINGATAN! Ini akan menghapus ${attendance.length} data absensi beserta foto absensi yang terkait dari server.\n\nQR/kegiatan, akun staf, dan data izin/sakit TIDAK dihapus.\n\nKetik HAPUS untuk melanjutkan:`
-    );
-    if(answer!=="HAPUS") return;
-
-    const btn=document.querySelector('button[onclick="clearAllAttendance()"]');
-    const oldHTML=btn?.innerHTML;
-    if(btn){
-        btn.disabled=true;
-        btn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Menghapus...';
-    }
-
-    try{
-        const result=await cloudPost("clearAllAttendance",{},1);
-        if(!result?.ok) throw new Error(result?.error||"Gagal menghapus data absensi.");
-
-        _localSave(DB.attendance,[]);
-        cloudUnsynced=0;
-        cloudLastError="";
-        renderAll();
-        toast(`Semua data absensi berhasil dihapus (${Number(result.deletedCount||0)} data).`,"success");
-    }catch(err){
-        toast("Gagal menghapus seluruh absensi: "+friendlyCloudError(err),"error");
-    }finally{
-        if(btn){
-            btn.disabled=false;
-            btn.innerHTML=oldHTML||'<i class="fa-solid fa-trash-can"></i> Hapus Semua Absensi';
-        }
     }
 }
 
