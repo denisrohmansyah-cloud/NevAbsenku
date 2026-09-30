@@ -1934,14 +1934,22 @@ APP
 
                         </div>
 
-                        <button
-                            class="btn btn-primary"
-                            onclick="showPage('hrd-qr')">
-
-                            <i class="fa-solid fa-qrcode"></i>
-                            Buat QR
-
-                        </button>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+                            <button
+                                class="btn btn-primary"
+                                onclick="showPage('hrd-qr')">
+                                <i class="fa-solid fa-qrcode"></i>
+                                Buat QR
+                            </button>
+                            <button
+                                class="btn btn-danger"
+                                type="button"
+                                onclick="resetAttendanceHistoryNow()"
+                                title="Hapus seluruh riwayat absensi dari server dan browser">
+                                <i class="fa-solid fa-trash"></i>
+                                Bersihkan Riwayat
+                            </button>
+                        </div>
 
                     </div>
 
@@ -5023,7 +5031,13 @@ function renderHRDReport(){
 
 function renderHRDDashboard(){
     const users=load(DB.users);
-    const attendance=load(DB.attendance);
+    // Jangan tampilkan record legacy/malformed yang tidak memiliki identitas
+    // dan tanggal valid. Data server tetap menjadi sumber kebenaran.
+    const attendance=load(DB.attendance).filter(a=>
+        a && a.id && a.userId && a.sessionId &&
+        /^\d{4}-\d{2}-\d{2}$/.test(String(a.date||"")) &&
+        ["Hadir","Izin","Sakit","Alpha"].includes(String(a.status||""))
+    );
     const staff=users.filter(u=>u.role==="STAF");
     
     document.getElementById("hrdTotalStaff").textContent=staff.length;

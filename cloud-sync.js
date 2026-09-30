@@ -386,6 +386,37 @@ function updateCloudBadge(){
     el.style.color = fg;
 }
 
+
+/* =========================================================
+   HRD: RESET TOTAL RIWAYAT ABSENSI
+   Server menjadi sumber kebenaran. Setelah reset, cache/queue lokal
+   dibersihkan dan dashboard langsung dirender ulang.
+========================================================= */
+async function resetAttendanceHistoryNow(){
+    if(currentUser?.role !== "HRD"){ toast("Hanya HRD yang dapat mereset riwayat absensi.","error"); return; }
+    const yes = confirm("HAPUS SEMUA RIWAYAT ABSENSI?\n\nSemua data pada sheet Attendance akan dihapus permanen. Data Users, Sessions, dan Permits tidak dihapus.\n\nLanjutkan?");
+    if(!yes) return;
+    try{
+        cloudSyncBusy=true;
+        const json=await cloudPost("resetAttendanceHistory",{},1);
+        if(!json?.ok) throw new Error(json?.error||"Reset gagal.");
+        _localSave(DB.attendance,[]);
+        try{ localStorage.removeItem(CLOUD_QUEUE_KEY); }catch(e){}
+        for(const k of LEGACY_QUEUE_KEYS){ try{localStorage.removeItem(k);}catch(e){} }
+        cloudUnsynced=0;
+        cloudLastError=null;
+        cloudLastSyncAt=new Date();
+        updateCloudBadge();
+        if(typeof renderAll === "function") renderAll();
+        toast("Semua riwayat absensi berhasil dihapus.","success");
+    }catch(err){
+        console.error(err);
+        toast("Gagal mereset riwayat: "+friendlyCloudError(err),"error");
+    }finally{ cloudSyncBusy=false; }
+}
+
+window.resetAttendanceHistoryNow = resetAttendanceHistoryNow;
+
 async function manualCloudRefresh(silent){
     if(!cloudSyncEnabled || cloudSyncBusy) return;
     const ok = await fetchCloudAll();
