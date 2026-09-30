@@ -62,7 +62,7 @@ let cloudUnsynced = 0;        // explicit failed-write queue only
 let cloudFlushing = false;
 let cloudLastFlushAt = 0;
 const CLOUD_POLL_MS = 30000;
-const CLOUD_QUEUE_KEY = "nev_sync_queue_v14_7";
+const CLOUD_QUEUE_KEY = "nev_sync_queue_v14_9";
 const LEGACY_QUEUE_KEYS = ["nev_sync_queue_v13", "nev_sync_queue_v14_1", "nev_sync_queue_v14_2", "nev_sync_queue_v14_3", "nev_sync_queue_v14_4", "nev_sync_queue_v14_5", "nev_sync_queue_v14_6", "nev_sync_queue"];
 
 
@@ -207,13 +207,13 @@ async function cloudPost(action, data, retries){
     throw lastErr;
 }
 
+async function cloudPostProtected(action, data, retries){
+    return cloudPost(action, data, retries);
+}
+
 async function getCloudSessionToken(sessionId){
     if(!cloudSyncEnabled || !getAuthToken()) throw new Error("Sesi login tidak tersedia.");
-    const url=`${CLOUD_SCRIPT_URL}?action=getSessionToken&sessionId=${encodeURIComponent(sessionId)}&authToken=${encodeURIComponent(getAuthToken())}&_=${Date.now()}`;
-    const res=await fetch(url,{cache:"no-store"});
-    const json=await res.json();
-    if(json?.authExpired){ clearAuthSession(); throw new Error(json.error||"Sesi login telah berakhir."); }
-    if(!json?.ok) throw new Error(json?.error||"Token QR tidak dapat diambil.");
+    const json=await cloudPostProtected("getSessionToken",{sessionId:String(sessionId||"")},1);
     return String(json.token||"");
 }
 
@@ -277,7 +277,7 @@ AMBIL SEMUA DATA TERBARU DARI GOOGLE SHEETS
 async function fetchCloudAll(){
     if(!cloudSyncEnabled) return false;
     const token=getAuthToken();
-    // V14.6: Attendance server menjadi sumber kebenaran. Bersihkan cache
+    // V14.9: Attendance server menjadi sumber kebenaran. Bersihkan cache
     // lokal sebelum mengambil snapshot terbaru agar riwayat lama tidak
     // dapat tampil kembali karena cache/queue versi sebelumnya.
     try{
@@ -290,8 +290,7 @@ async function fetchCloudAll(){
 
     if(!token) return false;
     try{
-        const res=await fetch(`${CLOUD_SCRIPT_URL}?action=getAll&authToken=${encodeURIComponent(token)}&_=${Date.now()}`,{cache:"no-store"});
-        const json=await res.json();
+        const json=await cloudPostProtected("getAll",{},1);
         if(json && json.authExpired){
             clearAuthSession();
             forceLoginScreen("Sesi login telah berakhir. Silakan login kembali.");
@@ -535,8 +534,7 @@ window.nevLoadPhotoProxy = async function(photo){
     const fileId=m&&m[1];
     const token=getAuthToken();
     if(!fileId || !token) throw new Error("Foto atau sesi tidak valid.");
-    const res=await fetch(`${CLOUD_SCRIPT_URL}?action=getPhoto&photoId=${encodeURIComponent(fileId)}&authToken=${encodeURIComponent(token)}&_=${Date.now()}`,{cache:"no-store"});
-    const json=await res.json();
+    const json=await cloudPostProtected("getPhoto",{photoId:String(fileId||"")},1);
     if(json?.authExpired){ forceLoginScreen("Sesi login telah berakhir. Silakan login kembali."); throw new Error("Sesi login berakhir."); }
     if(!json?.ok || !json.data) throw new Error(json?.error||"Foto tidak dapat diambil.");
     return `data:${json.mimeType||"image/jpeg"};base64,${json.data}`;
