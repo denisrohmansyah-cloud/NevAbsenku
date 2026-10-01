@@ -88,17 +88,24 @@ function setCloudQueue(q){
     }
 }
 
+/* Setiap item antrean ditandai pemiliknya. Item milik akun lain tidak boleh dikirim
+   dengan token akun yang sedang login (mencegah absensi tercatat atas akun yang salah). */
+function cloudQueueOwner(){
+    return (typeof currentUser !== "undefined" && currentUser && currentUser.id) ? currentUser.id : null;
+}
+
 function queueCloudAction(action, data){
     if(!action || data === undefined) return;
+    const owner = cloudQueueOwner();
     const q = getCloudQueue();
     // Satu antrean terbaru untuk setiap save-* action agar tidak menumpuk.
     const replaceable = ["saveSessions","saveAttendance","saveSettings","savePermits"].includes(action);
     if(replaceable){
         const idx = q.findIndex(x=>x.action===action);
-        const item = { id:"Q-"+Date.now()+"-"+Math.random().toString(36).slice(2), action, data, createdAt:new Date().toISOString() };
+        const item = { id:"Q-"+Date.now()+"-"+Math.random().toString(36).slice(2), action, data, owner, createdAt:new Date().toISOString() };
         if(idx >= 0) q[idx] = item; else q.push(item);
     }else{
-        q.push({ id:"Q-"+Date.now()+"-"+Math.random().toString(36).slice(2), action, data, createdAt:new Date().toISOString() });
+        q.push({ id:"Q-"+Date.now()+"-"+Math.random().toString(36).slice(2), action, data, owner, createdAt:new Date().toISOString() });
     }
     setCloudQueue(q);
     cloudUnsynced = q.length;
@@ -292,7 +299,13 @@ async function flushCloudQueue(){
     if(!q.length){cloudUnsynced=0;updateCloudBadge();return;}
     cloudFlushing=true;
     try{
+        const me = cloudQueueOwner();
         for(const item of q.slice()){
+            // Buang item milik akun lain: tidak boleh dikirim atas nama akun yang sedang login.
+            if(item.owner && me && item.owner !== me){
+                removeCloudQueueItem(item.id);
+                continue;
+            }
             try{
                 await cloudPost(item.action,item.data,1);
                 removeCloudQueueItem(item.id);

@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NEV Absenku</title>
 
+<!-- Kebijakan keamanan konten: hanya host yang dipakai aplikasi yang boleh memuat script/koneksi.
+     Jika menambah library dari host baru, tambahkan host-nya di script-src. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://unpkg.com https://cdn.jsdelivr.net; font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https:; media-src 'self' blob: data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -12,22 +16,27 @@
 <link rel="stylesheet"
 href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
-<!-- QR Generator -->
+<!-- QR Generator (TODO SRI: curl -s URL | openssl dgst -sha384 -binary | openssl base64 -A, lalu pasang integrity="sha384-..." crossorigin="anonymous") -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <!-- QR Scanner -->
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" type="text/javascript"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" type="text/javascript"
+        integrity="sha384-c9d8RFSL+u3exBOJ4Yp3HUJXS4znl9f+z66d1y54ig+ea249SpqR+w1wyvXz/lk+" crossorigin="anonymous"></script>
 
-<!-- Excel -->
+<!-- Excel (TODO SRI: hitung hash dengan perintah yang sama seperti QR Generator di atas) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
 <!-- PDF -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"
+        integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"
+        integrity="sha384-fCAW/rDWORTbQXSiB7mOg0QtQ5c+r0f544y6XoKjuVva0nMBlCpNUjiFeG5iMdS3" crossorigin="anonymous"></script>
 
 <!-- Peta lokasi kantor (Geofencing) -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
 
 <!-- File tambahan: lokasi (geofencing) & selfie -->
 <link rel="stylesheet" href="geo-selfie.css">
@@ -3517,6 +3526,11 @@ EDIT AKUN MODAL
                     <small style="color:#777;font-size:11px;">Riwayat absensi lama tetap tercatat pada divisi sebelumnya.</small>
                 </div>
 
+                <div class="form-group hidden" id="editUserCurrentGroup">
+                    <label>Password Saat Ini</label>
+                    <input id="editUserCurrentPassword" type="password" class="form-control" placeholder="Wajib diisi jika Anda mengganti password akun sendiri" autocomplete="current-password">
+                </div>
+
                 <div class="form-group">
                     <label>Password Baru</label>
                     <input id="editUserPassword" type="password" class="form-control" placeholder="Kosongkan jika tidak diubah" autocomplete="new-password">
@@ -3933,7 +3947,19 @@ async function login(event){
   }
 }
 
+/* Hapus semua salinan data di perangkat (daftar user, absensi, izin, antrean sinkronisasi) agar
+   pengguna berikutnya di perangkat yang sama tidak dapat membacanya. */
+function wipeLocalCache(){
+    ["nev_users","nev_sessions","nev_attendance","nev_settings","nev_permits","nev_cloud_queue_v14_1"]
+        .forEach(k=>{ try{ localStorage.removeItem(k); }catch(e){} });
+    try{ if(typeof privatePhotoCache!=="undefined") privatePhotoCache.clear(); }catch(e){}
+}
+
 function logout(){
+    try{
+        const pending = (typeof getCloudQueue==="function") ? getCloudQueue().length : 0;
+        if(pending>0 && !confirm("Ada "+pending+" perubahan yang belum tersinkron ke server. Jika keluar sekarang, data tersebut akan hilang. Tetap keluar?")) return;
+    }catch(e){}
     stopScanner();
     try{
         const t=localStorage.getItem("nev_auth_token");
@@ -3945,6 +3971,7 @@ function logout(){
     currentUser=null;
     localStorage.removeItem("nev_current_user");
     localStorage.removeItem("nev_auth_token");
+    wipeLocalCache();
     document.getElementById("app").classList.add("hidden");
     document.getElementById("loginScreen").classList.remove("hidden");
     document.getElementById("loginUsername").value="";
@@ -4171,7 +4198,7 @@ function generateQR(event,creatorRole){
         active:true, createdAt: new Date().toISOString(),
         geoEnabled, geoLat, geoLng, geoRadius
     };
-    session.token = encodeSessionToken(session);
+    session.token = createSecureToken();
 
     const sessions=load(DB.sessions);
     sessions.push(session);
@@ -4185,54 +4212,21 @@ function generateQR(event,creatorRole){
 }
 
 /*
- * Token QR sekarang membawa (encode) data sesi itu sendiri, bukan hanya kode acak.
- * Ini penting karena aplikasi ini menyimpan data di localStorage, yang TIDAK
- * dibagi antar perangkat/browser. Tanpa perubahan ini, token yang dibuat di
- * perangkat HRD/Koor KP tidak akan pernah "dikenali" di perangkat STAF lain,
- * karena localStorage milik STAF memang tidak pernah menyimpannya.
- * Dengan data sesi ikut disisipkan ke dalam token, perangkat mana pun yang
- * memindai/menginput token bisa membaca ulang datanya langsung dari token itu.
+ * Token QR adalah nilai ACAK (256 bit) yang tidak memuat dan tidak dapat diturunkan dari data sesi.
+ * Perangkat STAF tidak lagi membaca data sesi dari token: token dikirim ke server (aksi "resolveToken")
+ * dan server mengembalikan data sesi bila token cocok. Dengan begitu token tidak bisa dipalsukan
+ * dari data sesi yang terlihat.
  */
-function createUniqueToken(activity,division){
-    const prefix="NEV-ABS";
-    const date=new Date().toISOString().slice(0,10).replaceAll("-","");
-    const act=activity.replaceAll(" ","").substring(0,4).toUpperCase();
-    const div=(division || "ALL").replaceAll(" ","").substring(0,4).toUpperCase();
-    const random=Math.random().toString(36).substring(2,8).toUpperCase();
-    return `${prefix}-${date}-${act}-${div}-${random}`;
-}
-
-function encodeSessionToken(session){
-    const payload={
-        id:session.id, activity:session.activity, division:session.division,
-        date:session.date, start:session.start, end:session.end,
-        location:session.location, notes:session.notes,
-        creatorId:session.creatorId, creatorName:session.creatorName, creatorRole:session.creatorRole,
-        geoEnabled:session.geoEnabled || false, geoLat:session.geoLat ?? null,
-        geoLng:session.geoLng ?? null, geoRadius:session.geoRadius ?? null
-    };
-    try{
-        const json=JSON.stringify(payload);
-        const b64=btoa(unescape(encodeURIComponent(json)))
-            .replaceAll("+","-").replaceAll("/","_").replaceAll("=","");
-        return `NEV-ABS-${b64}`;
-    }catch(e){
-        return createUniqueToken(session.activity, session.division);
-    }
-}
-
-function decodeSessionToken(token){
-    if(!token || !token.startsWith("NEV-ABS-")) return null;
-    try{
-        let b64=token.slice("NEV-ABS-".length).replaceAll("-","+").replaceAll("_","/");
-        while(b64.length % 4) b64+="=";
-        const json=decodeURIComponent(escape(atob(b64)));
-        const data=JSON.parse(json);
-        if(!data || !data.id || !data.activity || !data.date || !data.start || !data.end) return null;
-        return data;
-    }catch(e){
-        return null;
-    }
+function createSecureToken(){
+    let token;
+    do{
+        const bytes=new Uint8Array(32);
+        crypto.getRandomValues(bytes);
+        let bin="";
+        bytes.forEach(b=>{ bin+=String.fromCharCode(b); });
+        token="NEV-ABS-"+btoa(bin).replaceAll("+","-").replaceAll("/","_").replaceAll("=","");
+    }while(token.startsWith("NEV-ABS-eyJ")); // awalan format lama ditolak server
+    return token;
 }
 
 
@@ -4278,7 +4272,9 @@ function renderGeneratedQR(type,session){
 QR VALIDATION
 ========================================================= */
 
-function processAttendance(token){
+let _scanBusy=false, _lastScan={token:"",at:0};
+
+async function processAttendance(token){
     if(currentUser?.role!=="STAF"){
         toast("Hanya STAF yang dapat melakukan absensi.", "error"); return;
     }
@@ -4288,82 +4284,71 @@ function processAttendance(token){
         toast("Token QR belum diisi.", "error"); return;
     }
 
-    const sessions = load(DB.sessions);
+    // Scanner membaca ~10 kali/detik: cegah pemrosesan ganda untuk QR yang sama.
+    const nowMs=Date.now();
+    if(_scanBusy) return;
+    if(_lastScan.token===token && nowMs-_lastScan.at<4000) return;
+    _scanBusy=true; _lastScan={token:token, at:nowMs};
 
-let session = sessions.find(s =>
-    String(s.token || "").trim() === token
-);
-
-if(!session){
-    const decoded = decodeSessionToken(token);
-
-    if(decoded){
-        session = {
-            ...decoded,
-            token: token,
-            active: true
-        };
-
-        // Simpan hanya jika belum ada token yang sama
-        const existingIndex = sessions.findIndex(s =>
-            String(s.token || "").trim() === token
-        );
-
-        if(existingIndex >= 0){
-            sessions[existingIndex] = session;
+    try{
+        let session=null;
+        if(typeof cloudSyncEnabled!=="undefined" && cloudSyncEnabled){
+            // Token dicocokkan di SERVER; data sesi tidak dibaca dari isi token.
+            updateScannerStatus("Memverifikasi QR ke server...", "normal");
+            try{
+                const res=await cloudPost("resolveToken", { token }, 1);
+                session=res.session;
+            }catch(err){
+                const reason=friendlyCloudError(err);
+                toast("QR ditolak: "+reason, "error");
+                updateScannerStatus("QR ditolak: "+reason, "error");
+                return;
+            }
         }else{
-            sessions.push(session);
+            session=(load(DB.sessions)||[]).find(s=> String(s.token||"").trim()===token) || null;
         }
 
-        _localSave(DB.sessions, sessions);
+        if(!session){
+            toast("Token QR tidak dikenali.", "error");
+            updateScannerStatus("Token QR tidak dikenali.", "error");
+            return;
+        }
+
+        const wibParts = new Intl.DateTimeFormat("en-US", {
+            timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit",
+            hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+        }).formatToParts(new Date());
+        const wib = {};
+        wibParts.forEach(part=>{ if(part.type!=="literal") wib[part.type]=part.value; });
+        const currentDate = `${wib.year}-${wib.month}-${wib.day}`;
+        const currentTime = `${wib.hour}:${wib.minute}`;
+
+        if(currentDate !== session.date){
+            toast("QR belum atau sudah melewati tanggal kegiatan.", "error"); return;
+        }
+
+        if(currentTime < session.start || currentTime > session.end){
+            toast(`Absensi hanya dapat dilakukan pukul ${session.start} - ${session.end}.`, "error");
+            updateScannerStatus(`QR ditemukan, tetapi saat ini bukan waktu absensi. Jadwal: ${session.start} - ${session.end}.`, "error");
+            return;
+        }
+
+        const attendance=load(DB.attendance);
+        const duplicate=attendance.find(a=> a.sessionId===session.id && a.userId===currentUser.id);
+        if(duplicate){
+            toast("Anda sudah melakukan absensi pada kegiatan ini.", "error");
+            updateScannerStatus("Absensi sudah tercatat sebelumnya.", "error");
+            return;
+        }
+
+        // Token & jadwal valid. Hentikan kamera scanner (kalau aktif) lalu lanjut ke
+        // langkah verifikasi lokasi (geofencing) dan selfie sebelum absensi disimpan.
+        stopScanner();
+        updateScannerStatus(`QR valid: ${session.activity}. Lanjutkan verifikasi lokasi & selfie.`, "success");
+        beginAttendanceCapture(session, token);
+    }finally{
+        _scanBusy=false;
     }
-}
-
-    const now = new Date();
-
-const wibParts = new Intl.DateTimeFormat("en-US", {
-  timeZone: "Asia/Jakarta",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23"
-}).formatToParts(now);
-
-const wib = {};
-wibParts.forEach(part => {
-  if (part.type !== "literal") {
-    wib[part.type] = part.value;
-  }
-});
-
-const currentDate = `${wib.year}-${wib.month}-${wib.day}`;
-const currentTime = `${wib.hour}:${wib.minute}`;
-
-    if(currentDate !== session.date){
-        toast("QR belum atau sudah melewati tanggal kegiatan.", "error"); return;
-    }
-
-    if(currentTime < session.start || currentTime > session.end){
-        toast(`Absensi hanya dapat dilakukan pukul ${session.start} - ${session.end}.`, "error");
-        updateScannerStatus(`QR ditemukan, tetapi saat ini bukan waktu absensi. Jadwal: ${session.start} - ${session.end}.`, "error");
-        return;
-    }
-
-    const attendance=load(DB.attendance);
-    const duplicate=attendance.find(a=> a.sessionId===session.id && a.userId===currentUser.id);
-    if(duplicate){
-        toast("Anda sudah melakukan absensi pada kegiatan ini.", "error");
-        updateScannerStatus("Absensi sudah tercatat sebelumnya.", "error");
-        return;
-    }
-
-    // Token & jadwal valid. Hentikan kamera scanner (kalau aktif) lalu lanjut ke
-    // langkah verifikasi lokasi (geofencing) dan selfie sebelum absensi disimpan.
-    stopScanner();
-    updateScannerStatus(`QR valid: ${session.activity}. Lanjutkan verifikasi lokasi & selfie.`, "success");
-    beginAttendanceCapture(session, token);
 }
 
 function finalizeAttendance(session, token, location, photo){
@@ -4746,7 +4731,7 @@ function populateSessionAttendancePicker(){
 
     const previousValue=select.value;
     select.innerHTML=`<option value="">Pilih sesi...</option>` + sessions.map(s=>
-        `<option value="${s.id}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${escapeHTML(s.date)} (${escapeHTML(s.start)}-${escapeHTML(s.end)})</option>`
+        `<option value="${escapeHTML(s.id)}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${escapeHTML(s.date)} (${escapeHTML(s.start)}-${escapeHTML(s.end)})</option>`
     ).join("");
 
     // Pertahankan pilihan sebelumnya, atau otomatis pilih QR yang sedang tampil di layar.
@@ -5384,6 +5369,8 @@ function editUser(id){
     document.getElementById("editUserName").value = user.name || "";
     document.getElementById("editUserUsername").value = user.username || "";
     document.getElementById("editUserPassword").value = "";
+    document.getElementById("editUserCurrentPassword").value = "";
+    document.getElementById("editUserCurrentGroup").classList.toggle("hidden", !isSelf);
 
     // Role & divisi hanya dapat diubah HRD. Koor KP hanya boleh mengubah nama/NIM/password staf divisinya.
     document.getElementById("editUserRoleGroup").classList.toggle("hidden", !isHRD);
@@ -5426,7 +5413,9 @@ async function submitEditUser(event){
     const name = document.getElementById("editUserName").value.trim();
     const username = document.getElementById("editUserUsername").value.trim();
     const password = document.getElementById("editUserPassword").value;
+    const currentPassword = document.getElementById("editUserCurrentPassword").value;
     if(!name || !username){ toast("Nama dan Username/NIM wajib diisi.", "error"); return; }
+    if(password && id===currentUser.id && !currentPassword){ toast("Isi Password Saat Ini untuk mengganti password akun Anda sendiri.", "error"); return; }
 
     let role = user.role;
     let division = user.division || "";
@@ -5445,7 +5434,7 @@ async function submitEditUser(event){
 
     try{
         const result = await cloudPost("updateUser", {
-            targetId:id, name, username, role, division, password:password || ""
+            targetId:id, name, username, role, division, password:password || "", currentPassword:currentPassword || ""
         }, 1);
         const updated = result.user;
 
@@ -5926,7 +5915,7 @@ function populatePermitSessionOptions(){
     });
 
     select.innerHTML = `<option value="">Pilih kegiatan</option>` +
-        options.map(s=> `<option value="${s.id}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${escapeHTML(s.date)}</option>`).join("");
+        options.map(s=> `<option value="${escapeHTML(s.id)}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${escapeHTML(s.date)}</option>`).join("");
 
     const hint = document.getElementById("permitNoSessionHint");
     if(hint) hint.classList.toggle("hidden", options.length>0);
