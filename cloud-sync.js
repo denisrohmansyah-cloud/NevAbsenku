@@ -41,7 +41,7 @@ const _localSave = save;
    supaya data lama tidak terkirim ulang ke server setelah data pusat dibersihkan.
    Ubah nilai DATA_EPOCH jika suatu saat perlu mengulang pembersihan.
 ========================================================= */
-const DATA_EPOCH = "reset-2026-10-01";
+const DATA_EPOCH = "clean-2026-10-01b";
 (function resetLocalOldData(){
     try{
         if(localStorage.getItem("nev_data_epoch") === DATA_EPOCH) return;

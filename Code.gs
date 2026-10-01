@@ -265,8 +265,12 @@ function sessionsFor_(user){
   return all;
 }
 
+/* Baris dari susunan kolom lama (tanpa userId/sessionId) dianggap rusak dan tidak dikirim ke aplikasi. */
+function validAttendance_(a){ return !!(a && a.id && a.userId && a.sessionId); }
+function validPermit_(p){ return !!(p && p.id && p.userId && p.sessionId); }
+
 function attendanceFor_(user){
-  const all=sheetToObjects_(SHEET_ATTENDANCE);
+  const all=sheetToObjects_(SHEET_ATTENDANCE).filter(validAttendance_);
   if(user.role==="HRD") return all;
   if(user.role==="KOOR KP"){
     return all.filter(a=>a.creatorId===user.id && a.activity==="Ngoprek" && a.division===user.division);
@@ -275,7 +279,7 @@ function attendanceFor_(user){
 }
 
 function permitsFor_(user){
-  const all=sheetToObjects_(SHEET_PERMITS);
+  const all=sheetToObjects_(SHEET_PERMITS).filter(validPermit_);
   if(user.role==="HRD") return all;
   if(user.role==="KOOR KP"){
     return all.filter(p=>p.sessionCreatorId===user.id && p.sessionActivity==="Ngoprek");
@@ -520,8 +524,13 @@ Sheet Users dan Settings TIDAK disentuh.
 ========================================================= */
 function clearSheetRows_(name){
   const sheet=getSheet_(name);
-  if(sheet.getLastRow()>=2){
-    sheet.getRange(2,1,sheet.getLastRow()-1,HEADERS[name].length).clearContent();
+  const last=sheet.getLastRow();
+  if(last>=2){
+    // Seluruh kolom dibersihkan (bukan hanya sebanyak HEADERS) supaya sisa
+    // data dari susunan kolom lama ikut hilang.
+    const range=sheet.getRange(2,1,last-1,Math.max(sheet.getMaxColumns(),HEADERS[name].length));
+    range.clearContent();
+    range.setNumberFormat("@");
   }
 }
 
@@ -560,11 +569,14 @@ function purgeData_(actor,data){
   return result;
 }
 
-/* Alternatif manual: pilih fungsi ini di editor Apps Script lalu klik Run. */
+/* CARA PALING PASTI: di editor Apps Script pilih fungsi "resetDataAbsensi" lalu klik Run.
+   Pertama kali akan meminta izin Google Drive; setujui. Hasil tampil di Execution log.
+   Jika foto sangat banyak dan log menyebut photosFinished=false, jalankan sekali lagi. */
 function resetDataAbsensi(){
   const fakeHrd={role:"HRD"};
   const r=withLock_(function(){ return purgeData_(fakeHrd,{}); });
-  Logger.log(JSON.stringify(r));
+  Logger.log("RESET SELESAI: "+JSON.stringify(r));
+  return r;
 }
 
 /* =========================================================
