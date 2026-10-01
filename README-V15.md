@@ -1,25 +1,27 @@
-# NEV Absenku V15 — HRD UI & Data Cleanup Fix
+# NEV Absenku V15.1 READY
 
-Perubahan:
-1. Badge **Tersinkron** dipindah ke **pojok kanan bawah**.
-2. Data absensi legacy/malformed yang menyebabkan baris `null` + foto lama dibersihkan dari cache dan, saat login sebagai HRD, dihapus dari server melalui `deleteAttendance`.
-3. Peta **Lokasi & Radius Kantor** diperbaiki dengan CSS tinggi peta 340px dan tetap memakai Leaflet + OpenStreetMap.
-4. **Rekap Jumlah Absensi Setiap Staf** dikembalikan di bawah filter Rekap Absensi HRD.
-5. Polling sinkronisasi menjadi 30 detik dan tidak lagi refresh tambahan saat focus/visibility berubah.
-6. Versi server tidak lagi dibandingkan dengan `secure-v3` secara hard-coded.
+Perbaikan dari V15:
+- Memasukkan kembali `nev-logo.png` yang sebelumnya tidak ikut paket.
+- Tombol STAF/HRD/KOOR KP diberi `type="button"` agar tidak pernah dianggap tombol submit.
+- Handler login/role dibuat eksplisit global untuk kompatibilitas GitHub Pages.
+- Tetap memakai Web App Apps Script yang sama.
+- Tidak mengganti `Code.gs`.
 
-## File yang dipakai
-- `index.html`
-- `cloud-sync.js`
-- `geo-selfie.js`
-- `geo-selfie.css`
+Upload semua file berikut ke root repository GitHub Pages:
+- index.html
+- cloud-sync.js
+- geo-selfie.js
+- geo-selfie.css
+- nev-logo.png
 
-## Pemasangan
-Ganti 4 file di GitHub Pages dengan file V15, commit/push, lalu buka website dengan `Ctrl + Shift + R`.
+README ini hanya panduan; tidak wajib di-upload.
 
-**Tidak perlu mengganti Code.gs hanya untuk perubahan frontend ini.** Backend aktif Anda tetap digunakan.
+Setelah upload:
+1. Commit changes.
+2. Tunggu GitHub Pages selesai deploy.
+3. Buka situs dengan Ctrl+Shift+R.
+4. Jika masih memakai cache lama, buka DevTools > Network > centang Disable cache lalu reload.
+5. Uji klik STAF, HRD, dan Koor KP; tombol aktif harus berpindah.
+6. Uji login HRD.
 
-### Catatan data lama
-V15 menganggap data absensi sebagai legacy jika tidak memiliki `id`, `userId`, `sessionId`, tanggal `YYYY-MM-DD`, atau status valid (`Hadir/Izin/Sakit/Alpha`). Data seperti baris `null` pada screenshot akan dibersihkan.
-
-Foto Drive yang sudah menjadi file yatim akibat penghapusan baris tidak otomatis dihapus dari Drive oleh endpoint backend lama; V15 menghapus record absensinya dari data aplikasi/server.
+Code.gs tidak perlu di-deploy ulang untuk patch frontend ini.

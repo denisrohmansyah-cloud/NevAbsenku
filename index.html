@@ -1145,19 +1145,19 @@ LOGIN
 
             <div class="role-selector">
 
-                <button class="role-btn active"
+                <button type="button" class="role-btn active"
                         onclick="selectLoginRole('STAF',this)">
                     <i class="fa-solid fa-user"></i><br>
                     STAF
                 </button>
 
-                <button class="role-btn"
+                <button type="button" class="role-btn"
                         onclick="selectLoginRole('HRD',this)">
                     <i class="fa-solid fa-user-tie"></i><br>
                     HRD
                 </button>
 
-                <button class="role-btn"
+                <button type="button" class="role-btn"
                         onclick="selectLoginRole('KOOR KP',this)">
                     <i class="fa-solid fa-users-gear"></i><br>
                     Koor KP
@@ -6010,6 +6010,11 @@ function restoreLogin(){
 
 <!-- File tambahan: sinkronisasi terpusat ke Google Sheets & Google Drive -->
 <script src="cloud-sync.js"></script>
+<script>
+/* V15.1 compatibility bridge: make login handlers explicitly global. */
+window.selectLoginRole = window.selectLoginRole || selectLoginRole;
+window.login = window.login || login;
+</script>
 
 </body>
 </html>
