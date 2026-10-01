@@ -5,32 +5,29 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NEV Absenku</title>
 
+<!-- Critical connection hints only; non-critical CSS/JS is loaded without blocking first paint. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
 
-<link rel="stylesheet"
-href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<!-- Non-blocking fonts/icons/maps CSS -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"></noscript>
+<link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"></noscript>
+<link rel="preload" as="style" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"></noscript>
+<link rel="preload" as="style" href="geo-selfie.css" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="geo-selfie.css"></noscript>
 
-<!-- QR Generator -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-
-<!-- QR Scanner -->
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" type="text/javascript"></script>
-
-<!-- Excel -->
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-
-<!-- PDF -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-
-<!-- Peta lokasi kantor (Geofencing) -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-<!-- File tambahan: lokasi (geofencing) & selfie -->
-<link rel="stylesheet" href="geo-selfie.css">
+<!-- Feature libraries: deferred so they do not block first paint. Order is preserved. -->
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script defer src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" type="text/javascript"></script>
+<script defer src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <style>
 :root{
@@ -866,7 +863,7 @@ td{
 .toast-container{
     position:fixed;
     right:20px;
-    bottom:64px; /* di atas badge sinkron (kanan bawah) */
+    bottom:20px;
     z-index:2000;
     display:grid;
     gap:10px;
@@ -1040,63 +1037,7 @@ td{
 @keyframes nevFade{from{opacity:.55}to{opacity:1}}
 @keyframes nevDot{0%,80%,100%{transform:scale(.7);opacity:.4}40%{transform:scale(1.15);opacity:1}}
 
-
-/* REKAP PER STAF */
-.recap-pct{display:inline-block;min-width:44px;text-align:center;font-weight:700;font-size:12px;}
-.recap-bar{height:6px;border-radius:99px;background:#eee;overflow:hidden;margin-top:4px;min-width:70px;}
-.recap-bar>span{display:block;height:100%;background:var(--green,#16a34a);}
-.recap-note{font-size:11px;color:#777;margin:-6px 0 14px;line-height:1.5;}
-.recap-row{cursor:pointer;}
-.recap-row:hover td{background:#fafafa;}
-.danger-zone{border:1px solid #fecaca;background:#fff5f5;}
 </style>
-
-<style id="nev-login-loading-style">
-/* =========================================================
-   NEV ABSENKU — LOGIN LOADING ANIMATION
-========================================================= */
-#loginSubmitBtn{
-    position:relative;
-    transition:transform .15s ease, opacity .2s ease;
-}
-#loginSubmitBtn.nev-login-loading{
-    cursor:wait;
-    opacity:.92;
-}
-#loginSubmitBtn.nev-login-loading .nev-login-label{
-    opacity:.9;
-}
-.nev-login-spinner{
-    display:none;
-    width:18px;
-    height:18px;
-    border:3px solid rgba(255,255,255,.38);
-    border-top-color:#fff;
-    border-radius:50%;
-    animation:nevLoginSpin .75s linear infinite;
-    vertical-align:-4px;
-    margin-right:10px;
-}
-#loginSubmitBtn.nev-login-loading .nev-login-spinner{
-    display:inline-block;
-}
-#loginSubmitBtn.nev-login-loading .nev-login-icon{
-    display:none;
-}
-.nev-login-loading-text{
-    display:none;
-}
-#loginSubmitBtn.nev-login-loading .nev-login-loading-text{
-    display:inline;
-}
-#loginSubmitBtn.nev-login-loading .nev-login-normal-text{
-    display:none;
-}
-@keyframes nevLoginSpin{
-    to{transform:rotate(360deg)}
-}
-</style>
-
 </head>
 
 <body>
@@ -1112,7 +1053,7 @@ LOGIN
         <div class="login-brand">
 
             <div class="logo-circle">
-                <img src="nev-logo.png" alt="NEV Logo">
+                <img src="nev-logo.webp" width="105" height="105" decoding="async" fetchpriority="high" alt="NEV Logo">
             </div>
 
             <h1>NEV Absenku</h1>
@@ -1203,11 +1144,9 @@ LOGIN
 
                 </div>
 
-                <button id="loginSubmitBtn" type="submit" class="btn btn-primary btn-block">
-                    <span class="nev-login-spinner" aria-hidden="true"></span>
-                    <i class="fa-solid fa-right-to-bracket nev-login-icon" aria-hidden="true"></i>
-                    <span class="nev-login-normal-text">Masuk</span>
-                    <span class="nev-login-loading-text">Memproses login...</span>
+                <button class="btn btn-primary btn-block">
+                    <i class="fa-solid fa-right-to-bracket"></i>
+                    Masuk
                 </button>
 
             </form>
@@ -1235,7 +1174,7 @@ APP
         <div class="sidebar-logo">
 
             <div class="sidebar-logo-icon">
-                <img src="nev-logo.png" alt="NEV Logo">
+                <img src="nev-logo.webp" width="105" height="105" loading="lazy" decoding="async" alt="NEV Logo">
             </div>
 
             <span>NEV Absenku</span>
@@ -1519,17 +1458,6 @@ APP
                     </div>
 
                     <div id="reader"></div>
-
-                    <div id="scannerZoomBox" class="hidden" style="display:flex;align-items:center;gap:10px;margin-top:10px;">
-                        <i class="fa-solid fa-magnifying-glass-minus" style="color:#888;"></i>
-                        <input
-                            id="scannerZoomRange"
-                            type="range"
-                            style="flex:1;"
-                            min="1" max="1" step="0.1" value="1"
-                            oninput="setCameraZoom(this.value)">
-                        <i class="fa-solid fa-magnifying-glass-plus" style="color:#888;"></i>
-                    </div>
 
                     <div class="scanner-status"
                          id="scannerStatus">
@@ -2356,72 +2284,140 @@ APP
             <section id="page-koor-dashboard" class="page">
 
                 <div class="welcome">
+
                     <h1>Dashboard Koor KP</h1>
-                    <p id="koorWelcomeText">
+
+                    <p>
                         Kelola QR dan absensi kegiatan Ngoprek.
                     </p>
+
                 </div>
 
                 <div class="stats">
 
                     <div class="stat-card">
+
                         <div class="stat-icon">
                             <i class="fa-solid fa-qrcode"></i>
                         </div>
+
                         <h3 id="koorTotalQR">0</h3>
+
                         <p>QR Ngoprek</p>
+
                     </div>
 
                     <div class="stat-card">
+
                         <div class="stat-icon">
                             <i class="fa-solid fa-users"></i>
                         </div>
+
                         <h3 id="koorTotalHadir">0</h3>
+
                         <p>Kehadiran</p>
+
                     </div>
 
-                    <div class="stat-card">
+                    <div id="koorDivisionCardNetworking" class="stat-card" data-division-card="Networking">
+
                         <div class="stat-icon">
-                            <i class="fa-solid fa-user-group"></i>
+                            <i class="fa-solid fa-network-wired"></i>
                         </div>
-                        <h3 id="koorTotalStaff">0</h3>
-                        <p id="koorStaffLabel">Staf Divisi</p>
+
+                        <h3 id="koorNetworking">0</h3>
+
+                        <p>Networking</p>
+
                     </div>
 
-                    <div class="stat-card">
+                    <div id="koorDivisionCardCyber" class="stat-card" data-division-card="Cyber">
+
                         <div class="stat-icon">
-                            <i class="fa-solid fa-file-medical"></i>
+                            <i class="fa-solid fa-shield-halved"></i>
                         </div>
-                        <h3 id="koorIzinSakit">0</h3>
-                        <p>Izin / Sakit</p>
+
+                        <h3 id="koorCyber">0</h3>
+
+                        <p>Cyber</p>
+
                     </div>
 
                 </div>
 
+
                 <div class="section-card">
 
                     <div class="section-header">
+
                         <div>
+
                             <h3>Ngoprek</h3>
-                            <p id="koorDivSubtitle">Buat QR untuk divisi Anda.</p>
+
+                            <p>
+                                Buat QR berdasarkan divisi.
+                            </p>
+
                         </div>
 
                         <button
                             class="btn btn-primary"
                             onclick="showPage('koor-qr')">
+
                             <i class="fa-solid fa-qrcode"></i>
                             Buat QR Ngoprek
+
                         </button>
+
                     </div>
 
-                    <div class="grid-3" style="grid-template-columns:minmax(0,1fr);">
-                        <div class="activity-card">
+                    <div class="grid-3">
+
+                        <div id="koorActivityCardNetworking" class="activity-card" data-division-card="Networking">
+
                             <div class="activity-icon">
-                                <i id="koorDivIcon" class="fa-solid fa-network-wired"></i>
+                                <i class="fa-solid fa-network-wired"></i>
                             </div>
-                            <h4 id="koorDivName">-</h4>
-                            <p id="koorDivDesc">QR khusus kegiatan Ngoprek divisi Anda.</p>
+
+                            <h4>Networking</h4>
+
+                            <p>
+                                QR khusus kegiatan Ngoprek
+                                divisi Networking.
+                            </p>
+
                         </div>
+
+                        <div id="koorActivityCardCyber" class="activity-card" data-division-card="Cyber">
+
+                            <div class="activity-icon">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+
+                            <h4>Cyber</h4>
+
+                            <p>
+                                QR khusus kegiatan Ngoprek
+                                divisi Cyber.
+                            </p>
+
+                        </div>
+
+                        <div id="koorActivityCardSysadmin" class="activity-card" data-division-card="Sysadmin">
+
+                            <div class="activity-icon">
+                                <i class="fa-solid fa-server"></i>
+                            </div>
+
+                            <h4>Sysadmin</h4>
+
+                            <p>
+                                QR khusus kegiatan Ngoprek
+                                divisi Sysadmin.
+                            </p>
+
+                        </div>
+
                     </div>
 
                 </div>
@@ -3024,79 +3020,6 @@ APP
             MANAJEMEN AKUN (HRD & KOOR KP)
             ================================================= -->
 
-            <!-- =================================================
-            REKAP PER STAF (HRD: semua divisi | KOOR KP: divisinya saja)
-            ================================================= -->
-
-            <section id="page-staff-recap" class="page">
-
-                <div class="section-card">
-
-                    <div class="section-header">
-                        <div>
-                            <h3>Rekap per Staf</h3>
-                            <p id="recapSubtitle">Ringkasan kehadiran setiap staf. Klik baris untuk melihat rinciannya.</p>
-                        </div>
-                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                            <button class="btn btn-success" onclick="exportRecapExcel()">
-                                <i class="fa-solid fa-file-excel"></i> Excel
-                            </button>
-                            <button class="btn btn-danger" onclick="exportRecapPDF()">
-                                <i class="fa-solid fa-file-pdf"></i> PDF
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="filter-grid">
-                        <div>
-                            <label style="font-size:10px;font-weight:700;">Dari Tanggal</label>
-                            <input id="recapFrom" type="date" class="form-control" onchange="renderStaffRecap()">
-                        </div>
-                        <div>
-                            <label style="font-size:10px;font-weight:700;">Sampai Tanggal</label>
-                            <input id="recapTo" type="date" class="form-control" onchange="renderStaffRecap()">
-                        </div>
-                        <div>
-                            <label style="font-size:10px;font-weight:700;">Kegiatan</label>
-                            <select id="recapActivity" class="form-control" onchange="renderStaffRecap()">
-                                <option value="">Semua</option>
-                                <option>Rapat Rutin</option>
-                                <option>Ngoprek</option>
-                                <option>Kepanitiaan</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label style="font-size:10px;font-weight:700;">Divisi</label>
-                            <select id="recapDivision" class="form-control" onchange="renderStaffRecap()">
-                                <option value="">Semua</option>
-                                <option>Networking</option>
-                                <option>Cyber</option>
-                                <option>Sysadmin</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label style="font-size:10px;font-weight:700;">Cari Nama / NIM</label>
-                            <input id="recapSearch" class="form-control" placeholder="Ketik nama atau NIM..." oninput="renderStaffRecap()">
-                        </div>
-                        <div style="display:flex;align-items:flex-end;">
-                            <button class="btn btn-outline btn-block" onclick="resetStaffRecapFilter()">
-                                <i class="fa-solid fa-rotate-left"></i> Reset
-                            </button>
-                        </div>
-                    </div>
-
-                    <p class="recap-note">
-                        Alpha = kegiatan yang sudah selesai dan staf tidak tercatat hadir, izin, maupun sakit.
-                        Kegiatan yang belum selesai tidak dihitung.
-                    </p>
-
-                    <div id="staffRecapTable"></div>
-
-                </div>
-
-            </section>
-
-
             <section id="page-users" class="page">
 
                 <div class="section-card">
@@ -3309,22 +3232,6 @@ APP
 
                 </div>
 
-            
-                <div id="hrdPurgeCard" class="section-card danger-zone hidden" style="margin-top:18px;">
-                    <div class="section-header">
-                        <div>
-                            <h3><i class="fa-solid fa-triangle-exclamation"></i> Hapus Data Absensi</h3>
-                            <p>
-                                Menghapus seluruh sesi QR, data absensi, pengajuan izin/sakit, dan memindahkan semua foto
-                                (selfie &amp; bukti izin) di Google Drive ke Trash. Akun pengguna dan lokasi/radius kantor
-                                tidak ikut terhapus. Tindakan ini tidak dapat dibatalkan dari aplikasi.
-                            </p>
-                        </div>
-                        <button id="btnPurgeData" class="btn btn-danger" onclick="purgeAttendanceData()">
-                            <i class="fa-solid fa-trash"></i> Hapus Data Absensi
-                        </button>
-                    </div>
-                </div>
             </section>
 
 
@@ -3345,7 +3252,7 @@ REGISTER MODAL
 
         <div class="modal-header">
 
-            <h3 id="registerModalTitle">Tambah Akun</h3>
+            <h3>Tambah Akun STAF</h3>
 
             <button
                 class="modal-close"
@@ -3383,22 +3290,7 @@ REGISTER MODAL
 
                 </div>
 
-                <div class="form-group">
-
-                    <label>Role *</label>
-
-                    <select
-                        id="registerRole"
-                        class="form-control"
-                        onchange="toggleRegisterRole()">
-
-                        <option value="STAF">STAF</option>
-                        <option value="KOOR KP">KOOR KP</option>
-                        <option value="HRD">HRD</option>
-
-                    </select>
-
-                </div>
+                <input type="hidden" id="registerRole" value="STAF">
 
                 <div class="form-group" id="registerDivisionGroup">
 
@@ -3469,81 +3361,6 @@ REGISTER MODAL
 
 </div>
 
-
-
-<!-- =========================================================
-EDIT AKUN MODAL
-========================================================= -->
-<div id="editUserModal" class="modal">
-    <div class="modal-box">
-        <div class="modal-header">
-            <h3 id="editUserTitle">Edit Akun</h3>
-            <button class="modal-close" onclick="closeModal('editUserModal')">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
-        </div>
-        <form onsubmit="submitEditUser(event)">
-            <div class="modal-body">
-                <input type="hidden" id="editUserId">
-
-                <div class="form-group">
-                    <label>Nama Lengkap *</label>
-                    <input id="editUserName" class="form-control" required>
-                </div>
-
-                <div class="form-group">
-                    <label>Username / NIM *</label>
-                    <input id="editUserUsername" class="form-control" required>
-                </div>
-
-                <div class="form-group" id="editUserRoleGroup">
-                    <label>Role *</label>
-                    <select id="editUserRole" class="form-control" onchange="toggleEditUserRole()">
-                        <option value="STAF">STAF</option>
-                        <option value="KOOR KP">KOOR KP</option>
-                        <option value="HRD">HRD</option>
-                    </select>
-                    <small id="editUserRoleHint" style="display:none;color:#777;font-size:11px;">Role akun yang sedang Anda pakai tidak dapat diubah.</small>
-                </div>
-
-                <div class="form-group" id="editUserDivisionGroup">
-                    <label>Divisi *</label>
-                    <select id="editUserDivision" class="form-control">
-                        <option value="">Pilih Divisi</option>
-                        <option value="Networking">Networking</option>
-                        <option value="Cyber">Cyber</option>
-                        <option value="Sysadmin">Sysadmin</option>
-                    </select>
-                    <small style="color:#777;font-size:11px;">Riwayat absensi lama tetap tercatat pada divisi sebelumnya.</small>
-                </div>
-
-                <div class="form-group">
-                    <label>Password Baru</label>
-                    <input id="editUserPassword" type="password" class="form-control" placeholder="Kosongkan jika tidak diubah" autocomplete="new-password">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline" onclick="closeModal('editUserModal')">Batal</button>
-                <button class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Simpan</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- =========================================================
-RINCIAN REKAP STAF MODAL
-========================================================= -->
-<div id="recapDetailModal" class="modal">
-    <div class="modal-box" style="max-width:640px;">
-        <div class="modal-header">
-            <h3 id="recapDetailTitle">Rincian Kehadiran</h3>
-            <button class="modal-close" onclick="closeModal('recapDetailModal')">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
-        </div>
-        <div class="modal-body" id="recapDetailBody"></div>
-    </div>
-</div>
 
 <!-- =========================================================
 EDIT ATTENDANCE MODAL
@@ -3843,31 +3660,9 @@ function selectLoginRole(role,button){
     button.classList.add("active");
 }
 
-/* =========================================================
-LOGIN LOADING — sebelumnya kode ini tersesat di dalam template
-literal printQR() sehingga tidak pernah berjalan (dan bahkan
-merusak keseluruhan skrip karena ada teks penutup tag script
-literal di dalamnya, membuat browser mengira skrip utama
-berakhir di situ). Dipasang di sini, terpasang langsung ke login().
-========================================================= */
-
-function getLoginButton(){
-    return document.getElementById("loginSubmitBtn");
-}
-
-function setLoginLoading(loading){
-    const btn = getLoginButton();
-    if(!btn) return;
-    btn.classList.toggle("nev-login-loading", !!loading);
-    btn.disabled = !!loading;
-    btn.setAttribute("aria-busy", loading ? "true" : "false");
-}
-
 async function login(event){
   event.preventDefault();
-  setLoginLoading(true);
 
-  try{
   const username = document.getElementById("loginUsername").value.trim();
   const password = document.getElementById("loginPassword").value;
 
@@ -3924,24 +3719,14 @@ async function login(event){
   }catch(err){
     console.error("Login error:", err);
     toast(
-      (err && err.message) ? err.message : "Gagal terhubung ke server. Silakan coba lagi.",
+      "Gagal terhubung ke server. Silakan coba lagi.",
       "error"
     );
-  }
-  }finally{
-    setLoginLoading(false);
   }
 }
 
 function logout(){
     stopScanner();
-    try{
-        const t=localStorage.getItem("nev_auth_token");
-        if(t && typeof CLOUD_SCRIPT_URL==="string"){
-            fetch(CLOUD_SCRIPT_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},
-                body:JSON.stringify({action:"logout",authToken:t}),keepalive:true}).catch(()=>{});
-        }
-    }catch(e){}
     currentUser=null;
     localStorage.removeItem("nev_current_user");
     localStorage.removeItem("nev_auth_token");
@@ -3975,7 +3760,6 @@ function buildSidebar(){
         html+=menuItem("hrd-dashboard", "fa-chart-line", "Dashboard");
         html+=menuItem("hrd-qr", "fa-qrcode", "Buat QR Absensi");
         html+=menuItem("hrd-report", "fa-table-list", "Rekap Absensi");
-        html+=menuItem("staff-recap", "fa-user-check", "Rekap per Staf");
         html+=menuItem("hrd-permit", "fa-file-medical", "Persetujuan Izin/Sakit");
         html+=menuItem("hrd-location", "fa-location-dot", "Lokasi & Radius");
         html+=menuItem("users", "fa-users-gear", "Manajemen Akun");
@@ -3986,7 +3770,6 @@ function buildSidebar(){
         html+=menuItem("koor-dashboard", "fa-house", "Dashboard");
         html+=menuItem("koor-qr", "fa-qrcode", "Buat QR Ngoprek");
         html+=menuItem("koor-attendance", "fa-clipboard-check", "Absensi Ngoprek");
-        html+=menuItem("staff-recap", "fa-user-check", "Rekap per Staf");
         html+=menuItem("koor-permit", "fa-file-medical", "Persetujuan Izin/Sakit");
         html+=menuItem("users", "fa-users-gear", "Manajemen Akun");
     }
@@ -4015,8 +3798,8 @@ function showPage(page){
 
     const allowed = {
         "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "staf-activities", "settings"],
-        "HRD":["hrd-dashboard", "hrd-qr", "hrd-report", "staff-recap", "hrd-permit", "hrd-location", "users", "settings"],
-        "KOOR KP":["koor-dashboard", "koor-qr", "koor-attendance", "staff-recap", "koor-permit", "users", "settings"]
+        "HRD":["hrd-dashboard", "hrd-qr", "hrd-report", "hrd-permit", "hrd-location", "users", "settings"],
+        "KOOR KP":["koor-dashboard", "koor-qr", "koor-attendance", "koor-permit", "users", "settings"]
     };
 
     if(!allowed[currentUser.role].includes(page)){
@@ -4043,7 +3826,6 @@ function showPage(page){
         "hrd-dashboard":"Dashboard HRD",
         "hrd-qr":"Buat QR Absensi",
         "hrd-report":"Rekap Absensi",
-        "staff-recap":"Rekap per Staf",
         "hrd-permit":"Persetujuan Izin/Sakit",
         "hrd-location":"Lokasi & Radius Kantor",
         "users":"Manajemen Akun",
@@ -4065,7 +3847,6 @@ function showPage(page){
     if(page==="hrd-dashboard") renderHRDDashboard();
     if(page==="hrd-qr"){ renderQRSessionList("hrd"); populateSessionAttendancePicker(); }
     if(page==="hrd-report") renderHRDReport();
-    if(page==="staff-recap") initStaffRecapPage();
     if(page==="hrd-permit") renderPermitApproval("hrd");
     if(page==="hrd-location") setTimeout(initOfficeMap, 50);
     if(page==="users") renderUsers();
@@ -4203,38 +3984,11 @@ function createUniqueToken(activity,division){
 }
 
 function encodeSessionToken(session){
-    const payload={
-        id:session.id, activity:session.activity, division:session.division,
-        date:session.date, start:session.start, end:session.end,
-        location:session.location, notes:session.notes,
-        creatorId:session.creatorId, creatorName:session.creatorName, creatorRole:session.creatorRole,
-        geoEnabled:session.geoEnabled || false, geoLat:session.geoLat ?? null,
-        geoLng:session.geoLng ?? null, geoRadius:session.geoRadius ?? null
-    };
-    try{
-        const json=JSON.stringify(payload);
-        const b64=btoa(unescape(encodeURIComponent(json)))
-            .replaceAll("+","-").replaceAll("/","_").replaceAll("=","");
-        return `NEV-ABS-${b64}`;
-    }catch(e){
-        return createUniqueToken(session.activity, session.division);
-    }
+    const b=new Uint8Array(24); crypto.getRandomValues(b);
+    return "NEV-ABS-"+Array.from(b,x=>x.toString(16).padStart(2,"0")).join("");
 }
 
-function decodeSessionToken(token){
-    if(!token || !token.startsWith("NEV-ABS-")) return null;
-    try{
-        let b64=token.slice("NEV-ABS-".length).replaceAll("-","+").replaceAll("_","/");
-        while(b64.length % 4) b64+="=";
-        const json=decodeURIComponent(escape(atob(b64)));
-        const data=JSON.parse(json);
-        if(!data || !data.id || !data.activity || !data.date || !data.start || !data.end) return null;
-        return data;
-    }catch(e){
-        return null;
-    }
-}
-
+function decodeSessionToken(){ return null; } // token tidak lagi membawa data sesi
 
 /* =========================================================
 RENDER QR
@@ -4278,7 +4032,7 @@ function renderGeneratedQR(type,session){
 QR VALIDATION
 ========================================================= */
 
-function processAttendance(token){
+async function processAttendance(token){
     if(currentUser?.role!=="STAF"){
         toast("Hanya STAF yang dapat melakukan absensi.", "error"); return;
     }
@@ -4295,27 +4049,14 @@ let session = sessions.find(s =>
 );
 
 if(!session){
-    const decoded = decodeSessionToken(token);
-
-    if(decoded){
-        session = {
-            ...decoded,
-            token: token,
-            active: true
-        };
-
-        // Simpan hanya jika belum ada token yang sama
-        const existingIndex = sessions.findIndex(s =>
-            String(s.token || "").trim() === token
-        );
-
-        if(existingIndex >= 0){
-            sessions[existingIndex] = session;
-        }else{
-            sessions.push(session);
-        }
-
-        _localSave(DB.sessions, sessions);
+    try{
+        const r = await cloudPost("resolveToken", { token }, 1);
+        session = r.session;
+        session.token = token;
+    }catch(err){
+        toast(friendlyCloudError(err), "error");
+        updateScannerStatus("QR tidak valid atau sudah tidak aktif.", "error");
+        return;
     }
 }
 
@@ -4346,8 +4087,8 @@ const currentTime = `${wib.hour}:${wib.minute}`;
     }
 
     if(currentTime < session.start || currentTime > session.end){
-        toast(`Absensi hanya dapat dilakukan pukul ${session.start} - ${session.end}.`, "error");
-        updateScannerStatus(`QR ditemukan, tetapi saat ini bukan waktu absensi. Jadwal: ${session.start} - ${session.end}.`, "error");
+        toast(`Absensi hanya dapat dilakukan pukul ${escapeHTML(session.start)} - ${escapeHTML(session.end)}.`, "error");
+        updateScannerStatus(`QR ditemukan, tetapi saat ini bukan waktu absensi. Jadwal: ${escapeHTML(session.start)} - ${escapeHTML(session.end)}.`, "error");
         return;
     }
 
@@ -4431,7 +4172,6 @@ function startScanner(){
         errorMessage=>{}
     ).then(()=>{
         updateScannerStatus("Kamera aktif. Arahkan kamera ke QR.", "normal");
-        setupScannerZoom();
     }).catch(error=>{
         html5QrCode=null;
         console.error("Gagal membuka kamera:", error);
@@ -4445,97 +4185,12 @@ function startScanner(){
     });
 }
 
-/* =========================================================
-ZOOM KAMERA SCANNER
-Sebagian perangkat (terutama Android) mengekspos kontrol zoom asli
-lewat MediaStreamTrack. Kalau tersedia, tampilkan slider dan atur
-lewat applyVideoConstraints(). Kalau tidak, sediakan pinch-to-zoom
-(cubit dua jari) sebagai cadangan yang memperbesar tampilan video
-secara visual (CSS transform) — QR tetap terbaca karena html5-qrcode
-membaca dari <video> aslinya, bukan dari tampilan yang di-zoom CSS.
-========================================================= */
-
-let scannerPinchState = null;
-
-function getScannerVideoTrack(){
-    if(!html5QrCode) return null;
-    try{
-        const videoEl = document.querySelector("#reader video");
-        const stream = videoEl && videoEl.srcObject;
-        return stream ? stream.getVideoTracks()[0] : null;
-    }catch(e){ return null; }
-}
-
-function setupScannerZoom(){
-    const box = document.getElementById("scannerZoomBox");
-    const range = document.getElementById("scannerZoomRange");
-    if(!box || !range) return;
-
-    const track = getScannerVideoTrack();
-    const caps = track && track.getCapabilities ? track.getCapabilities() : null;
-
-    if(caps && caps.zoom && caps.zoom.max > caps.zoom.min){
-        // Kamera mendukung zoom optik/digital asli lewat browser.
-        range.min = caps.zoom.min;
-        range.max = caps.zoom.max;
-        range.step = caps.zoom.step || 0.1;
-        range.value = track.getSettings().zoom || caps.zoom.min;
-        box.classList.remove("hidden");
-    }else{
-        // Tidak ada kontrol zoom asli: sembunyikan slider, pakai pinch-to-zoom saja.
-        box.classList.add("hidden");
-    }
-
-    setupScannerPinchZoom();
-}
-
-function setCameraZoom(value){
-    const track = getScannerVideoTrack();
-    if(!track || !track.applyConstraints) return;
-    track.applyConstraints({ advanced: [{ zoom: parseFloat(value) }] }).catch(()=>{});
-}
-
-function setupScannerPinchZoom(){
-    const readerEl = document.getElementById("reader");
-    if(!readerEl || readerEl.dataset.pinchBound) return;
-    readerEl.dataset.pinchBound = "1";
-
-    let currentScale = 1;
-
-    function distance(touches){
-        const dx = touches[0].clientX - touches[1].clientX;
-        const dy = touches[0].clientY - touches[1].clientY;
-        return Math.hypot(dx, dy);
-    }
-
-    readerEl.addEventListener("touchstart", e=>{
-        if(e.touches.length===2){
-            scannerPinchState = { startDist: distance(e.touches), startScale: currentScale };
-        }
-    }, { passive:true });
-
-    readerEl.addEventListener("touchmove", e=>{
-        if(e.touches.length===2 && scannerPinchState){
-            const scale = scannerPinchState.startScale * (distance(e.touches) / scannerPinchState.startDist);
-            currentScale = Math.min(Math.max(scale, 1), 3);
-            const video = readerEl.querySelector("video");
-            if(video) video.style.transform = `scale(${currentScale})`;
-        }
-    }, { passive:true });
-
-    readerEl.addEventListener("touchend", ()=>{ scannerPinchState = null; });
-}
-
 function stopScanner(){
     if(!html5QrCode) return;
     html5QrCode.stop().then(()=>{
         html5QrCode.clear();
         html5QrCode=null;
         updateScannerStatus("Scanner dihentikan.", "normal");
-        const box=document.getElementById("scannerZoomBox");
-        if(box) box.classList.add("hidden");
-        const readerEl=document.getElementById("reader");
-        if(readerEl) delete readerEl.dataset.pinchBound;
     }).catch(()=>{ html5QrCode=null; });
 }
 
@@ -4568,7 +4223,7 @@ function downloadQR(type){
     const session=currentQR[type];
     if(!session) return;
     const link=document.createElement("a");
-    link.download = `NEV-Absenku-${session.activity}-${session.date}.png`;
+    link.download = `NEV-Absenku-${session.activity}-${escapeHTML(session.date)}.png`;
     link.href=canvas.toDataURL("image/png");
     link.click();
     toast("QR berhasil di-download.", "success");
@@ -4605,12 +4260,17 @@ function printQR(type){
     setTimeout(()=>{ printWindow.print(); },500);
 }
 
-function copyToken(type){
+async function copyToken(type){
     const session=currentQR[type];
     if(!session)return;
-    navigator.clipboard.writeText(session.token).then(()=>{
+    try{
+        const token=await ensureSessionToken(session);
+        if(!token) throw new Error("Token QR tidak tersedia.");
+        await navigator.clipboard.writeText(token);
         toast("Token berhasil disalin.", "success");
-    });
+    }catch(err){
+        toast("Gagal mengambil token QR: "+friendlyCloudError(err),"error");
+    }
 }
 
 function toggleCurrentQR(type){
@@ -4651,7 +4311,7 @@ async function deleteSession(id,type){
         toast("Akses ditolak.","error"); return;
     }
 
-    if(!confirm(`Hapus QR ${session.activity} • ${session.date}? Semua absensi pada kegiatan ini juga akan dihapus.`)) return;
+    if(!confirm(`Hapus QR ${session.activity} • ${escapeHTML(session.date)}? Semua absensi pada kegiatan ini juga akan dihapus.`)) return;
 
     try{
         await cloudPost("deleteSession",{sessionId:id},1);
@@ -4704,13 +4364,13 @@ function renderQRSessionList(type){
                             <td>${escapeHTML(s.date)}</td>
                             <td>${escapeHTML(s.start)} - ${escapeHTML(s.end)}</td>
                             <td>${escapeHTML(s.creatorName)}</td>
-                            <td>${s.geoEnabled ? `<span class="badge badge-active" title="Radius ${Number(s.geoRadius)||0} m"><i class="fa-solid fa-location-dot"></i> ${Number(s.geoRadius)||0}m</span>` : `<span style="color:#999;font-size:12px;">Kantor</span>`}</td>
+                            <td>${s.geoEnabled ? `<span class="badge badge-active" title="Radius ${escapeHTML(s.geoRadius)} m"><i class="fa-solid fa-location-dot"></i> ${escapeHTML(s.geoRadius)}m</span>` : `<span style="color:#999;font-size:12px;">Kantor</span>`}</td>
                             <td><span class="badge ${s.active ? "badge-active" : "badge-inactive"}">${s.active ? "Aktif" : "Nonaktif"}</span></td>
                             <td style="display:flex;gap:5px;">
-                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="loadSessionToQR('${jsId(s.id)}','${type}')">
+                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="loadSessionToQR('${escapeHTML(escapeJSString(s.id))}','${type}')">
                                     <i class="fa-solid fa-qrcode"></i>
                                 </button>
-                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteSession('${jsId(s.id)}','${type}')">
+                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteSession('${escapeHTML(escapeJSString(s.id))}','${type}')">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
                             </td>
@@ -4722,13 +4382,19 @@ function renderQRSessionList(type){
     `;
 }
 
-function loadSessionToQR(id,type){
+async function loadSessionToQR(id,type){
     const sessions=load(DB.sessions);
     const session=sessions.find(s=>s.id===id);
     if(!session)return;
-    currentQR[type]=session;
-    renderGeneratedQR(type, session);
-    toast("QR session ditampilkan.", "success");
+    try{
+        await ensureSessionToken(session);
+        if(!session.token) throw new Error("Token QR tidak tersedia.");
+        currentQR[type]=session;
+        renderGeneratedQR(type, session);
+        toast("QR session ditampilkan.", "success");
+    }catch(err){
+        toast("Gagal mengambil QR: "+friendlyCloudError(err),"error");
+    }
 }
 
 
@@ -4746,7 +4412,7 @@ function populateSessionAttendancePicker(){
 
     const previousValue=select.value;
     select.innerHTML=`<option value="">Pilih sesi...</option>` + sessions.map(s=>
-        `<option value="${s.id}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${escapeHTML(s.date)} (${escapeHTML(s.start)}-${escapeHTML(s.end)})</option>`
+        `<option value="${escapeHTML(s.id)}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${escapeHTML(s.date)} (${escapeHTML(s.start)}-${escapeHTML(s.end)})</option>`
     ).join("");
 
     // Pertahankan pilihan sebelumnya, atau otomatis pilih QR yang sedang tampil di layar.
@@ -4812,7 +4478,7 @@ function renderSessionStaffStatus(){
                             <td>${record ? formatTime(record.checkIn) : "-"}</td>
                             <td>${record ? statusBadge(record.status) : `<span class="badge badge-inactive">Belum Hadir</span>`}</td>
                             <td>
-                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="openSessionAttendanceEdit('${jsId(session.id)}','${jsId(u.id)}')">
+                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="openSessionAttendanceEdit('${escapeHTML(escapeJSString(session.id))}','${escapeHTML(escapeJSString(u.id))}')">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
                             </td>
@@ -4894,10 +4560,10 @@ function attendanceTable(data,canEdit){
                             <td>${statusBadge(a.status)}</td>
                             <td>${attendanceProofCell(a)}</td>
                             ${canEdit ? `<td style="display:flex;gap:5px;">
-                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="openEditAttendance('${jsId(a.id)}')">
+                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="openEditAttendance('${escapeHTML(escapeJSString(a.id))}')">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
-                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteAttendance('${jsId(a.id)}')">
+                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteAttendance('${escapeHTML(escapeJSString(a.id))}')">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
                             </td>` : ""}
@@ -4930,17 +4596,9 @@ function normalizePhotoUrl(url, size){
   if(!url) return "";
   const value = String(url).trim();
   const id = getDriveFileId(value);
-  if(id) return `https://drive.google.com/thumbnail?id=${id}&sz=w${size || 1000}`;
-  // Selain link Drive, hanya http(s) dan data:image yang boleh dipakai sebagai sumber gambar.
-  if(/^https:\/\//i.test(value) || /^data:image\/(jpeg|png);base64,/i.test(value)) return value;
+  if(id) return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w${size || 1000}`;
+  if(/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(value)) return value;
   return "";
-}
-
-/* Foto bukti izin/sakit bersifat privat: tidak ada link publik, diambil lewat server. */
-function isPrivatePhoto(url){
-  if(!url) return false;
-  const permits = load(DB.permits) || [];
-  return permits.some(p => p.photo === url);
 }
 
 /* Tanggal hari ini menurut WIB (format YYYY-MM-DD), bukan UTC. */
@@ -4952,7 +4610,7 @@ function getTodayWIB(){
 
 function attendanceProofCell(a){
   const thumb = a.photo
-    ? photoThumbHTML(a.photo, `viewProofPhoto('${jsId(a.id)}')`, "Selfie")
+    ? photoThumbHTML(a.photo, `viewProofPhoto('${escapeJSString(a.id)}')`, "Selfie")
     : `<span style="color:#aaa;font-size:11px;">-</span>`;
     let locBadge = "";
     if(a.lat!=null && a.lng!=null){
@@ -4991,15 +4649,17 @@ function photoFallback(img){
     }
 }
 
+function escapeJSString(value){
+    return String(value ?? "").replaceAll("\\","\\\\").replaceAll("'","\\'").replaceAll("\r","\\r").replaceAll("\n","\\n");
+}
+
 function photoThumbHTML(photo, onclick, alt){
-    if(isPrivatePhoto(photo)){
-        return `<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="proof-thumb" data-private-photo="${escapeHTML(photo)}" onclick="${onclick}" alt="${escapeHTML(alt)}">`;
-    }
     const src = normalizePhotoUrl(photo);
+    if(!src) return `<span style="color:#aaa;font-size:11px;">-</span>`;
     const fb = getDriveFileId(photo)
         ? ` data-orig="${escapeHTML(photo)}" data-idx="1" onerror="photoFallback(this)"`
         : "";
-    return `<img src="${escapeHTML(src)}" class="proof-thumb"${fb} onclick="${onclick}" alt="${escapeHTML(alt)}">`;
+    return `<img src="${escapeHTML(src)}" class="proof-thumb"${fb} onclick="${escapeHTML(onclick)}" alt="${escapeHTML(alt)}">`;
 }
 
 function closePhotoLightbox(){
@@ -5016,8 +4676,7 @@ function showPhotoLightbox(title, subtitle, note, photo){
 
     const list = photoCandidates(photo);
     const id = getDriveFileId(photo);
-    const privatePhoto = isPrivatePhoto(photo);
-    const driveLink = (id && !privatePhoto) ? `https://drive.google.com/file/d/${id}/view` : "";
+    const driveLink = id ? `https://drive.google.com/file/d/${id}/view` : "";
 
     const overlay = document.createElement("div");
     overlay.id = "photoLightbox";
@@ -5047,14 +4706,6 @@ function showPhotoLightbox(title, subtitle, note, photo){
 
     const img = overlay.querySelector("#photoLightboxImg");
     const err = overlay.querySelector("#photoLightboxError");
-
-    if(privatePhoto){
-        fetchPrivatePhoto(photo)
-            .then(dataUrl => { img.src = dataUrl; })
-            .catch(() => { img.style.display = "none"; err.style.display = "block"; });
-        return;
-    }
-
     let i = 0;
     img.onerror = ()=>{
         i++;
@@ -5139,26 +4790,31 @@ function renderStafDashboard(){
 
 function renderKoorDashboard(){
     if(currentUser?.role!=="KOOR KP") return;
-    const division=currentUser.division || "";
-
-    // Hanya data milik Koor ini pada divisinya sendiri.
-    const sessions=load(DB.sessions).filter(s=> s.creatorId===currentUser.id && s.activity==="Ngoprek" && s.division===division);
-    const attendance=load(DB.attendance).filter(a=> a.creatorId===currentUser.id && a.activity==="Ngoprek" && a.division===division);
-    const staffCount=load(DB.users).filter(u=> u.role==="STAF" && u.division===division).length;
-
-    const icons={Networking:"fa-network-wired", Cyber:"fa-shield-halved", Sysadmin:"fa-server"};
+    const division=String(currentUser.division||"");
+    const sessions=load(DB.sessions).filter(s=>
+        s.creatorId===currentUser.id && s.activity==="Ngoprek" && s.division===division
+    );
+    const attendance=load(DB.attendance).filter(a=>
+        a.creatorId===currentUser.id && a.activity==="Ngoprek" && a.division===division
+    );
 
     document.getElementById("koorTotalQR").textContent=sessions.length;
     document.getElementById("koorTotalHadir").textContent=attendance.filter(a=>a.status==="Hadir").length;
-    document.getElementById("koorTotalStaff").textContent=staffCount;
-    document.getElementById("koorIzinSakit").textContent=attendance.filter(a=>a.status==="Izin" || a.status==="Sakit").length;
-    document.getElementById("koorStaffLabel").textContent="Staf " + (division || "Divisi");
+    document.getElementById("koorNetworking").textContent=division==="Networking" ? attendance.length : 0;
+    document.getElementById("koorCyber").textContent=division==="Cyber" ? attendance.length : 0;
 
-    document.getElementById("koorWelcomeText").textContent="Kelola QR dan absensi kegiatan Ngoprek divisi " + (division || "-") + ".";
-    document.getElementById("koorDivSubtitle").textContent="Buat QR khusus divisi " + (division || "-") + ".";
-    document.getElementById("koorDivName").textContent=division || "-";
-    document.getElementById("koorDivDesc").textContent="QR khusus kegiatan Ngoprek divisi " + (division || "-") + ".";
-    document.getElementById("koorDivIcon").className="fa-solid " + (icons[division] || "fa-users");
+    document.querySelectorAll('[data-division-card="Networking"],[data-division-card="Cyber"],[data-division-card="Sysadmin"]').forEach(el=>{
+        el.style.display = el.dataset.divisionCard===division ? "" : "none";
+    });
+
+    const koorDivision=document.getElementById("koorDivision");
+    if(koorDivision){
+        koorDivision.value=division;
+        Array.from(koorDivision.options).forEach(opt=>{
+            opt.hidden = !!opt.value && opt.value!==division;
+            opt.disabled = !!opt.value && opt.value!==division;
+        });
+    }
 }
 
 function renderKoorAttendance(){
@@ -5288,7 +4944,7 @@ async function deleteAttendance(id){
         toast("Akses ditolak.","error"); return;
     }
 
-    if(!confirm(`Hapus absensi ${record.userName} pada ${record.date}?`)) return;
+    if(!confirm(`Hapus absensi ${record.userName} pada ${escapeHTML(record.date)}?`)) return;
 
     try{
         await cloudPost("deleteAttendance",{attendanceId:id},1);
@@ -5308,19 +4964,22 @@ USERS (HRD & KOOR KP)
 
 function renderUsers(){
     if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP") return;
-
+    
     const users=load(DB.users);
-    let displayUsers=[];
-
+    let displayUsers = [];
+    
+    // HRD dapat melihat semua akun. Koor KP hanya melihat staf di divisinya.
     if(currentUser.role==="HRD") {
-        document.getElementById("btnTambahAkun").style.display="inline-flex";
-        displayUsers=users;
-    }else if(currentUser.role==="KOOR KP"){
-        document.getElementById("btnTambahAkun").style.display="inline-flex";
-        displayUsers=users.filter(u=>u.role==="STAF" && u.division===currentUser.division);
+        document.getElementById("btnTambahAkun").style.display = "inline-flex";
+        displayUsers = users;
+    } 
+    else if(currentUser.role==="KOOR KP") {
+        document.getElementById("btnTambahAkun").style.display = "inline-flex";
+        displayUsers = users.filter(u => u.role === "STAF" && u.division === currentUser.division);
     }
 
     const container=document.getElementById("usersTable");
+
     if(!displayUsers.length){
         container.innerHTML=emptyHTML("fa-users-slash", "Belum ada data pengguna yang ditampilkan.");
         return;
@@ -5346,16 +5005,14 @@ function renderUsers(){
                             <td><span class="badge badge-active">${escapeHTML(u.role)}</span></td>
                             <td>${escapeHTML(u.division || "-")}</td>
                             <td>
-                                ${currentUser.role === 'HRD' || (currentUser.role==='KOOR KP' && u.role==='STAF') ? `
-                                <button class="btn btn-outline" style="padding:7px 9px; margin-right:5px;" onclick="editUser('${jsId(u.id)}')" title="Edit akun / ubah divisi & NIM">
+                                ${currentUser.role === 'HRD' ? `
+                                <button class="btn btn-outline" style="padding:7px 9px; margin-right: 5px;" onclick="editUser('${escapeHTML(escapeJSString(u.id))}')">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
                                 ` : ''}
-                                ${currentUser.role === 'HRD' || (currentUser.role==='KOOR KP' && u.role==='STAF') ? `
-                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteUser('${jsId(u.id)}')" title="Hapus akun">
+                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteUser('${escapeHTML(escapeJSString(u.id))}')">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
-                                ` : ''}
                             </td>
                         </tr>
                     `).join("")}
@@ -5365,119 +5022,44 @@ function renderUsers(){
     `;
 }
 
-function editUser(id){
+async function editUser(id){
     if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
         toast("Akses ditolak.", "error"); return;
     }
-    const user=load(DB.users).find(u=>u.id===id);
-    if(!user) return;
+    const users=load(DB.users);
+    const user=users.find(u=>u.id===id);
+    if(!user)return;
 
-    if(currentUser.role==="KOOR KP" && (user.role!=="STAF" || user.division!==currentUser.division)){
-        toast("Akses ditolak. Koor KP hanya dapat mengedit STAF di divisinya.", "error"); return;
+    if(user.role!=="STAF"){
+        toast("Hanya akun STAF yang dapat dikelola dari menu ini.", "error"); return;
     }
-
-    const isHRD = currentUser.role==="HRD";
-    const isSelf = user.id===currentUser.id;
-
-    document.getElementById("editUserTitle").textContent = "Edit Akun — " + user.name;
-    document.getElementById("editUserId").value = user.id;
-    document.getElementById("editUserName").value = user.name || "";
-    document.getElementById("editUserUsername").value = user.username || "";
-    document.getElementById("editUserPassword").value = "";
-
-    // Role & divisi hanya dapat diubah HRD. Koor KP hanya boleh mengubah nama/NIM/password staf divisinya.
-    document.getElementById("editUserRoleGroup").classList.toggle("hidden", !isHRD);
-    document.getElementById("editUserDivisionGroup").classList.toggle("hidden", !isHRD);
-    const roleSel = document.getElementById("editUserRole");
-    roleSel.value = user.role;
-    roleSel.disabled = isSelf;
-    document.getElementById("editUserRoleHint").style.display = isSelf ? "block" : "none";
-    document.getElementById("editUserDivision").value = user.division || "";
-
-    toggleEditUserRole();
-    document.getElementById("editUserModal").classList.add("show");
-}
-
-function toggleEditUserRole(){
-    if(currentUser?.role!=="HRD") return;
-    const role = document.getElementById("editUserRole").value;
-    const group = document.getElementById("editUserDivisionGroup");
-    const sel = document.getElementById("editUserDivision");
-    if(role==="HRD"){
-        group.classList.add("hidden");
-        sel.required = false;
-    }else{
-        group.classList.remove("hidden");
-        sel.required = true;
-    }
-}
-
-async function submitEditUser(event){
-    event.preventDefault();
-    if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
+    if(currentUser.role==="KOOR KP" && user.division!==currentUser.division){
         toast("Akses ditolak.", "error"); return;
     }
 
-    const id = document.getElementById("editUserId").value;
-    const users = load(DB.users);
-    const user = users.find(u=>u.id===id);
-    if(!user) return;
-
-    const name = document.getElementById("editUserName").value.trim();
-    const username = document.getElementById("editUserUsername").value.trim();
-    const password = document.getElementById("editUserPassword").value;
-    if(!name || !username){ toast("Nama dan Username/NIM wajib diisi.", "error"); return; }
-
-    let role = user.role;
-    let division = user.division || "";
-    if(currentUser.role==="HRD"){
-        role = document.getElementById("editUserRole").value;
-        division = role==="HRD" ? "" : document.getElementById("editUserDivision").value;
-        if(role!=="HRD" && !division){ toast("Divisi wajib dipilih.", "error"); return; }
-    }else{
-        role = "STAF";
-        division = currentUser.division;
-    }
-
-    const divisionChanged = (user.division || "") !== (division || "");
-    const btn = document.querySelector("#editUserModal form .btn-primary");
-    if(btn) btn.disabled = true;
+    const name=prompt("Nama:", user.name);
+    if(name===null)return;
+    const password=prompt("Password baru (kosongkan jika tidak diubah):", "");
 
     try{
-        const result = await cloudPost("updateUser", {
-            targetId:id, name, username, role, division, password:password || ""
-        }, 1);
-        const updated = result.user;
-
-        _localSave(DB.users, users.map(u=>u.id===id ? updated : u));
-
-        // Nama & NIM juga dipakai pada riwayat; perbarui salinan lokal agar langsung konsisten.
-        const patch = r=> (r.userId===id) ? { ...r, userName:updated.name, username:updated.username } : r;
-        _localSave(DB.attendance, load(DB.attendance).map(patch));
-        _localSave(DB.permits, load(DB.permits).map(patch));
-
-        if(currentUser.id===id){
-            currentUser = updated;
-            localStorage.setItem("nev_current_user", JSON.stringify(currentUser));
-            updateUserUI();
-            buildSidebar();
-        }
-
-        closeModal("editUserModal");
+        const result=await cloudPost("updateUser", {
+            targetId:id,
+            name:name.trim(),
+            password:password || "",
+            division:user.division
+        },1);
+        const updated=result.user;
+        const next=users.map(u=>u.id===id ? updated : u);
+        _localSave(DB.users,next);
         renderUsers();
-        renderAll();
-        toast(divisionChanged ? "Akun diperbarui. Divisi baru: " + (updated.division || "-") + "." : "Akun berhasil diperbarui.", "success");
+        toast("Akun berhasil diperbarui.", "success");
     }catch(err){
-        toast("Gagal memperbarui akun: " + friendlyCloudError(err), "error");
-    }finally{
-        if(btn) btn.disabled = false;
+        toast("Gagal memperbarui akun: "+friendlyCloudError(err), "error");
     }
 }
 
 async function deleteUser(id){
-    if(!currentUser || (currentUser.role!=="HRD" && currentUser.role!=="KOOR KP")){
-        toast("Akses ditolak.", "error"); return;
-    }
+    if(!confirm("Yakin ingin menghapus akun STAF ini?")) return;
     const users=load(DB.users);
     const user=users.find(u=>u.id===id);
     if(!user)return;
@@ -5486,10 +5068,9 @@ async function deleteUser(id){
         toast("Akses ditolak. Anda hanya dapat menghapus Staf di divisi Anda.", "error");
         return;
     }
-    if(user.id===currentUser.id){
-        toast("Akun yang sedang login tidak dapat dihapus.", "error"); return;
+    if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
+        toast("Akses ditolak.", "error"); return;
     }
-    if(!confirm(`Yakin ingin menghapus akun ${user.name}?`)) return;
 
     try{
         await cloudPost("deleteUser",{targetId:id},1);
@@ -5506,50 +5087,22 @@ async function deleteUser(id){
 PEMBUATAN AKUN OLEH HRD / KOOR KP
 ========================================================= */
 
-function toggleRegisterRole(){
-    const roleSelect=document.getElementById("registerRole");
-    const role=roleSelect ? roleSelect.value : "STAF";
-    const divGroup=document.getElementById("registerDivisionGroup");
-    const divSelect=document.getElementById("registerDivision");
-    const title=document.getElementById("registerModalTitle");
-
-    // Koor KP hanya dapat membuat STAF. Role lain disembunyikan dari form Koor KP.
-    if(currentUser?.role==="KOOR KP"){
-        if(roleSelect){
-            roleSelect.value="STAF";
-            roleSelect.disabled=true;
-        }
-        if(title) title.textContent="Tambah Akun STAF";
-        if(divSelect){
-            divSelect.value=currentUser.division || "";
-            divSelect.disabled=true;
-            divSelect.required=true;
-        }
-        if(divGroup) divGroup.classList.remove("hidden");
-        return;
-    }
-
-    if(roleSelect) roleSelect.disabled=false;
-    if(title) title.textContent=role==="STAF" ? "Tambah Akun STAF" : (role==="KOOR KP" ? "Tambah Akun Koor KP" : "Tambah Akun HRD");
-
-    if(role==="HRD"){
-        if(divSelect){
-            divSelect.value="";
-            divSelect.disabled=true;
-            divSelect.required=false;
-        }
-        if(divGroup) divGroup.classList.add("hidden");
-    }else{
-        if(divSelect){
-            divSelect.disabled=false;
-            divSelect.required=true;
-        }
-        if(divGroup) divGroup.classList.remove("hidden");
-    }
-}
-
 function toggleRegisterDivision(){
-    toggleRegisterRole();
+    const divGroup = document.getElementById("registerDivisionGroup");
+    const divSelect = document.getElementById("registerDivision");
+    const roleInput = document.getElementById("registerRole");
+    if(roleInput) roleInput.value = "STAF";
+
+    if(currentUser?.role==="KOOR KP"){
+        divSelect.value=currentUser.division || "";
+        divSelect.disabled=true;
+        divSelect.required=true;
+        divGroup.classList.remove("hidden");
+    }else{
+        divSelect.disabled=false;
+        divSelect.required=true;
+        divGroup.classList.remove("hidden");
+    }
 }
 
 function openRegister(){
@@ -5557,13 +5110,7 @@ function openRegister(){
         toast("Hanya HRD atau Koor KP yang dapat membuat akun.", "error");
         return;
     }
-    const roleSelect=document.getElementById("registerRole");
-    if(roleSelect) roleSelect.value=currentUser.role==="KOOR KP" ? "STAF" : "STAF";
-    document.getElementById("registerName").value="";
-    document.getElementById("registerUsername").value="";
-    document.getElementById("registerPassword").value="";
-    document.getElementById("registerDivision").value="";
-    toggleRegisterRole();
+    toggleRegisterDivision();
     document.getElementById("registerModal").classList.add("show");
 }
 
@@ -5577,23 +5124,17 @@ async function register(event){
     const name=document.getElementById("registerName").value.trim();
     const username=document.getElementById("registerUsername").value.trim();
     const password=document.getElementById("registerPassword").value;
-    const role=currentUser.role==="KOOR KP" ? "STAF" : document.getElementById("registerRole").value;
     let division=document.getElementById("registerDivision").value;
 
-    if(!name || !username || !password){
-        toast("Nama, username/NIM, dan password wajib diisi.", "error"); return;
-    }
-
-    if(role!=="HRD" && !division){
-        toast("Divisi wajib dipilih untuk akun STAF atau KOOR KP.", "error"); return;
+    if(!name || !username || !password || !division){
+        toast("Nama, NIM, password, dan divisi wajib diisi.", "error"); return;
     }
 
     if(currentUser.role==="KOOR KP") division=currentUser.division;
-    if(role==="HRD") division="";
 
     try{
         const result=await cloudPost("createUser", {
-            name, username, password, division, role
+            name, username, password, division, role:"STAF"
         },1);
 
         const users=load(DB.users);
@@ -5602,266 +5143,11 @@ async function register(event){
 
         closeModal("registerModal");
         document.querySelector("#registerModal form").reset();
-        const roleSelect=document.getElementById("registerRole");
-        if(roleSelect) roleSelect.value="STAF";
-        toggleRegisterRole();
+        toggleRegisterDivision();
         renderUsers();
-        toast("Akun "+role+" berhasil dibuat.", "success");
+        toast("Akun STAF berhasil dibuat.", "success");
     }catch(err){
         toast("Gagal membuat akun: "+friendlyCloudError(err), "error");
-    }
-}
-
-/* =========================================================
-REKAP PER STAF
------------------------------------------------------------
-HRD   : semua staf, dapat memfilter divisi.
-KOOR KP: hanya staf pada divisinya, dan hanya dari kegiatan
-         yang memang dapat diakses Koor KP (Ngoprek miliknya).
-========================================================= */
-
-let recapRows = [];
-
-function isSessionEnded(session){
-    const today = getTodayWIB();
-    if(!session.date) return false;
-    if(session.date < today) return true;
-    if(session.date > today) return false;
-    const now = new Intl.DateTimeFormat("en-GB", {
-        timeZone:"Asia/Jakarta", hour:"2-digit", minute:"2-digit", hourCycle:"h23"
-    }).format(new Date());
-    return !!session.end && String(session.end) <= now;
-}
-
-function initStaffRecapPage(){
-    const isKoor = currentUser.role==="KOOR KP";
-    const div = document.getElementById("recapDivision");
-    const act = document.getElementById("recapActivity");
-    if(isKoor){
-        div.value = currentUser.division || "";
-        div.disabled = true;
-        act.value = "Ngoprek";
-        act.disabled = true;
-    }else{
-        div.disabled = false;
-        act.disabled = false;
-    }
-    document.getElementById("recapSubtitle").textContent = isKoor
-        ? "Rekap staf divisi " + (currentUser.division || "-") + " untuk kegiatan Ngoprek Anda. Klik baris untuk rincian."
-        : "Ringkasan kehadiran setiap staf. Klik baris untuk melihat rincian.";
-    renderStaffRecap();
-}
-
-function resetStaffRecapFilter(){
-    ["recapFrom","recapTo","recapSearch"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
-    if(currentUser.role==="HRD"){
-        document.getElementById("recapActivity").value = "";
-        document.getElementById("recapDivision").value = "";
-    }
-    renderStaffRecap();
-}
-
-function computeStaffRecap(){
-    const isKoor = currentUser.role==="KOOR KP";
-    const from = document.getElementById("recapFrom").value;
-    const to = document.getElementById("recapTo").value;
-    const activity = isKoor ? "Ngoprek" : document.getElementById("recapActivity").value;
-    const division = isKoor ? currentUser.division : document.getElementById("recapDivision").value;
-    const search = (document.getElementById("recapSearch").value || "").trim().toLowerCase();
-
-    let staff = load(DB.users).filter(u=>u.role==="STAF");
-    let sessions = load(DB.sessions);
-    let attendance = load(DB.attendance);
-
-    if(isKoor){
-        staff = staff.filter(u=>u.division===currentUser.division);
-        sessions = sessions.filter(s=>s.creatorId===currentUser.id && s.activity==="Ngoprek" && s.division===currentUser.division);
-        attendance = attendance.filter(a=>a.creatorId===currentUser.id && a.activity==="Ngoprek" && a.division===currentUser.division);
-    }
-    if(division) staff = staff.filter(u=>u.division===division);
-    if(search) staff = staff.filter(u=>
-        String(u.name||"").toLowerCase().includes(search) ||
-        String(u.username||"").toLowerCase().includes(search)
-    );
-
-    const inRange = d => (!from || d>=from) && (!to || d<=to);
-    sessions = sessions.filter(s=> inRange(s.date) && (!activity || s.activity===activity));
-    const sessionIds = new Set(sessions.map(s=>s.id));
-
-    const rows = staff.map(u=>{
-        const entries = [];
-
-        sessions.forEach(s=>{
-            const general = !s.division || s.division==="-";
-            const rec = attendance.find(a=>a.sessionId===s.id && a.userId===u.id);
-            // Catatan absensi yang sudah ada selalu dihitung (termasuk dari divisi lama jika staf pindah divisi).
-            if(rec){ entries.push({ date:s.date, activity:s.activity, status:rec.status, checkIn:rec.checkIn }); return; }
-            // Alpha hanya dihitung untuk sesi yang berlaku bagi divisi staf saat ini.
-            if(!general && s.division!==u.division) return;
-            if(isSessionEnded(s)) entries.push({ date:s.date, activity:s.activity, status:"Alpha", checkIn:null });
-        });
-
-        // Catatan absensi yang sesinya sudah tidak ada tetap dihitung.
-        attendance.filter(a=>a.userId===u.id && !sessionIds.has(a.sessionId)
-            && inRange(a.date) && (!activity || a.activity===activity))
-            .forEach(a=> entries.push({ date:a.date, activity:a.activity, status:a.status, checkIn:a.checkIn }));
-
-        const count = st => entries.filter(e=>e.status===st).length;
-        const total = entries.length;
-        const hadir = count("Hadir");
-        return {
-            id:u.id, name:u.name, username:u.username, division:u.division || "-",
-            hadir, izin:count("Izin"), sakit:count("Sakit"), alpha:count("Alpha"),
-            total, pct: total ? Math.round(hadir/total*100) : null,
-            entries: entries.sort((a,b)=> String(b.date).localeCompare(String(a.date)))
-        };
-    });
-
-    rows.sort((a,b)=> String(a.name).localeCompare(String(b.name)));
-    return rows;
-}
-
-function renderStaffRecap(){
-    if(currentUser?.role!=="HRD" && currentUser?.role!=="KOOR KP") return;
-    const container = document.getElementById("staffRecapTable");
-    if(!container) return;
-
-    recapRows = computeStaffRecap();
-    if(!recapRows.length){
-        container.innerHTML = emptyHTML("fa-user-check", "Tidak ada staf yang sesuai filter.");
-        return;
-    }
-
-    container.innerHTML = `
-        <div class="table-wrapper">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Nama</th><th>NIM</th><th>Divisi</th>
-                        <th>Hadir</th><th>Izin</th><th>Sakit</th><th>Alpha</th><th>Total</th><th>% Hadir</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${recapRows.map(r=>`
-                        <tr class="recap-row" onclick="openRecapDetail('${jsId(r.id)}')">
-                            <td><strong>${escapeHTML(r.name)}</strong></td>
-                            <td>${escapeHTML(r.username)}</td>
-                            <td>${escapeHTML(r.division)}</td>
-                            <td>${r.hadir}</td>
-                            <td>${r.izin}</td>
-                            <td>${r.sakit}</td>
-                            <td>${r.alpha}</td>
-                            <td>${r.total}</td>
-                            <td>${r.pct===null
-                                ? `<span style="color:#aaa;">-</span>`
-                                : `<span class="recap-pct">${r.pct}%</span><div class="recap-bar"><span style="width:${r.pct}%"></span></div>`}</td>
-                        </tr>
-                    `).join("")}
-                </tbody>
-            </table>
-        </div>
-    `;
-}
-
-function openRecapDetail(userId){
-    const r = recapRows.find(x=>x.id===userId);
-    if(!r) return;
-    document.getElementById("recapDetailTitle").textContent = r.name + " (" + r.username + ")";
-    document.getElementById("recapDetailBody").innerHTML = `
-        <p style="font-size:12px;color:#777;margin-bottom:10px;">
-            ${escapeHTML(r.division)} • Hadir ${r.hadir} • Izin ${r.izin} • Sakit ${r.sakit} • Alpha ${r.alpha}
-            ${r.pct===null ? "" : " • " + r.pct + "% hadir"}
-        </p>
-        ${r.entries.length ? `
-        <div class="table-wrapper">
-            <table>
-                <thead><tr><th>Tanggal</th><th>Kegiatan</th><th>Jam</th><th>Status</th></tr></thead>
-                <tbody>
-                    ${r.entries.map(e=>`
-                        <tr>
-                            <td>${escapeHTML(e.date)}</td>
-                            <td>${escapeHTML(e.activity)}</td>
-                            <td>${e.checkIn ? formatTime(e.checkIn) : "-"}</td>
-                            <td>${statusBadge(e.status)}</td>
-                        </tr>
-                    `).join("")}
-                </tbody>
-            </table>
-        </div>` : emptyHTML("fa-calendar-xmark", "Belum ada kegiatan pada rentang ini.")}
-    `;
-    document.getElementById("recapDetailModal").classList.add("show");
-}
-
-function recapExportRows(){
-    return recapRows.map(r=>({
-        "Nama":r.name, "NIM":r.username, "Divisi":r.division,
-        "Hadir":r.hadir, "Izin":r.izin, "Sakit":r.sakit, "Alpha":r.alpha,
-        "Total Kegiatan":r.total, "% Hadir": r.pct===null ? "-" : r.pct + "%"
-    }));
-}
-
-function exportRecapExcel(){
-    if(currentUser?.role!=="HRD" && currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
-    if(!recapRows.length){ toast("Tidak ada data untuk diexport.","error"); return; }
-    const ws = XLSX.utils.json_to_sheet(recapExportRows());
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Rekap per Staf");
-    XLSX.writeFile(wb, "NEV-Absenku-Rekap-per-Staf.xlsx");
-    toast("Rekap per staf berhasil dibuat.","success");
-}
-
-function exportRecapPDF(){
-    if(currentUser?.role!=="HRD" && currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
-    if(!recapRows.length){ toast("Tidak ada data untuk diexport.","error"); return; }
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF("landscape");
-    doc.setFontSize(18);
-    doc.text("NEV Absenku - Rekap per Staf", 14, 15);
-    doc.setFontSize(9);
-    const scope = currentUser.role==="KOOR KP" ? "Divisi: " + (currentUser.division || "-") : "Semua divisi (HRD)";
-    doc.text(scope, 14, 22);
-    doc.autoTable({
-        startY:28,
-        head:[["Nama","NIM","Divisi","Hadir","Izin","Sakit","Alpha","Total","% Hadir"]],
-        body:recapRows.map(r=>[r.name,r.username,r.division,r.hadir,r.izin,r.sakit,r.alpha,r.total,r.pct===null?"-":r.pct+"%"])
-    });
-    doc.save("NEV-Absenku-Rekap-per-Staf.pdf");
-    toast("PDF rekap per staf berhasil dibuat.","success");
-}
-
-
-/* =========================================================
-HAPUS DATA ABSENSI (HRD)
-========================================================= */
-
-async function purgeAttendanceData(){
-    if(currentUser?.role!=="HRD"){ toast("Hanya HRD yang dapat menghapus data absensi.","error"); return; }
-
-    const answer = prompt(
-        "PERINGATAN\n\n" +
-        "Semua sesi QR, data absensi, pengajuan izin/sakit, dan foto di Google Drive akan dihapus.\n" +
-        "Akun pengguna dan lokasi kantor tetap aman.\n\n" +
-        "Ketik HAPUS untuk melanjutkan:"
-    );
-    if(answer===null) return;
-    if(answer.trim()!=="HAPUS"){ toast("Dibatalkan: kata konfirmasi tidak sesuai.","error"); return; }
-
-    const btn = document.getElementById("btnPurgeData");
-    if(btn){ btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menghapus...'; }
-    toast("Menghapus data dan foto, mohon tunggu...","normal");
-
-    try{
-        const r = await purgeCloudData({ rows:true, photos:true });
-        renderAll();
-        if(r.photosFinished===false){
-            toast("Data dihapus. " + r.photosTrashed + " foto dipindah ke Trash; masih ada foto tersisa, jalankan lagi.","success");
-        }else{
-            toast("Data absensi dihapus. " + r.photosTrashed + " foto dipindah ke Trash Google Drive.","success");
-        }
-    }catch(err){
-        toast("Gagal menghapus data: " + friendlyCloudError(err),"error");
-    }finally{
-        if(btn){ btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-trash"></i> Hapus Data Absensi'; }
     }
 }
 
@@ -5926,7 +5212,7 @@ function populatePermitSessionOptions(){
     });
 
     select.innerHTML = `<option value="">Pilih kegiatan</option>` +
-        options.map(s=> `<option value="${s.id}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${escapeHTML(s.date)}</option>`).join("");
+        options.map(s=> `<option value="${escapeHTML(s.id)}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${escapeHTML(s.date)}</option>`).join("");
 
     const hint = document.getElementById("permitNoSessionHint");
     if(hint) hint.classList.toggle("hidden", options.length>0);
@@ -5984,31 +5270,36 @@ function resetPermitForm(){
 /* Versi dasar (localStorage saja). Jika cloud-sync.js dimuat & sudah
    dikonfigurasi, fungsi ini akan DITIMPA supaya foto diunggah ke
    Google Drive dulu sebelum pengajuan tersimpan (lihat cloud-sync.js). */
-function submitPermit(event){
+async function submitPermit(event){
     event.preventDefault();
+    if(currentUser?.role!=="STAF"){ toast("Akses ditolak.","error"); return; }
 
     const sessionId = document.getElementById("permitSession").value;
     const type = document.getElementById("permitType").value;
     const reason = document.getElementById("permitReason").value.trim();
+    if(!sessionId){ toast("Pilih kegiatan terlebih dahulu.","error"); return; }
+    if(!reason){ toast("Alasan wajib diisi.","error"); return; }
+    if(!pendingPermitPhoto){ toast("Lampirkan foto bukti terlebih dahulu.","error"); return; }
 
-    if(!sessionId){ toast("Pilih kegiatan terlebih dahulu.", "error"); return; }
-    if(!reason){ toast("Alasan wajib diisi.", "error"); return; }
-    if(!pendingPermitPhoto){ toast("Lampirkan foto bukti terlebih dahulu.", "error"); return; }
+    const session = load(DB.sessions).find(s=>s.id===sessionId);
+    if(!session){ toast("Kegiatan tidak ditemukan.","error"); return; }
+    if(!cloudSyncEnabled){ toast("Server wajib terhubung untuk mengirim pengajuan.","error"); return; }
 
-    const sessions = load(DB.sessions);
-    const session = sessions.find(s=>s.id===sessionId);
-    if(!session){ toast("Kegiatan tidak ditemukan.", "error"); return; }
-
-    const permit = buildPermitRecord(session, type, reason, pendingPermitPhoto);
-    const permits = load(DB.permits);
-    permits.push(permit);
-    save(DB.permits, permits);
-
-    resetPermitForm();
-    renderPermitHistory();
-    toast(`Pengajuan ${type} berhasil dikirim, menunggu persetujuan.`, "success");
+    cloudSyncBusy=true;
+    try{
+        const permit=buildPermitRecord(session,type,reason,pendingPermitPhoto);
+        const json=await cloudPost("addPermit",permit,1);
+        const saved=json.record||permit;
+        const permits=load(DB.permits).filter(p=>p.id!==saved.id && !(p.sessionId===saved.sessionId && p.userId===saved.userId && p.status!=="Ditolak"));
+        permits.push(saved);
+        _localSave(DB.permits,permits);
+        resetPermitForm();
+        renderPermitHistory();
+        toast(`Pengajuan ${type} berhasil dikirim, menunggu persetujuan.`, "success");
+    }catch(err){
+        toast("Gagal mengirim pengajuan: "+friendlyCloudError(err),"error");
+    }finally{ cloudSyncBusy=false; }
 }
-
 function buildPermitRecord(session, type, reason, photo){
     return {
         id: "PERMIT-"+Date.now(),
@@ -6030,7 +5321,7 @@ function permitStatusBadge(status){
 
 function permitProofCell(p){
     return p.photo
-        ? photoThumbHTML(p.photo, `viewPermitPhoto('${jsId(p.id)}')`, "Bukti")
+        ? photoThumbHTML(p.photo, `viewPermitPhoto('${escapeJSString(p.id)}')`, "Bukti")
         : `<span style="color:#aaa;font-size:11px;">-</span>`;
 }
 
@@ -6106,10 +5397,10 @@ function renderPermitApproval(role){
                             <td>
                                 ${p.status==="Menunggu" ? `
                                     <div style="display:flex;gap:6px;">
-                                        <button class="btn btn-primary" style="padding:7px 9px;" onclick="approvePermit('${jsId(p.id)}')" title="Setujui">
+                                        <button class="btn btn-primary" style="padding:7px 9px;" onclick="approvePermit('${escapeHTML(escapeJSString(p.id))}')" title="Setujui">
                                             <i class="fa-solid fa-check"></i>
                                         </button>
-                                        <button class="btn btn-outline" style="padding:7px 9px;" onclick="rejectPermit('${jsId(p.id)}')" title="Tolak">
+                                        <button class="btn btn-outline" style="padding:7px 9px;" onclick="rejectPermit('${escapeHTML(escapeJSString(p.id))}')" title="Tolak">
                                             <i class="fa-solid fa-xmark"></i>
                                         </button>
                                     </div>
@@ -6129,70 +5420,44 @@ function canReviewPermit(permit){
     return false;
 }
 
-function approvePermit(id){
-    const permits = load(DB.permits);
-    const permit = permits.find(p=>p.id===id);
-    if(!permit){ toast("Pengajuan tidak ditemukan.", "error"); return; }
-    if(!canReviewPermit(permit)){ toast("Akses ditolak.", "error"); return; }
-    if(permit.status!=="Menunggu"){ toast("Pengajuan ini sudah diproses.", "error"); return; }
+async function reviewPermit(id,decision){
+    if(currentUser?.role!=="HRD" && currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
+    const permits=load(DB.permits);
+    const permit=permits.find(p=>p.id===id);
+    if(!permit){ toast("Pengajuan tidak ditemukan.","error"); return; }
+    if(!canReviewPermit(permit)){ toast("Akses ditolak.","error"); return; }
+    if(permit.status!=="Menunggu"){ toast("Pengajuan ini sudah diproses.","error"); return; }
 
-    permit.status = "Disetujui";
-    permit.reviewedBy = currentUser.id;
-    permit.reviewedByName = currentUser.name;
-    permit.reviewedAt = new Date().toISOString();
-    save(DB.permits, permits);
-
-    // Buat/perbarui catatan absensi supaya muncul di Rekap Absensi lengkap dengan bukti fotonya.
-    const attendance = load(DB.attendance);
-    let record = attendance.find(a=> a.sessionId===permit.sessionId && a.userId===permit.userId);
-    if(record){
-        record.status = permit.type;
-        record.photo = permit.photo;
-        record.permitId = permit.id;
-    }else{
-        attendance.push({
-            id: "ATT-"+Date.now(), sessionId: permit.sessionId, token: null,
-            userId: permit.userId, userName: permit.userName, username: permit.username,
-            activity: permit.sessionActivity, division: permit.sessionDivision, date: permit.sessionDate,
-            checkIn: new Date().toISOString(), status: permit.type,
-            creatorId: permit.sessionCreatorId, creatorRole: permit.sessionCreatorRole,
-            lat: null, lng: null, photo: permit.photo,
-            permitId: permit.id, approvedFromPermit: true
-        });
-    }
-    save(DB.attendance, attendance);
-
-    renderPermitApproval(currentUser.role==="HRD" ? "hrd" : "koor");
-    renderAll();
-    toast(`Pengajuan ${permit.type} dari ${permit.userName} disetujui.`, "success");
+    let reviewNote="";
+    if(decision==="Ditolak") reviewNote=(prompt("Alasan penolakan (opsional):","")||"").trim();
+    cloudSyncBusy=true;
+    try{
+        const json=await cloudPost("reviewPermit",{permitId:id,decision,reviewNote},1);
+        const saved=json.permit||{...permit,status:decision,reviewNote};
+        const nextPermits=load(DB.permits).map(p=>p.id===saved.id?saved:p);
+        _localSave(DB.permits,nextPermits);
+        if(json.attendance){
+            const list=load(DB.attendance).filter(a=>!(a.sessionId===json.attendance.sessionId && a.userId===json.attendance.userId));
+            list.push(json.attendance);
+            _localSave(DB.attendance,list);
+        }
+        renderPermitApproval(currentUser.role==="HRD" ? "hrd" : "koor");
+        renderAll();
+        toast(`Pengajuan ${permit.type} dari ${permit.userName} ${decision.toLowerCase()}.`, "success");
+    }catch(err){
+        toast("Gagal memproses pengajuan: "+friendlyCloudError(err),"error");
+    }finally{ cloudSyncBusy=false; }
 }
 
-function rejectPermit(id){
-    const permits = load(DB.permits);
-    const permit = permits.find(p=>p.id===id);
-    if(!permit){ toast("Pengajuan tidak ditemukan.", "error"); return; }
-    if(!canReviewPermit(permit)){ toast("Akses ditolak.", "error"); return; }
-    if(permit.status!=="Menunggu"){ toast("Pengajuan ini sudah diproses.", "error"); return; }
-
-    const note = prompt("Alasan penolakan (opsional):", "") || "";
-
-    permit.status = "Ditolak";
-    permit.reviewedBy = currentUser.id;
-    permit.reviewedByName = currentUser.name;
-    permit.reviewedAt = new Date().toISOString();
-    permit.reviewNote = note.trim() || null;
-    save(DB.permits, permits);
-
-    renderPermitApproval(currentUser.role==="HRD" ? "hrd" : "koor");
-    toast(`Pengajuan ${permit.type} dari ${permit.userName} ditolak.`, "success");
-}
+function approvePermit(id){ return reviewPermit(id,"Disetujui"); }
+function rejectPermit(id){ return reviewPermit(id,"Ditolak"); }
 
 function viewPermitPhoto(id){
     const permit = load(DB.permits).find(p=>p.id===id);
     if(!permit || !permit.photo){ toast("Foto tidak tersedia.", "error"); return; }
     showPhotoLightbox(
         `${permit.userName} — ${permit.type}`,
-        `${permit.sessionActivity} • ${permit.sessionDate}`,
+        `${permit.sessionActivity} • ${escapeHTML(permit.sessionDate)}`,
         permit.reason,
         permit.photo
     );
@@ -6207,8 +5472,6 @@ function renderSettings(){
     document.getElementById("settingName").value=currentUser.name;
     document.getElementById("settingUsername").value=currentUser.username;
     document.getElementById("settingRole").value=currentUser.role;
-    const purge=document.getElementById("hrdPurgeCard");
-    if(purge) purge.classList.toggle("hidden", currentUser.role!=="HRD");
 }
 
 async function saveSettings(){
@@ -6369,12 +5632,6 @@ function emptyHTML(icon,message){
     return `<div class="empty"><i class="fa-solid ${icon}"></i><p>${message}</p></div>`;
 }
 
-/* Untuk id yang dipakai di dalam atribut onclick="fn('...')": buang semua karakter selain huruf, angka, _ dan -.
-   (escapeHTML saja TIDAK cukup di konteks JavaScript dalam atribut.) */
-function jsId(value){
-    return String(value ?? "").replace(/[^A-Za-z0-9_-]/g,"");
-}
-
 function escapeHTML(value){
     return String(value ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
 }
@@ -6428,11 +5685,9 @@ function renderAll(){
     }
     if(currentUser.role==="HRD"){
         renderHRDDashboard(); renderHRDReport(); renderUsers(); renderQRSessionList("hrd"); populateSessionAttendancePicker();
-        if(document.getElementById("page-staff-recap")?.classList.contains("active")) renderStaffRecap();
     }
     if(currentUser.role==="KOOR KP"){
         renderKoorDashboard(); renderKoorAttendance(); renderQRSessionList("koor"); renderUsers();
-        if(document.getElementById("page-staff-recap")?.classList.contains("active")) renderStaffRecap();
     }
 }
 
@@ -6466,10 +5721,10 @@ function restoreLogin(){
 </script>
 
 <!-- File tambahan: fitur lokasi (geofencing) & selfie capture -->
-<script src="geo-selfie.js"></script>
+<script defer src="geo-selfie.js"></script>
 
 <!-- File tambahan: sinkronisasi terpusat ke Google Sheets & Google Drive -->
-<script src="cloud-sync.js"></script>
+<script defer src="cloud-sync.js"></script>
 
 </body>
 </html>
