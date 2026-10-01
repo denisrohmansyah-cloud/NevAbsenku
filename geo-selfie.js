@@ -52,19 +52,18 @@ kantor untuk kegiatan itu saja.
 
 const sessionGeoPickers = {}; // { hrd:{map,marker,circle}, koor:{map,marker,circle} }
 
-async function toggleSessionGeofence(role){
+function toggleSessionGeofence(role){
     const checkbox = document.getElementById(`${role}GeoEnabled`);
     const section = document.getElementById(`${role}GeoSection`);
     if(!checkbox || !section) return;
 
     section.classList.toggle("hidden", !checkbox.checked);
-    if(checkbox.checked) await initSessionGeoPicker(role);
+    if(checkbox.checked) initSessionGeoPicker(role);
 }
 
-async function initSessionGeoPicker(role){
+function initSessionGeoPicker(role){
     const mapEl = document.getElementById(`${role}GeoMap`);
-    if(!mapEl) return;
-    try{ await ensureLeaflet(); }catch(err){ featureLoadError("Peta",err); return; }
+    if(!mapEl || typeof L==="undefined") return;
 
     if(sessionGeoPickers[role]){
         // Peta sudah pernah dibuat, cukup perbaiki ukurannya (habis disembunyikan lalu ditampilkan lagi).
@@ -227,10 +226,9 @@ function checkGeofence(session){
 PETA LOKASI KANTOR (HRD - halaman "Lokasi & Radius")
 ========================================================= */
 
-async function initOfficeMap(){
+function initOfficeMap(){
     const mapEl = document.getElementById("officeMap");
-    if(!mapEl) return;
-    try{ await ensureLeaflet(); }catch(err){ featureLoadError("Peta",err); return; }
+    if(!mapEl || typeof L==="undefined") return;
 
     const settings = getSettings();
     const defaultLat = settings.officeLat ?? -6.200000;

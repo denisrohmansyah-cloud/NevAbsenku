@@ -1511,17 +1511,6 @@ APP
 
                     <div id="reader"></div>
 
-                    <div id="scannerZoomBox" class="hidden" style="display:flex;align-items:center;gap:10px;margin-top:10px;">
-                        <i class="fa-solid fa-magnifying-glass-minus" style="color:#888;"></i>
-                        <input
-                            id="scannerZoomRange"
-                            type="range"
-                            style="flex:1;"
-                            min="1" max="1" step="0.1" value="1"
-                            oninput="setCameraZoom(this.value)">
-                        <i class="fa-solid fa-magnifying-glass-plus" style="color:#888;"></i>
-                    </div>
-
                     <div class="scanner-status"
                          id="scannerStatus">
 
@@ -2966,7 +2955,17 @@ APP
                     </div>
 
 
-                    <div id="hrdReportTable"></div>
+                    <div class="section-card" style="margin-top:15px;">
+                        <div class="section-header">
+                            <div>
+                                <h3>Rekap Jumlah Absensi Setiap Staf</h3>
+                                <p>Jumlah Hadir, Izin, Sakit, dan Alpha per staf. Ringkasan mengikuti filter tanggal, kegiatan, divisi, dan pencarian.</p>
+                            </div>
+                        </div>
+                        <div id="hrdStaffRecapTable"></div>
+                    </div>
+
+                    <div style="margin-top:15px;" id="hrdReportTable"></div>
 
                 </div>
 
@@ -3738,31 +3737,9 @@ function selectLoginRole(role,button){
     button.classList.add("active");
 }
 
-/* =========================================================
-LOGIN LOADING — sebelumnya kode ini tersesat di dalam template
-literal printQR() sehingga tidak pernah berjalan (dan bahkan
-merusak keseluruhan skrip karena ada teks penutup tag script
-literal di dalamnya, membuat browser mengira skrip utama
-berakhir di situ). Dipasang di sini, terpasang langsung ke login().
-========================================================= */
-
-function getLoginButton(){
-    return document.getElementById("loginSubmitBtn");
-}
-
-function setLoginLoading(loading){
-    const btn = getLoginButton();
-    if(!btn) return;
-    btn.classList.toggle("nev-login-loading", !!loading);
-    btn.disabled = !!loading;
-    btn.setAttribute("aria-busy", loading ? "true" : "false");
-}
-
 async function login(event){
   event.preventDefault();
-  setLoginLoading(true);
 
-  try{
   const username = document.getElementById("loginUsername").value.trim();
   const password = document.getElementById("loginPassword").value;
 
@@ -3819,12 +3796,9 @@ async function login(event){
   }catch(err){
     console.error("Login error:", err);
     toast(
-      (err && err.message) ? err.message : "Gagal terhubung ke server. Silakan coba lagi.",
+      "Gagal terhubung ke server. Silakan coba lagi.",
       "error"
     );
-  }
-  }finally{
-    setLoginLoading(false);
   }
 }
 
@@ -4315,7 +4289,6 @@ function startScanner(){
         errorMessage=>{}
     ).then(()=>{
         updateScannerStatus("Kamera aktif. Arahkan kamera ke QR.", "normal");
-        setupScannerZoom();
     }).catch(error=>{
         html5QrCode=null;
         console.error("Gagal membuka kamera:", error);
@@ -4329,97 +4302,12 @@ function startScanner(){
     });
 }
 
-/* =========================================================
-ZOOM KAMERA SCANNER
-Sebagian perangkat (terutama Android) mengekspos kontrol zoom asli
-lewat MediaStreamTrack. Kalau tersedia, tampilkan slider dan atur
-lewat applyVideoConstraints(). Kalau tidak, sediakan pinch-to-zoom
-(cubit dua jari) sebagai cadangan yang memperbesar tampilan video
-secara visual (CSS transform) — QR tetap terbaca karena html5-qrcode
-membaca dari <video> aslinya, bukan dari tampilan yang di-zoom CSS.
-========================================================= */
-
-let scannerPinchState = null;
-
-function getScannerVideoTrack(){
-    if(!html5QrCode) return null;
-    try{
-        const videoEl = document.querySelector("#reader video");
-        const stream = videoEl && videoEl.srcObject;
-        return stream ? stream.getVideoTracks()[0] : null;
-    }catch(e){ return null; }
-}
-
-function setupScannerZoom(){
-    const box = document.getElementById("scannerZoomBox");
-    const range = document.getElementById("scannerZoomRange");
-    if(!box || !range) return;
-
-    const track = getScannerVideoTrack();
-    const caps = track && track.getCapabilities ? track.getCapabilities() : null;
-
-    if(caps && caps.zoom && caps.zoom.max > caps.zoom.min){
-        // Kamera mendukung zoom optik/digital asli lewat browser.
-        range.min = caps.zoom.min;
-        range.max = caps.zoom.max;
-        range.step = caps.zoom.step || 0.1;
-        range.value = track.getSettings().zoom || caps.zoom.min;
-        box.classList.remove("hidden");
-    }else{
-        // Tidak ada kontrol zoom asli: sembunyikan slider, pakai pinch-to-zoom saja.
-        box.classList.add("hidden");
-    }
-
-    setupScannerPinchZoom();
-}
-
-function setCameraZoom(value){
-    const track = getScannerVideoTrack();
-    if(!track || !track.applyConstraints) return;
-    track.applyConstraints({ advanced: [{ zoom: parseFloat(value) }] }).catch(()=>{});
-}
-
-function setupScannerPinchZoom(){
-    const readerEl = document.getElementById("reader");
-    if(!readerEl || readerEl.dataset.pinchBound) return;
-    readerEl.dataset.pinchBound = "1";
-
-    let currentScale = 1;
-
-    function distance(touches){
-        const dx = touches[0].clientX - touches[1].clientX;
-        const dy = touches[0].clientY - touches[1].clientY;
-        return Math.hypot(dx, dy);
-    }
-
-    readerEl.addEventListener("touchstart", e=>{
-        if(e.touches.length===2){
-            scannerPinchState = { startDist: distance(e.touches), startScale: currentScale };
-        }
-    }, { passive:true });
-
-    readerEl.addEventListener("touchmove", e=>{
-        if(e.touches.length===2 && scannerPinchState){
-            const scale = scannerPinchState.startScale * (distance(e.touches) / scannerPinchState.startDist);
-            currentScale = Math.min(Math.max(scale, 1), 3);
-            const video = readerEl.querySelector("video");
-            if(video) video.style.transform = `scale(${currentScale})`;
-        }
-    }, { passive:true });
-
-    readerEl.addEventListener("touchend", ()=>{ scannerPinchState = null; });
-}
-
 function stopScanner(){
     if(!html5QrCode) return;
     html5QrCode.stop().then(()=>{
         html5QrCode.clear();
         html5QrCode=null;
         updateScannerStatus("Scanner dihentikan.", "normal");
-        const box=document.getElementById("scannerZoomBox");
-        if(box) box.classList.add("hidden");
-        const readerEl=document.getElementById("reader");
-        if(readerEl) delete readerEl.dataset.pinchBound;
     }).catch(()=>{ html5QrCode=null; });
 }
 
@@ -4482,7 +4370,61 @@ function printQR(type){
             <p>${session.date} • ${session.start} - ${session.end}</p>
             <img src="${image}">
             <p>Scan QR menggunakan aplikasi NEV Absenku.</p>
-        </body></html>
+        
+<script id="nev-login-loading-script">
+/* =========================================================
+   LOGIN LOADING — tidak mengubah fungsi login/cloud-sync.
+   Hanya memberi feedback visual saat request login berjalan.
+========================================================= */
+(function(){
+    let resetTimer = null;
+
+    function getLoginButton(){
+        return document.getElementById("loginSubmitBtn");
+    }
+
+    function setLoginLoading(loading){
+        const btn = getLoginButton();
+        if(!btn) return;
+        btn.classList.toggle("nev-login-loading", !!loading);
+        btn.disabled = !!loading;
+        btn.setAttribute("aria-busy", loading ? "true" : "false");
+        if(!loading && resetTimer){
+            clearTimeout(resetTimer);
+            resetTimer = null;
+        }
+    }
+
+    document.addEventListener("submit", function(event){
+        const form = event.target;
+        if(!form || !form.querySelector || !form.querySelector("#loginUsername")) return;
+
+        const btn = getLoginButton();
+        if(!btn || btn.classList.contains("nev-login-loading")) return;
+
+        setLoginLoading(true);
+
+        // Pengaman: jika login gagal/terputus tanpa mengubah halaman,
+        // tombol otomatis kembali normal setelah 20 detik.
+        resetTimer = setTimeout(function(){
+            const screen = document.getElementById("loginScreen");
+            if(screen && !screen.classList.contains("hidden")) setLoginLoading(false);
+        }, 20000);
+    }, true);
+
+    // Jika login berhasil, loginScreen diberi class "hidden" oleh aplikasi.
+    // Loader tidak perlu disentuh karena form sudah tidak terlihat.
+    const screen = document.getElementById("loginScreen");
+    if(screen){
+        const observer = new MutationObserver(function(){
+            if(screen.classList.contains("hidden")) setLoginLoading(false);
+        });
+        observer.observe(screen, {attributes:true, attributeFilter:["class"]});
+    }
+})();
+</script>
+
+</body></html>
     `);
     printWindow.document.close();
     printWindow.focus();
@@ -4942,15 +4884,17 @@ function viewProofPhoto(id){
 HRD REPORT & DASHBOARD
 ========================================================= */
 
-function renderHRDReport(){
-    if(currentUser?.role!=="HRD")return;
-    let data=load(DB.attendance);
-    const date=document.getElementById("filterDate").value;
-    const activity=document.getElementById("filterActivity").value;
-    const division=document.getElementById("filterDivision").value;
-    const status=document.getElementById("filterStatus").value;
+function getFilteredHRDAttendance(ignoreStatus=false){
+    let data=load(DB.attendance).filter(a=>
+        a && a.id && a.userId && a.sessionId &&
+        /^\d{4}-\d{2}-\d{2}$/.test(String(a.date||"")) &&
+        ["Hadir","Izin","Sakit","Alpha"].includes(String(a.status||""))
+    );
+    const date=document.getElementById("filterDate")?.value || "";
+    const activity=document.getElementById("filterActivity")?.value || "";
+    const division=document.getElementById("filterDivision")?.value || "";
+    const status=ignoreStatus ? "" : (document.getElementById("filterStatus")?.value || "");
     const search=(document.getElementById("filterSearch")?.value || "").trim().toLowerCase();
-
     if(date) data=data.filter(a=>a.date===date);
     if(activity) data=data.filter(a=>a.activity===activity);
     if(division) data=data.filter(a=>a.division===division);
@@ -4959,10 +4903,56 @@ function renderHRDReport(){
         String(a.userName||"").toLowerCase().includes(search) ||
         String(a.username||"").toLowerCase().includes(search)
     );
+    return data;
+}
 
+function buildStaffRecapTable(staff,attendance){
+    const counts={};
+    staff.forEach(u=>counts[u.id]={
+        name:u.name||"-", username:u.username||"-", division:u.division||"-",
+        hadir:0, izin:0, sakit:0, alpha:0
+    });
+    attendance.forEach(a=>{
+        const c=counts[a.userId];
+        if(!c)return;
+        if(a.status==="Hadir") c.hadir++;
+        else if(a.status==="Izin") c.izin++;
+        else if(a.status==="Sakit") c.sakit++;
+        else if(a.status==="Alpha") c.alpha++;
+    });
+    const rows=Object.values(counts).sort((a,b)=>a.name.localeCompare(b.name,"id"));
+    if(!rows.length) return emptyHTML("fa-users","Belum ada data staf.");
+    return `<div class="table-wrapper"><table><thead><tr>
+        <th>No</th><th>Nama</th><th>NIM</th><th>Divisi</th><th>Hadir</th><th>Izin</th><th>Sakit</th><th>Alpha</th><th>Total Sesi</th>
+    </tr></thead><tbody>${rows.map((r,i)=>{
+        const total=r.hadir+r.izin+r.sakit+r.alpha;
+        return `<tr><td>${i+1}</td><td><strong>${escapeHTML(r.name)}</strong></td><td>${escapeHTML(r.username)}</td><td>${escapeHTML(r.division)}</td>
+            <td><span class="badge badge-hadir">${r.hadir}</span></td><td><span class="badge badge-izin">${r.izin}</span></td>
+            <td><span class="badge badge-sakit">${r.sakit}</span></td><td><span class="badge badge-alpha">${r.alpha}</span></td><td><strong>${total}</strong></td></tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+
+function renderHRDStaffRecap(){
+    if(currentUser?.role!=="HRD")return;
+    const users=load(DB.users).filter(u=>u.role==="STAF");
+    const attendance=getFilteredHRDAttendance(true);
+    const search=(document.getElementById("filterSearch")?.value||"").trim().toLowerCase();
+    const division=document.getElementById("filterDivision")?.value||"";
+    let staff=users;
+    if(division) staff=staff.filter(u=>u.division===division);
+    if(search) staff=staff.filter(u=>String(u.name||"").toLowerCase().includes(search)||String(u.username||"").toLowerCase().includes(search));
+    const el=document.getElementById("hrdStaffRecapTable");
+    if(el) el.innerHTML=buildStaffRecapTable(staff,attendance);
+}
+
+function renderHRDReport(){
+    if(currentUser?.role!=="HRD")return;
+    const data=getFilteredHRDAttendance(false);
+    renderHRDStaffRecap();
     const container=document.getElementById("hrdReportTable");
     if(!data.length){
-        container.innerHTML=emptyHTML("fa-table-list", "Tidak ada data sesuai filter."); return;
+        container.innerHTML=emptyHTML("fa-table-list", "Tidak ada data sesuai filter.");
+        return;
     }
     container.innerHTML=attendanceTable(data,true);
 }
