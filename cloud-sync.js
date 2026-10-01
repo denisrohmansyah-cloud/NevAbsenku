@@ -247,7 +247,12 @@ async function fetchCloudAll(){
     const token=getAuthToken();
     if(!token) return false;
     try{
-        const res=await fetch(cacheBust(`${CLOUD_SCRIPT_URL}?action=getAll&authToken=${encodeURIComponent(token)}`),{cache:"no-store"});
+        const res=await fetch(cacheBust(CLOUD_SCRIPT_URL),{
+            method:"POST",
+            cache:"no-store",
+            headers:{"Content-Type":"text/plain;charset=utf-8"},
+            body:cloudPayload("getAll",{})
+        });
         const text=await res.text();
         let json;
         try{json=JSON.parse(text);}catch(e){throw new Error("Respons getAll bukan JSON. Periksa Deployment Apps Script dan akses 'Anyone'.");}
@@ -294,6 +299,11 @@ async function flushCloudQueue(){
             }catch(err){
                 if(err.authExpired) break;
                 console.error("Queue cloud gagal:",err);
+                // Penolakan dari server (validasi/izin) tidak akan berhasil bila diulang: buang dari antrean.
+                if(err.fatal){
+                    removeCloudQueueItem(item.id);
+                    cloudLastError="Server menolak data: "+friendlyCloudError(err);
+                }
             }
         }
     }finally{
@@ -423,6 +433,12 @@ async function finalizeAttendance(session,token,location,photo){
         renderAll();
     }catch(err){
         console.error("Gagal menyimpan absensi:",err);
+        if(err && err.fatal){
+            const reason=friendlyCloudError(err);
+            toast("Absensi ditolak: "+reason,"error");
+            updateScannerStatus("Absensi ditolak: "+reason,"error");
+            return;
+        }
         const list=load(DB.attendance)||[];
         record.syncPending=true;
         if(!list.some(a=>a.id===record.id)) list.push(record);
@@ -462,6 +478,10 @@ async function submitPermit(event){
         resetPermitForm();renderPermitHistory();toast(`Pengajuan ${type} berhasil dikirim & tersimpan di Google Sheets.`,"success");
     }catch(err){
         console.error("Gagal mengirim pengajuan:",err);
+        if(err && err.fatal){
+            toast("Pengajuan ditolak: "+friendlyCloudError(err),"error");
+            return;
+        }
         permit.syncPending=true;_localSave(DB.permits,(load(DB.permits)||[]).concat([permit]));
         queueCloudAction("addPermit",permit);cloudLastError=friendlyCloudError(err);updateCloudBadge();
         toast(`Pengajuan disimpan sementara. Gagal sinkron: ${friendlyCloudError(err)}.`,"error");
@@ -482,7 +502,10 @@ async function bootWithCloud(){
             const text=await res.text(); const boot=JSON.parse(text);
             if(boot&&boot.ok){
                 cloudServerVersion=boot.version||null;
-                _localSave(DB.settings,boot.settings||{officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
+                // Lokasi/radius kantor baru diterima setelah login (getAll), bukan dari endpoint publik.
+                if(!load(DB.settings) || Array.isArray(load(DB.settings))){
+                    _localSave(DB.settings,{officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
+                }
             }
         }catch(e){
             cloudLastError=friendlyCloudError(e);console.warn("Bootstrap cloud gagal:",e);updateCloudBadge();
@@ -522,3 +545,47 @@ async function bootWithCloud(){
 
 setInterval(updateCloudBadge,5000);
 bootWithCloud();
+
+
+/* =========================================================
+   FOTO PRIVAT (bukti izin/sakit)
+   File di Drive tidak dibuka lewat link. Foto diambil lewat server
+   (dicek per role) lalu ditampilkan sebagai data URL dan disimpan di memori.
+========================================================= */
+const privatePhotoCache = new Map();
+
+function privateFileId(url){
+    const m = String(url || "").match(/\/file\/d\/([A-Za-z0-9_-]{10,100})\//);
+    return m ? m[1] : null;
+}
+
+async function fetchPrivatePhoto(url){
+    const id = privateFileId(url);
+    if(!id) throw new Error("Foto tidak valid.");
+    if(privatePhotoCache.has(id)) return privatePhotoCache.get(id);
+    const json = await cloudPost("getPhoto", { fileId:id }, 1);
+    privatePhotoCache.set(id, json.dataUrl);
+    return json.dataUrl;
+}
+
+let privatePhotoBusy = false;
+async function hydratePrivatePhotos(){
+    if(privatePhotoBusy) return;
+    privatePhotoBusy = true;
+    try{
+        let el;
+        while((el = document.querySelector("img[data-private-photo]:not([data-private-state])"))){
+            el.setAttribute("data-private-state","loading");
+            try{
+                el.src = await fetchPrivatePhoto(el.getAttribute("data-private-photo"));
+                el.setAttribute("data-private-state","done");
+            }catch(err){
+                el.setAttribute("data-private-state","error");
+                el.alt = "Foto tidak tersedia";
+            }
+        }
+    }finally{ privatePhotoBusy = false; }
+}
+
+new MutationObserver(()=>{ clearTimeout(window.__phTimer); window.__phTimer = setTimeout(hydratePrivatePhotos, 60); })
+    .observe(document.documentElement, { childList:true, subtree:true });
