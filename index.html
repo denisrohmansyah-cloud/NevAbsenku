@@ -16,7 +16,7 @@ href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <!-- QR Scanner -->
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" type="text/javascript"></script>
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
 <!-- Excel -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
@@ -3935,13 +3935,6 @@ async function login(event){
 
 function logout(){
     stopScanner();
-    try{
-        const t=localStorage.getItem("nev_auth_token");
-        if(t && typeof CLOUD_SCRIPT_URL==="string"){
-            fetch(CLOUD_SCRIPT_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},
-                body:JSON.stringify({action:"logout",authToken:t}),keepalive:true}).catch(()=>{});
-        }
-    }catch(e){}
     currentUser=null;
     localStorage.removeItem("nev_current_user");
     localStorage.removeItem("nev_auth_token");
@@ -4261,7 +4254,7 @@ function renderGeneratedQR(type,session){
             <div class="qr-info-row"><span>Kegiatan</span><span>${escapeHTML(session.activity)}</span></div>
             <div class="qr-info-row"><span>Divisi</span><span>${escapeHTML(session.division)}</span></div>
             <div class="qr-info-row"><span>Tanggal</span><span>${escapeHTML(session.date)}</span></div>
-            <div class="qr-info-row"><span>Waktu</span><span>${escapeHTML(session.start)} - ${escapeHTML(session.end)}</span></div>
+            <div class="qr-info-row"><span>Waktu</span><span>${session.start} - ${session.end}</span></div>
             <div class="qr-info-row"><span>Status</span><span>${session.active ? "Aktif" : "Nonaktif"}</span></div>
         </div>
     `;
@@ -4595,7 +4588,7 @@ function printQR(type){
             <h1>NEV Absenku</h1>
             <h2>${escapeHTML(session.activity)}</h2>
             <p>${escapeHTML(session.division)}</p>
-            <p>${escapeHTML(session.date)} • ${escapeHTML(session.start)} - ${escapeHTML(session.end)}</p>
+            <p>${session.date} • ${session.start} - ${session.end}</p>
             <img src="${image}">
             <p>Scan QR menggunakan aplikasi NEV Absenku.</p>
         </body></html>
@@ -4701,16 +4694,16 @@ function renderQRSessionList(type){
                         <tr>
                             <td><strong>${escapeHTML(s.activity)}</strong></td>
                             <td>${escapeHTML(s.division)}</td>
-                            <td>${escapeHTML(s.date)}</td>
-                            <td>${escapeHTML(s.start)} - ${escapeHTML(s.end)}</td>
+                            <td>${s.date}</td>
+                            <td>${s.start} - ${s.end}</td>
                             <td>${escapeHTML(s.creatorName)}</td>
-                            <td>${s.geoEnabled ? `<span class="badge badge-active" title="Radius ${Number(s.geoRadius)||0} m"><i class="fa-solid fa-location-dot"></i> ${Number(s.geoRadius)||0}m</span>` : `<span style="color:#999;font-size:12px;">Kantor</span>`}</td>
+                            <td>${s.geoEnabled ? `<span class="badge badge-active" title="Radius ${s.geoRadius} m"><i class="fa-solid fa-location-dot"></i> ${s.geoRadius}m</span>` : `<span style="color:#999;font-size:12px;">Kantor</span>`}</td>
                             <td><span class="badge ${s.active ? "badge-active" : "badge-inactive"}">${s.active ? "Aktif" : "Nonaktif"}</span></td>
                             <td style="display:flex;gap:5px;">
-                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="loadSessionToQR('${jsId(s.id)}','${type}')">
+                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="loadSessionToQR('${s.id}','${type}')">
                                     <i class="fa-solid fa-qrcode"></i>
                                 </button>
-                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteSession('${jsId(s.id)}','${type}')">
+                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteSession('${s.id}','${type}')">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
                             </td>
@@ -4746,7 +4739,7 @@ function populateSessionAttendancePicker(){
 
     const previousValue=select.value;
     select.innerHTML=`<option value="">Pilih sesi...</option>` + sessions.map(s=>
-        `<option value="${s.id}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${escapeHTML(s.date)} (${escapeHTML(s.start)}-${escapeHTML(s.end)})</option>`
+        `<option value="${s.id}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${s.date} (${s.start}-${s.end})</option>`
     ).join("");
 
     // Pertahankan pilihan sebelumnya, atau otomatis pilih QR yang sedang tampil di layar.
@@ -4812,7 +4805,7 @@ function renderSessionStaffStatus(){
                             <td>${record ? formatTime(record.checkIn) : "-"}</td>
                             <td>${record ? statusBadge(record.status) : `<span class="badge badge-inactive">Belum Hadir</span>`}</td>
                             <td>
-                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="openSessionAttendanceEdit('${jsId(session.id)}','${jsId(u.id)}')">
+                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="openSessionAttendanceEdit('${session.id}','${u.id}')">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
                             </td>
@@ -4849,7 +4842,7 @@ function openSessionAttendanceEdit(sessionId,userId){
     document.getElementById("editAttendanceInfo").innerHTML=`
         <strong>${escapeHTML(staff.name)}</strong><br>
         <span style="font-size:11px;color:#777;">
-            ${escapeHTML(session.activity)} • ${escapeHTML(session.division)} • ${escapeHTML(session.date)}
+            ${escapeHTML(session.activity)} • ${escapeHTML(session.division)} • ${session.date}
             ${!record ? " • Belum pernah absen (akan dibuat catatan baru)" : ""}
         </span>
     `;
@@ -4889,15 +4882,15 @@ function attendanceTable(data,canEdit){
                             <td>${escapeHTML(a.userName)}</td>
                             <td>${escapeHTML(a.activity)}</td>
                             <td>${escapeHTML(a.division)}</td>
-                            <td>${escapeHTML(a.date)}</td>
+                            <td>${a.date}</td>
                             <td>${formatTime(a.checkIn)}</td>
                             <td>${statusBadge(a.status)}</td>
                             <td>${attendanceProofCell(a)}</td>
                             ${canEdit ? `<td style="display:flex;gap:5px;">
-                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="openEditAttendance('${jsId(a.id)}')">
+                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="openEditAttendance('${a.id}')">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
-                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteAttendance('${jsId(a.id)}')">
+                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteAttendance('${a.id}')">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
                             </td>` : ""}
@@ -4931,16 +4924,7 @@ function normalizePhotoUrl(url, size){
   const value = String(url).trim();
   const id = getDriveFileId(value);
   if(id) return `https://drive.google.com/thumbnail?id=${id}&sz=w${size || 1000}`;
-  // Selain link Drive, hanya http(s) dan data:image yang boleh dipakai sebagai sumber gambar.
-  if(/^https:\/\//i.test(value) || /^data:image\/(jpeg|png);base64,/i.test(value)) return value;
-  return "";
-}
-
-/* Foto bukti izin/sakit bersifat privat: tidak ada link publik, diambil lewat server. */
-function isPrivatePhoto(url){
-  if(!url) return false;
-  const permits = load(DB.permits) || [];
-  return permits.some(p => p.photo === url);
+  return value;
 }
 
 /* Tanggal hari ini menurut WIB (format YYYY-MM-DD), bukan UTC. */
@@ -4952,7 +4936,7 @@ function getTodayWIB(){
 
 function attendanceProofCell(a){
   const thumb = a.photo
-    ? photoThumbHTML(a.photo, `viewProofPhoto('${jsId(a.id)}')`, "Selfie")
+    ? photoThumbHTML(a.photo, `viewProofPhoto('${a.id}')`, "Selfie")
     : `<span style="color:#aaa;font-size:11px;">-</span>`;
     let locBadge = "";
     if(a.lat!=null && a.lng!=null){
@@ -4992,14 +4976,11 @@ function photoFallback(img){
 }
 
 function photoThumbHTML(photo, onclick, alt){
-    if(isPrivatePhoto(photo)){
-        return `<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="proof-thumb" data-private-photo="${escapeHTML(photo)}" onclick="${onclick}" alt="${escapeHTML(alt)}">`;
-    }
     const src = normalizePhotoUrl(photo);
     const fb = getDriveFileId(photo)
         ? ` data-orig="${escapeHTML(photo)}" data-idx="1" onerror="photoFallback(this)"`
         : "";
-    return `<img src="${escapeHTML(src)}" class="proof-thumb"${fb} onclick="${onclick}" alt="${escapeHTML(alt)}">`;
+    return `<img src="${src}" class="proof-thumb"${fb} onclick="${onclick}" alt="${alt}">`;
 }
 
 function closePhotoLightbox(){
@@ -5016,8 +4997,7 @@ function showPhotoLightbox(title, subtitle, note, photo){
 
     const list = photoCandidates(photo);
     const id = getDriveFileId(photo);
-    const privatePhoto = isPrivatePhoto(photo);
-    const driveLink = (id && !privatePhoto) ? `https://drive.google.com/file/d/${id}/view` : "";
+    const driveLink = id ? `https://drive.google.com/file/d/${id}/view` : "";
 
     const overlay = document.createElement("div");
     overlay.id = "photoLightbox";
@@ -5047,14 +5027,6 @@ function showPhotoLightbox(title, subtitle, note, photo){
 
     const img = overlay.querySelector("#photoLightboxImg");
     const err = overlay.querySelector("#photoLightboxError");
-
-    if(privatePhoto){
-        fetchPrivatePhoto(photo)
-            .then(dataUrl => { img.src = dataUrl; })
-            .catch(() => { img.style.display = "none"; err.style.display = "block"; });
-        return;
-    }
-
     let i = 0;
     img.onerror = ()=>{
         i++;
@@ -5219,7 +5191,7 @@ function openEditAttendance(id){
     document.getElementById("editAttendanceInfo").innerHTML=`
         <strong>${escapeHTML(record.userName)}</strong><br>
         <span style="font-size:11px;color:#777;">
-            ${escapeHTML(record.activity)} • ${escapeHTML(record.division)} • ${escapeHTML(record.date)}
+            ${escapeHTML(record.activity)} • ${escapeHTML(record.division)} • ${record.date}
         </span>
     `;
     document.getElementById("editAttendanceModal").classList.add("show");
@@ -5347,12 +5319,12 @@ function renderUsers(){
                             <td>${escapeHTML(u.division || "-")}</td>
                             <td>
                                 ${currentUser.role === 'HRD' || (currentUser.role==='KOOR KP' && u.role==='STAF') ? `
-                                <button class="btn btn-outline" style="padding:7px 9px; margin-right:5px;" onclick="editUser('${jsId(u.id)}')" title="Edit akun / ubah divisi & NIM">
+                                <button class="btn btn-outline" style="padding:7px 9px; margin-right:5px;" onclick="editUser('${u.id}')" title="Edit akun / ubah divisi & NIM">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
                                 ` : ''}
                                 ${currentUser.role === 'HRD' || (currentUser.role==='KOOR KP' && u.role==='STAF') ? `
-                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteUser('${jsId(u.id)}')" title="Hapus akun">
+                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteUser('${u.id}')" title="Hapus akun">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
                                 ` : ''}
@@ -5743,7 +5715,7 @@ function renderStaffRecap(){
                 </thead>
                 <tbody>
                     ${recapRows.map(r=>`
-                        <tr class="recap-row" onclick="openRecapDetail('${jsId(r.id)}')">
+                        <tr class="recap-row" onclick="openRecapDetail('${r.id}')">
                             <td><strong>${escapeHTML(r.name)}</strong></td>
                             <td>${escapeHTML(r.username)}</td>
                             <td>${escapeHTML(r.division)}</td>
@@ -5884,7 +5856,7 @@ function renderCalendar(){
                     ${s.active ? `<span class="badge badge-active">Aktif</span>` : `<span class="badge badge-inactive">Nonaktif</span>`}
                 </div>
                 <h4>${escapeHTML(s.activity)}</h4><p>${escapeHTML(s.division)}</p>
-                <p style="margin-top:8px;"><strong>${escapeHTML(s.date)}</strong><br>${escapeHTML(s.start)} -${escapeHTML(s.end)}</p>
+                <p style="margin-top:8px;"><strong>${s.date}</strong><br>${s.start} -${s.end}</p>
                 <p>${escapeHTML(s.location)}</p>
             </div>
         `).join("")}</div>`;
@@ -5926,7 +5898,7 @@ function populatePermitSessionOptions(){
     });
 
     select.innerHTML = `<option value="">Pilih kegiatan</option>` +
-        options.map(s=> `<option value="${s.id}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${escapeHTML(s.date)}</option>`).join("");
+        options.map(s=> `<option value="${s.id}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${s.date}</option>`).join("");
 
     const hint = document.getElementById("permitNoSessionHint");
     if(hint) hint.classList.toggle("hidden", options.length>0);
@@ -6030,7 +6002,7 @@ function permitStatusBadge(status){
 
 function permitProofCell(p){
     return p.photo
-        ? photoThumbHTML(p.photo, `viewPermitPhoto('${jsId(p.id)}')`, "Bukti")
+        ? photoThumbHTML(p.photo, `viewPermitPhoto('${p.id}')`, "Bukti")
         : `<span style="color:#aaa;font-size:11px;">-</span>`;
 }
 
@@ -6056,7 +6028,7 @@ function renderPermitHistory(){
                     ${permits.map(p=>`
                         <tr>
                             <td><strong>${escapeHTML(p.sessionActivity)}</strong><br><span style="font-size:11px;color:#777;">${escapeHTML(p.sessionDivision)}</span></td>
-                            <td>${escapeHTML(p.sessionDate)}</td>
+                            <td>${p.sessionDate}</td>
                             <td>${escapeHTML(p.type)}</td>
                             <td style="max-width:200px;white-space:normal;">${escapeHTML(p.reason)}</td>
                             <td>${permitProofCell(p)}</td>
@@ -6098,7 +6070,7 @@ function renderPermitApproval(role){
                         <tr>
                             <td><strong>${escapeHTML(p.userName)}</strong></td>
                             <td>${escapeHTML(p.sessionActivity)}<br><span style="font-size:11px;color:#777;">${escapeHTML(p.sessionDivision)}</span></td>
-                            <td>${escapeHTML(p.sessionDate)}</td>
+                            <td>${p.sessionDate}</td>
                             <td>${escapeHTML(p.type)}</td>
                             <td style="max-width:200px;white-space:normal;">${escapeHTML(p.reason)}</td>
                             <td>${permitProofCell(p)}</td>
@@ -6106,10 +6078,10 @@ function renderPermitApproval(role){
                             <td>
                                 ${p.status==="Menunggu" ? `
                                     <div style="display:flex;gap:6px;">
-                                        <button class="btn btn-primary" style="padding:7px 9px;" onclick="approvePermit('${jsId(p.id)}')" title="Setujui">
+                                        <button class="btn btn-primary" style="padding:7px 9px;" onclick="approvePermit('${p.id}')" title="Setujui">
                                             <i class="fa-solid fa-check"></i>
                                         </button>
-                                        <button class="btn btn-outline" style="padding:7px 9px;" onclick="rejectPermit('${jsId(p.id)}')" title="Tolak">
+                                        <button class="btn btn-outline" style="padding:7px 9px;" onclick="rejectPermit('${p.id}')" title="Tolak">
                                             <i class="fa-solid fa-xmark"></i>
                                         </button>
                                     </div>
@@ -6367,12 +6339,6 @@ function statusBadge(status){
 
 function emptyHTML(icon,message){
     return `<div class="empty"><i class="fa-solid ${icon}"></i><p>${message}</p></div>`;
-}
-
-/* Untuk id yang dipakai di dalam atribut onclick="fn('...')": buang semua karakter selain huruf, angka, _ dan -.
-   (escapeHTML saja TIDAK cukup di konteks JavaScript dalam atribut.) */
-function jsId(value){
-    return String(value ?? "").replace(/[^A-Za-z0-9_-]/g,"");
 }
 
 function escapeHTML(value){
