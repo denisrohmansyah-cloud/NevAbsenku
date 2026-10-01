@@ -866,7 +866,7 @@ td{
 .toast-container{
     position:fixed;
     right:20px;
-    bottom:20px;
+    bottom:64px; /* di atas badge sinkron (kanan bawah) */
     z-index:2000;
     display:grid;
     gap:10px;
@@ -1040,6 +1040,15 @@ td{
 @keyframes nevFade{from{opacity:.55}to{opacity:1}}
 @keyframes nevDot{0%,80%,100%{transform:scale(.7);opacity:.4}40%{transform:scale(1.15);opacity:1}}
 
+
+/* REKAP PER STAF */
+.recap-pct{display:inline-block;min-width:44px;text-align:center;font-weight:700;font-size:12px;}
+.recap-bar{height:6px;border-radius:99px;background:#eee;overflow:hidden;margin-top:4px;min-width:70px;}
+.recap-bar>span{display:block;height:100%;background:var(--green,#16a34a);}
+.recap-note{font-size:11px;color:#777;margin:-6px 0 14px;line-height:1.5;}
+.recap-row{cursor:pointer;}
+.recap-row:hover td{background:#fafafa;}
+.danger-zone{border:1px solid #fecaca;background:#fff5f5;}
 </style>
 
 <style id="nev-login-loading-style">
@@ -1145,19 +1154,19 @@ LOGIN
 
             <div class="role-selector">
 
-                <button type="button" class="role-btn active"
+                <button class="role-btn active"
                         onclick="selectLoginRole('STAF',this)">
                     <i class="fa-solid fa-user"></i><br>
                     STAF
                 </button>
 
-                <button type="button" class="role-btn"
+                <button class="role-btn"
                         onclick="selectLoginRole('HRD',this)">
                     <i class="fa-solid fa-user-tie"></i><br>
                     HRD
                 </button>
 
-                <button type="button" class="role-btn"
+                <button class="role-btn"
                         onclick="selectLoginRole('KOOR KP',this)">
                     <i class="fa-solid fa-users-gear"></i><br>
                     Koor KP
@@ -1510,6 +1519,17 @@ APP
                     </div>
 
                     <div id="reader"></div>
+
+                    <div id="scannerZoomBox" class="hidden" style="display:flex;align-items:center;gap:10px;margin-top:10px;">
+                        <i class="fa-solid fa-magnifying-glass-minus" style="color:#888;"></i>
+                        <input
+                            id="scannerZoomRange"
+                            type="range"
+                            style="flex:1;"
+                            min="1" max="1" step="0.1" value="1"
+                            oninput="setCameraZoom(this.value)">
+                        <i class="fa-solid fa-magnifying-glass-plus" style="color:#888;"></i>
+                    </div>
 
                     <div class="scanner-status"
                          id="scannerStatus">
@@ -2955,17 +2975,7 @@ APP
                     </div>
 
 
-                    <div class="section-card" style="margin-top:15px;">
-                        <div class="section-header">
-                            <div>
-                                <h3>Rekap Jumlah Absensi Setiap Staf</h3>
-                                <p>Jumlah Hadir, Izin, Sakit, dan Alpha per staf. Ringkasan mengikuti filter tanggal, kegiatan, divisi, dan pencarian.</p>
-                            </div>
-                        </div>
-                        <div id="hrdStaffRecapTable"></div>
-                    </div>
-
-                    <div style="margin-top:15px;" id="hrdReportTable"></div>
+                    <div id="hrdReportTable"></div>
 
                 </div>
 
@@ -3081,6 +3091,79 @@ APP
             <!-- =================================================
             MANAJEMEN AKUN (HRD & KOOR KP)
             ================================================= -->
+
+            <!-- =================================================
+            REKAP PER STAF (HRD: semua divisi | KOOR KP: divisinya saja)
+            ================================================= -->
+
+            <section id="page-staff-recap" class="page">
+
+                <div class="section-card">
+
+                    <div class="section-header">
+                        <div>
+                            <h3>Rekap per Staf</h3>
+                            <p id="recapSubtitle">Ringkasan kehadiran setiap staf. Klik baris untuk melihat rinciannya.</p>
+                        </div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <button class="btn btn-success" onclick="exportRecapExcel()">
+                                <i class="fa-solid fa-file-excel"></i> Excel
+                            </button>
+                            <button class="btn btn-danger" onclick="exportRecapPDF()">
+                                <i class="fa-solid fa-file-pdf"></i> PDF
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="filter-grid">
+                        <div>
+                            <label style="font-size:10px;font-weight:700;">Dari Tanggal</label>
+                            <input id="recapFrom" type="date" class="form-control" onchange="renderStaffRecap()">
+                        </div>
+                        <div>
+                            <label style="font-size:10px;font-weight:700;">Sampai Tanggal</label>
+                            <input id="recapTo" type="date" class="form-control" onchange="renderStaffRecap()">
+                        </div>
+                        <div>
+                            <label style="font-size:10px;font-weight:700;">Kegiatan</label>
+                            <select id="recapActivity" class="form-control" onchange="renderStaffRecap()">
+                                <option value="">Semua</option>
+                                <option>Rapat Rutin</option>
+                                <option>Ngoprek</option>
+                                <option>Kepanitiaan</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:10px;font-weight:700;">Divisi</label>
+                            <select id="recapDivision" class="form-control" onchange="renderStaffRecap()">
+                                <option value="">Semua</option>
+                                <option>Networking</option>
+                                <option>Cyber</option>
+                                <option>Sysadmin</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:10px;font-weight:700;">Cari Nama / NIM</label>
+                            <input id="recapSearch" class="form-control" placeholder="Ketik nama atau NIM..." oninput="renderStaffRecap()">
+                        </div>
+                        <div style="display:flex;align-items:flex-end;">
+                            <button class="btn btn-outline btn-block" onclick="resetStaffRecapFilter()">
+                                <i class="fa-solid fa-rotate-left"></i> Reset
+                            </button>
+                        </div>
+                    </div>
+
+                    <p class="recap-note">
+                        Alpha = kegiatan yang sudah selesai dan staf tidak tercatat hadir, izin, maupun sakit.
+                        Kegiatan yang belum selesai tidak dihitung.
+                    </p>
+
+                    <div id="staffRecapTable"></div>
+
+                </div>
+
+            </section>
+
 
             <section id="page-users" class="page">
 
@@ -3294,6 +3377,22 @@ APP
 
                 </div>
 
+            
+                <div id="hrdPurgeCard" class="section-card danger-zone hidden" style="margin-top:18px;">
+                    <div class="section-header">
+                        <div>
+                            <h3><i class="fa-solid fa-triangle-exclamation"></i> Hapus Data Absensi</h3>
+                            <p>
+                                Menghapus seluruh sesi QR, data absensi, pengajuan izin/sakit, dan memindahkan semua foto
+                                (selfie &amp; bukti izin) di Google Drive ke Trash. Akun pengguna dan lokasi/radius kantor
+                                tidak ikut terhapus. Tindakan ini tidak dapat dibatalkan dari aplikasi.
+                            </p>
+                        </div>
+                        <button id="btnPurgeData" class="btn btn-danger" onclick="purgeAttendanceData()">
+                            <i class="fa-solid fa-trash"></i> Hapus Data Absensi
+                        </button>
+                    </div>
+                </div>
             </section>
 
 
@@ -3438,6 +3537,81 @@ REGISTER MODAL
 
 </div>
 
+
+
+<!-- =========================================================
+EDIT AKUN MODAL
+========================================================= -->
+<div id="editUserModal" class="modal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="editUserTitle">Edit Akun</h3>
+            <button class="modal-close" onclick="closeModal('editUserModal')">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <form onsubmit="submitEditUser(event)">
+            <div class="modal-body">
+                <input type="hidden" id="editUserId">
+
+                <div class="form-group">
+                    <label>Nama Lengkap *</label>
+                    <input id="editUserName" class="form-control" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Username / NIM *</label>
+                    <input id="editUserUsername" class="form-control" required>
+                </div>
+
+                <div class="form-group" id="editUserRoleGroup">
+                    <label>Role *</label>
+                    <select id="editUserRole" class="form-control" onchange="toggleEditUserRole()">
+                        <option value="STAF">STAF</option>
+                        <option value="KOOR KP">KOOR KP</option>
+                        <option value="HRD">HRD</option>
+                    </select>
+                    <small id="editUserRoleHint" style="display:none;color:#777;font-size:11px;">Role akun yang sedang Anda pakai tidak dapat diubah.</small>
+                </div>
+
+                <div class="form-group" id="editUserDivisionGroup">
+                    <label>Divisi *</label>
+                    <select id="editUserDivision" class="form-control">
+                        <option value="">Pilih Divisi</option>
+                        <option value="Networking">Networking</option>
+                        <option value="Cyber">Cyber</option>
+                        <option value="Sysadmin">Sysadmin</option>
+                    </select>
+                    <small style="color:#777;font-size:11px;">Riwayat absensi lama tetap tercatat pada divisi sebelumnya.</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Password Baru</label>
+                    <input id="editUserPassword" type="password" class="form-control" placeholder="Kosongkan jika tidak diubah" autocomplete="new-password">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('editUserModal')">Batal</button>
+                <button class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Simpan</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- =========================================================
+RINCIAN REKAP STAF MODAL
+========================================================= -->
+<div id="recapDetailModal" class="modal">
+    <div class="modal-box" style="max-width:640px;">
+        <div class="modal-header">
+            <h3 id="recapDetailTitle">Rincian Kehadiran</h3>
+            <button class="modal-close" onclick="closeModal('recapDetailModal')">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <div class="modal-body" id="recapDetailBody"></div>
+    </div>
+</div>
 
 <!-- =========================================================
 EDIT ATTENDANCE MODAL
@@ -3737,9 +3911,31 @@ function selectLoginRole(role,button){
     button.classList.add("active");
 }
 
+/* =========================================================
+LOGIN LOADING — sebelumnya kode ini tersesat di dalam template
+literal printQR() sehingga tidak pernah berjalan (dan bahkan
+merusak keseluruhan skrip karena ada teks penutup tag script
+literal di dalamnya, membuat browser mengira skrip utama
+berakhir di situ). Dipasang di sini, terpasang langsung ke login().
+========================================================= */
+
+function getLoginButton(){
+    return document.getElementById("loginSubmitBtn");
+}
+
+function setLoginLoading(loading){
+    const btn = getLoginButton();
+    if(!btn) return;
+    btn.classList.toggle("nev-login-loading", !!loading);
+    btn.disabled = !!loading;
+    btn.setAttribute("aria-busy", loading ? "true" : "false");
+}
+
 async function login(event){
   event.preventDefault();
+  setLoginLoading(true);
 
+  try{
   const username = document.getElementById("loginUsername").value.trim();
   const password = document.getElementById("loginPassword").value;
 
@@ -3796,9 +3992,12 @@ async function login(event){
   }catch(err){
     console.error("Login error:", err);
     toast(
-      "Gagal terhubung ke server. Silakan coba lagi.",
+      (err && err.message) ? err.message : "Gagal terhubung ke server. Silakan coba lagi.",
       "error"
     );
+  }
+  }finally{
+    setLoginLoading(false);
   }
 }
 
@@ -3837,6 +4036,7 @@ function buildSidebar(){
         html+=menuItem("hrd-dashboard", "fa-chart-line", "Dashboard");
         html+=menuItem("hrd-qr", "fa-qrcode", "Buat QR Absensi");
         html+=menuItem("hrd-report", "fa-table-list", "Rekap Absensi");
+        html+=menuItem("staff-recap", "fa-user-check", "Rekap per Staf");
         html+=menuItem("hrd-permit", "fa-file-medical", "Persetujuan Izin/Sakit");
         html+=menuItem("hrd-location", "fa-location-dot", "Lokasi & Radius");
         html+=menuItem("users", "fa-users-gear", "Manajemen Akun");
@@ -3847,6 +4047,7 @@ function buildSidebar(){
         html+=menuItem("koor-dashboard", "fa-house", "Dashboard");
         html+=menuItem("koor-qr", "fa-qrcode", "Buat QR Ngoprek");
         html+=menuItem("koor-attendance", "fa-clipboard-check", "Absensi Ngoprek");
+        html+=menuItem("staff-recap", "fa-user-check", "Rekap per Staf");
         html+=menuItem("koor-permit", "fa-file-medical", "Persetujuan Izin/Sakit");
         html+=menuItem("users", "fa-users-gear", "Manajemen Akun");
     }
@@ -3875,8 +4076,8 @@ function showPage(page){
 
     const allowed = {
         "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "staf-activities", "settings"],
-        "HRD":["hrd-dashboard", "hrd-qr", "hrd-report", "hrd-permit", "hrd-location", "users", "settings"],
-        "KOOR KP":["koor-dashboard", "koor-qr", "koor-attendance", "koor-permit", "users", "settings"]
+        "HRD":["hrd-dashboard", "hrd-qr", "hrd-report", "staff-recap", "hrd-permit", "hrd-location", "users", "settings"],
+        "KOOR KP":["koor-dashboard", "koor-qr", "koor-attendance", "staff-recap", "koor-permit", "users", "settings"]
     };
 
     if(!allowed[currentUser.role].includes(page)){
@@ -3903,6 +4104,7 @@ function showPage(page){
         "hrd-dashboard":"Dashboard HRD",
         "hrd-qr":"Buat QR Absensi",
         "hrd-report":"Rekap Absensi",
+        "staff-recap":"Rekap per Staf",
         "hrd-permit":"Persetujuan Izin/Sakit",
         "hrd-location":"Lokasi & Radius Kantor",
         "users":"Manajemen Akun",
@@ -3924,6 +4126,7 @@ function showPage(page){
     if(page==="hrd-dashboard") renderHRDDashboard();
     if(page==="hrd-qr"){ renderQRSessionList("hrd"); populateSessionAttendancePicker(); }
     if(page==="hrd-report") renderHRDReport();
+    if(page==="staff-recap") initStaffRecapPage();
     if(page==="hrd-permit") renderPermitApproval("hrd");
     if(page==="hrd-location") setTimeout(initOfficeMap, 50);
     if(page==="users") renderUsers();
@@ -4289,6 +4492,7 @@ function startScanner(){
         errorMessage=>{}
     ).then(()=>{
         updateScannerStatus("Kamera aktif. Arahkan kamera ke QR.", "normal");
+        setupScannerZoom();
     }).catch(error=>{
         html5QrCode=null;
         console.error("Gagal membuka kamera:", error);
@@ -4302,12 +4506,97 @@ function startScanner(){
     });
 }
 
+/* =========================================================
+ZOOM KAMERA SCANNER
+Sebagian perangkat (terutama Android) mengekspos kontrol zoom asli
+lewat MediaStreamTrack. Kalau tersedia, tampilkan slider dan atur
+lewat applyVideoConstraints(). Kalau tidak, sediakan pinch-to-zoom
+(cubit dua jari) sebagai cadangan yang memperbesar tampilan video
+secara visual (CSS transform) — QR tetap terbaca karena html5-qrcode
+membaca dari <video> aslinya, bukan dari tampilan yang di-zoom CSS.
+========================================================= */
+
+let scannerPinchState = null;
+
+function getScannerVideoTrack(){
+    if(!html5QrCode) return null;
+    try{
+        const videoEl = document.querySelector("#reader video");
+        const stream = videoEl && videoEl.srcObject;
+        return stream ? stream.getVideoTracks()[0] : null;
+    }catch(e){ return null; }
+}
+
+function setupScannerZoom(){
+    const box = document.getElementById("scannerZoomBox");
+    const range = document.getElementById("scannerZoomRange");
+    if(!box || !range) return;
+
+    const track = getScannerVideoTrack();
+    const caps = track && track.getCapabilities ? track.getCapabilities() : null;
+
+    if(caps && caps.zoom && caps.zoom.max > caps.zoom.min){
+        // Kamera mendukung zoom optik/digital asli lewat browser.
+        range.min = caps.zoom.min;
+        range.max = caps.zoom.max;
+        range.step = caps.zoom.step || 0.1;
+        range.value = track.getSettings().zoom || caps.zoom.min;
+        box.classList.remove("hidden");
+    }else{
+        // Tidak ada kontrol zoom asli: sembunyikan slider, pakai pinch-to-zoom saja.
+        box.classList.add("hidden");
+    }
+
+    setupScannerPinchZoom();
+}
+
+function setCameraZoom(value){
+    const track = getScannerVideoTrack();
+    if(!track || !track.applyConstraints) return;
+    track.applyConstraints({ advanced: [{ zoom: parseFloat(value) }] }).catch(()=>{});
+}
+
+function setupScannerPinchZoom(){
+    const readerEl = document.getElementById("reader");
+    if(!readerEl || readerEl.dataset.pinchBound) return;
+    readerEl.dataset.pinchBound = "1";
+
+    let currentScale = 1;
+
+    function distance(touches){
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        return Math.hypot(dx, dy);
+    }
+
+    readerEl.addEventListener("touchstart", e=>{
+        if(e.touches.length===2){
+            scannerPinchState = { startDist: distance(e.touches), startScale: currentScale };
+        }
+    }, { passive:true });
+
+    readerEl.addEventListener("touchmove", e=>{
+        if(e.touches.length===2 && scannerPinchState){
+            const scale = scannerPinchState.startScale * (distance(e.touches) / scannerPinchState.startDist);
+            currentScale = Math.min(Math.max(scale, 1), 3);
+            const video = readerEl.querySelector("video");
+            if(video) video.style.transform = `scale(${currentScale})`;
+        }
+    }, { passive:true });
+
+    readerEl.addEventListener("touchend", ()=>{ scannerPinchState = null; });
+}
+
 function stopScanner(){
     if(!html5QrCode) return;
     html5QrCode.stop().then(()=>{
         html5QrCode.clear();
         html5QrCode=null;
         updateScannerStatus("Scanner dihentikan.", "normal");
+        const box=document.getElementById("scannerZoomBox");
+        if(box) box.classList.add("hidden");
+        const readerEl=document.getElementById("reader");
+        if(readerEl) delete readerEl.dataset.pinchBound;
     }).catch(()=>{ html5QrCode=null; });
 }
 
@@ -4370,61 +4659,7 @@ function printQR(type){
             <p>${session.date} • ${session.start} - ${session.end}</p>
             <img src="${image}">
             <p>Scan QR menggunakan aplikasi NEV Absenku.</p>
-        
-<script id="nev-login-loading-script">
-/* =========================================================
-   LOGIN LOADING — tidak mengubah fungsi login/cloud-sync.
-   Hanya memberi feedback visual saat request login berjalan.
-========================================================= */
-(function(){
-    let resetTimer = null;
-
-    function getLoginButton(){
-        return document.getElementById("loginSubmitBtn");
-    }
-
-    function setLoginLoading(loading){
-        const btn = getLoginButton();
-        if(!btn) return;
-        btn.classList.toggle("nev-login-loading", !!loading);
-        btn.disabled = !!loading;
-        btn.setAttribute("aria-busy", loading ? "true" : "false");
-        if(!loading && resetTimer){
-            clearTimeout(resetTimer);
-            resetTimer = null;
-        }
-    }
-
-    document.addEventListener("submit", function(event){
-        const form = event.target;
-        if(!form || !form.querySelector || !form.querySelector("#loginUsername")) return;
-
-        const btn = getLoginButton();
-        if(!btn || btn.classList.contains("nev-login-loading")) return;
-
-        setLoginLoading(true);
-
-        // Pengaman: jika login gagal/terputus tanpa mengubah halaman,
-        // tombol otomatis kembali normal setelah 20 detik.
-        resetTimer = setTimeout(function(){
-            const screen = document.getElementById("loginScreen");
-            if(screen && !screen.classList.contains("hidden")) setLoginLoading(false);
-        }, 20000);
-    }, true);
-
-    // Jika login berhasil, loginScreen diberi class "hidden" oleh aplikasi.
-    // Loader tidak perlu disentuh karena form sudah tidak terlihat.
-    const screen = document.getElementById("loginScreen");
-    if(screen){
-        const observer = new MutationObserver(function(){
-            if(screen.classList.contains("hidden")) setLoginLoading(false);
-        });
-        observer.observe(screen, {attributes:true, attributeFilter:["class"]});
-    }
-})();
-</script>
-
-</body></html>
+        </body></html>
     `);
     printWindow.document.close();
     printWindow.focus();
@@ -4884,17 +5119,15 @@ function viewProofPhoto(id){
 HRD REPORT & DASHBOARD
 ========================================================= */
 
-function getFilteredHRDAttendance(ignoreStatus=false){
-    let data=load(DB.attendance).filter(a=>
-        a && a.id && a.userId && a.sessionId &&
-        /^\d{4}-\d{2}-\d{2}$/.test(String(a.date||"")) &&
-        ["Hadir","Izin","Sakit","Alpha"].includes(String(a.status||""))
-    );
-    const date=document.getElementById("filterDate")?.value || "";
-    const activity=document.getElementById("filterActivity")?.value || "";
-    const division=document.getElementById("filterDivision")?.value || "";
-    const status=ignoreStatus ? "" : (document.getElementById("filterStatus")?.value || "");
+function renderHRDReport(){
+    if(currentUser?.role!=="HRD")return;
+    let data=load(DB.attendance);
+    const date=document.getElementById("filterDate").value;
+    const activity=document.getElementById("filterActivity").value;
+    const division=document.getElementById("filterDivision").value;
+    const status=document.getElementById("filterStatus").value;
     const search=(document.getElementById("filterSearch")?.value || "").trim().toLowerCase();
+
     if(date) data=data.filter(a=>a.date===date);
     if(activity) data=data.filter(a=>a.activity===activity);
     if(division) data=data.filter(a=>a.division===division);
@@ -4903,56 +5136,10 @@ function getFilteredHRDAttendance(ignoreStatus=false){
         String(a.userName||"").toLowerCase().includes(search) ||
         String(a.username||"").toLowerCase().includes(search)
     );
-    return data;
-}
 
-function buildStaffRecapTable(staff,attendance){
-    const counts={};
-    staff.forEach(u=>counts[u.id]={
-        name:u.name||"-", username:u.username||"-", division:u.division||"-",
-        hadir:0, izin:0, sakit:0, alpha:0
-    });
-    attendance.forEach(a=>{
-        const c=counts[a.userId];
-        if(!c)return;
-        if(a.status==="Hadir") c.hadir++;
-        else if(a.status==="Izin") c.izin++;
-        else if(a.status==="Sakit") c.sakit++;
-        else if(a.status==="Alpha") c.alpha++;
-    });
-    const rows=Object.values(counts).sort((a,b)=>a.name.localeCompare(b.name,"id"));
-    if(!rows.length) return emptyHTML("fa-users","Belum ada data staf.");
-    return `<div class="table-wrapper"><table><thead><tr>
-        <th>No</th><th>Nama</th><th>NIM</th><th>Divisi</th><th>Hadir</th><th>Izin</th><th>Sakit</th><th>Alpha</th><th>Total Sesi</th>
-    </tr></thead><tbody>${rows.map((r,i)=>{
-        const total=r.hadir+r.izin+r.sakit+r.alpha;
-        return `<tr><td>${i+1}</td><td><strong>${escapeHTML(r.name)}</strong></td><td>${escapeHTML(r.username)}</td><td>${escapeHTML(r.division)}</td>
-            <td><span class="badge badge-hadir">${r.hadir}</span></td><td><span class="badge badge-izin">${r.izin}</span></td>
-            <td><span class="badge badge-sakit">${r.sakit}</span></td><td><span class="badge badge-alpha">${r.alpha}</span></td><td><strong>${total}</strong></td></tr>`;
-    }).join("")}</tbody></table></div>`;
-}
-
-function renderHRDStaffRecap(){
-    if(currentUser?.role!=="HRD")return;
-    const users=load(DB.users).filter(u=>u.role==="STAF");
-    const attendance=getFilteredHRDAttendance(true);
-    const search=(document.getElementById("filterSearch")?.value||"").trim().toLowerCase();
-    const division=document.getElementById("filterDivision")?.value||"";
-    let staff=users;
-    if(division) staff=staff.filter(u=>u.division===division);
-    if(search) staff=staff.filter(u=>String(u.name||"").toLowerCase().includes(search)||String(u.username||"").toLowerCase().includes(search));
-    const el=document.getElementById("hrdStaffRecapTable");
-    if(el) el.innerHTML=buildStaffRecapTable(staff,attendance);
-}
-
-function renderHRDReport(){
-    if(currentUser?.role!=="HRD")return;
-    const data=getFilteredHRDAttendance(false);
-    renderHRDStaffRecap();
     const container=document.getElementById("hrdReportTable");
     if(!data.length){
-        container.innerHTML=emptyHTML("fa-table-list", "Tidak ada data sesuai filter.");
-        return;
+        container.innerHTML=emptyHTML("fa-table-list", "Tidak ada data sesuai filter."); return;
     }
     container.innerHTML=attendanceTable(data,true);
 }
@@ -5186,7 +5373,7 @@ function renderUsers(){
                             <td>${escapeHTML(u.division || "-")}</td>
                             <td>
                                 ${currentUser.role === 'HRD' || (currentUser.role==='KOOR KP' && u.role==='STAF') ? `
-                                <button class="btn btn-outline" style="padding:7px 9px; margin-right:5px;" onclick="editUser('${u.id}')" title="Edit akun">
+                                <button class="btn btn-outline" style="padding:7px 9px; margin-right:5px;" onclick="editUser('${u.id}')" title="Edit akun / ubah divisi & NIM">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
                                 ` : ''}
@@ -5204,77 +5391,112 @@ function renderUsers(){
     `;
 }
 
-async function editUser(id){
+function editUser(id){
     if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
         toast("Akses ditolak.", "error"); return;
     }
-
-    const users=load(DB.users);
-    const user=users.find(u=>u.id===id);
-    if(!user)return;
+    const user=load(DB.users).find(u=>u.id===id);
+    if(!user) return;
 
     if(currentUser.role==="KOOR KP" && (user.role!=="STAF" || user.division!==currentUser.division)){
         toast("Akses ditolak. Koor KP hanya dapat mengedit STAF di divisinya.", "error"); return;
     }
 
-    const name=prompt("Nama:", user.name);
-    if(name===null)return;
+    const isHRD = currentUser.role==="HRD";
+    const isSelf = user.id===currentUser.id;
 
-    const username=prompt("Username / NIM:", user.username);
-    if(username===null)return;
+    document.getElementById("editUserTitle").textContent = "Edit Akun — " + user.name;
+    document.getElementById("editUserId").value = user.id;
+    document.getElementById("editUserName").value = user.name || "";
+    document.getElementById("editUserUsername").value = user.username || "";
+    document.getElementById("editUserPassword").value = "";
 
-    let role=user.role;
-    let division=user.division || "";
+    // Role & divisi hanya dapat diubah HRD. Koor KP hanya boleh mengubah nama/NIM/password staf divisinya.
+    document.getElementById("editUserRoleGroup").classList.toggle("hidden", !isHRD);
+    document.getElementById("editUserDivisionGroup").classList.toggle("hidden", !isHRD);
+    const roleSel = document.getElementById("editUserRole");
+    roleSel.value = user.role;
+    roleSel.disabled = isSelf;
+    document.getElementById("editUserRoleHint").style.display = isSelf ? "block" : "none";
+    document.getElementById("editUserDivision").value = user.division || "";
 
-    if(currentUser.role==="HRD"){
-        role=prompt("Role (STAF / KOOR KP / HRD):", user.role);
-        if(role===null)return;
-        role=role.trim().toUpperCase();
-        if(!["STAF","KOOR KP","HRD"].includes(role)){
-            toast("Role harus STAF, KOOR KP, atau HRD.", "error"); return;
-        }
+    toggleEditUserRole();
+    document.getElementById("editUserModal").classList.add("show");
+}
 
-        if(role==="HRD"){
-            division="";
-        }else{
-            division=prompt("Divisi (Networking / Cyber / Sysadmin):", user.division || "");
-            if(division===null)return;
-            division=division.trim();
-            if(!division){ toast("Divisi wajib diisi.", "error"); return; }
-        }
+function toggleEditUserRole(){
+    if(currentUser?.role!=="HRD") return;
+    const role = document.getElementById("editUserRole").value;
+    const group = document.getElementById("editUserDivisionGroup");
+    const sel = document.getElementById("editUserDivision");
+    if(role==="HRD"){
+        group.classList.add("hidden");
+        sel.required = false;
     }else{
-        // Koor KP tidak boleh memindahkan divisi/role staf.
-        role="STAF";
-        division=currentUser.division;
+        group.classList.remove("hidden");
+        sel.required = true;
+    }
+}
+
+async function submitEditUser(event){
+    event.preventDefault();
+    if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
+        toast("Akses ditolak.", "error"); return;
     }
 
-    const password=prompt("Password baru (kosongkan jika tidak diubah):", "");
+    const id = document.getElementById("editUserId").value;
+    const users = load(DB.users);
+    const user = users.find(u=>u.id===id);
+    if(!user) return;
+
+    const name = document.getElementById("editUserName").value.trim();
+    const username = document.getElementById("editUserUsername").value.trim();
+    const password = document.getElementById("editUserPassword").value;
+    if(!name || !username){ toast("Nama dan Username/NIM wajib diisi.", "error"); return; }
+
+    let role = user.role;
+    let division = user.division || "";
+    if(currentUser.role==="HRD"){
+        role = document.getElementById("editUserRole").value;
+        division = role==="HRD" ? "" : document.getElementById("editUserDivision").value;
+        if(role!=="HRD" && !division){ toast("Divisi wajib dipilih.", "error"); return; }
+    }else{
+        role = "STAF";
+        division = currentUser.division;
+    }
+
+    const divisionChanged = (user.division || "") !== (division || "");
+    const btn = document.querySelector("#editUserModal form .btn-primary");
+    if(btn) btn.disabled = true;
 
     try{
-        const result=await cloudPost("updateUser", {
-            targetId:id,
-            name:name.trim(),
-            username:username.trim(),
-            role,
-            division,
-            password:password || ""
-        },1);
+        const result = await cloudPost("updateUser", {
+            targetId:id, name, username, role, division, password:password || ""
+        }, 1);
+        const updated = result.user;
 
-        const updated=result.user;
-        const next=users.map(u=>u.id===id ? updated : u);
-        _localSave(DB.users,next);
+        _localSave(DB.users, users.map(u=>u.id===id ? updated : u));
+
+        // Nama & NIM juga dipakai pada riwayat; perbarui salinan lokal agar langsung konsisten.
+        const patch = r=> (r.userId===id) ? { ...r, userName:updated.name, username:updated.username } : r;
+        _localSave(DB.attendance, load(DB.attendance).map(patch));
+        _localSave(DB.permits, load(DB.permits).map(patch));
 
         if(currentUser.id===id){
-            currentUser=updated;
-            localStorage.setItem("nev_current_user",JSON.stringify(currentUser));
+            currentUser = updated;
+            localStorage.setItem("nev_current_user", JSON.stringify(currentUser));
             updateUserUI();
             buildSidebar();
         }
 
+        closeModal("editUserModal");
         renderUsers();
-        toast("Akun berhasil diperbarui.", "success");
+        renderAll();
+        toast(divisionChanged ? "Akun diperbarui. Divisi baru: " + (updated.division || "-") + "." : "Akun berhasil diperbarui.", "success");
     }catch(err){
-        toast("Gagal memperbarui akun: "+friendlyCloudError(err), "error");
+        toast("Gagal memperbarui akun: " + friendlyCloudError(err), "error");
+    }finally{
+        if(btn) btn.disabled = false;
     }
 }
 
@@ -5415,6 +5637,260 @@ async function register(event){
         toast("Gagal membuat akun: "+friendlyCloudError(err), "error");
     }
 }
+
+/* =========================================================
+REKAP PER STAF
+-----------------------------------------------------------
+HRD   : semua staf, dapat memfilter divisi.
+KOOR KP: hanya staf pada divisinya, dan hanya dari kegiatan
+         yang memang dapat diakses Koor KP (Ngoprek miliknya).
+========================================================= */
+
+let recapRows = [];
+
+function isSessionEnded(session){
+    const today = getTodayWIB();
+    if(!session.date) return false;
+    if(session.date < today) return true;
+    if(session.date > today) return false;
+    const now = new Intl.DateTimeFormat("en-GB", {
+        timeZone:"Asia/Jakarta", hour:"2-digit", minute:"2-digit", hourCycle:"h23"
+    }).format(new Date());
+    return !!session.end && String(session.end) <= now;
+}
+
+function initStaffRecapPage(){
+    const isKoor = currentUser.role==="KOOR KP";
+    const div = document.getElementById("recapDivision");
+    const act = document.getElementById("recapActivity");
+    if(isKoor){
+        div.value = currentUser.division || "";
+        div.disabled = true;
+        act.value = "Ngoprek";
+        act.disabled = true;
+    }else{
+        div.disabled = false;
+        act.disabled = false;
+    }
+    document.getElementById("recapSubtitle").textContent = isKoor
+        ? "Rekap staf divisi " + (currentUser.division || "-") + " untuk kegiatan Ngoprek Anda. Klik baris untuk rincian."
+        : "Ringkasan kehadiran setiap staf. Klik baris untuk melihat rincian.";
+    renderStaffRecap();
+}
+
+function resetStaffRecapFilter(){
+    ["recapFrom","recapTo","recapSearch"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
+    if(currentUser.role==="HRD"){
+        document.getElementById("recapActivity").value = "";
+        document.getElementById("recapDivision").value = "";
+    }
+    renderStaffRecap();
+}
+
+function computeStaffRecap(){
+    const isKoor = currentUser.role==="KOOR KP";
+    const from = document.getElementById("recapFrom").value;
+    const to = document.getElementById("recapTo").value;
+    const activity = isKoor ? "Ngoprek" : document.getElementById("recapActivity").value;
+    const division = isKoor ? currentUser.division : document.getElementById("recapDivision").value;
+    const search = (document.getElementById("recapSearch").value || "").trim().toLowerCase();
+
+    let staff = load(DB.users).filter(u=>u.role==="STAF");
+    let sessions = load(DB.sessions);
+    let attendance = load(DB.attendance);
+
+    if(isKoor){
+        staff = staff.filter(u=>u.division===currentUser.division);
+        sessions = sessions.filter(s=>s.creatorId===currentUser.id && s.activity==="Ngoprek" && s.division===currentUser.division);
+        attendance = attendance.filter(a=>a.creatorId===currentUser.id && a.activity==="Ngoprek" && a.division===currentUser.division);
+    }
+    if(division) staff = staff.filter(u=>u.division===division);
+    if(search) staff = staff.filter(u=>
+        String(u.name||"").toLowerCase().includes(search) ||
+        String(u.username||"").toLowerCase().includes(search)
+    );
+
+    const inRange = d => (!from || d>=from) && (!to || d<=to);
+    sessions = sessions.filter(s=> inRange(s.date) && (!activity || s.activity===activity));
+    const sessionIds = new Set(sessions.map(s=>s.id));
+
+    const rows = staff.map(u=>{
+        const entries = [];
+
+        sessions.forEach(s=>{
+            const general = !s.division || s.division==="-";
+            const rec = attendance.find(a=>a.sessionId===s.id && a.userId===u.id);
+            // Catatan absensi yang sudah ada selalu dihitung (termasuk dari divisi lama jika staf pindah divisi).
+            if(rec){ entries.push({ date:s.date, activity:s.activity, status:rec.status, checkIn:rec.checkIn }); return; }
+            // Alpha hanya dihitung untuk sesi yang berlaku bagi divisi staf saat ini.
+            if(!general && s.division!==u.division) return;
+            if(isSessionEnded(s)) entries.push({ date:s.date, activity:s.activity, status:"Alpha", checkIn:null });
+        });
+
+        // Catatan absensi yang sesinya sudah tidak ada tetap dihitung.
+        attendance.filter(a=>a.userId===u.id && !sessionIds.has(a.sessionId)
+            && inRange(a.date) && (!activity || a.activity===activity))
+            .forEach(a=> entries.push({ date:a.date, activity:a.activity, status:a.status, checkIn:a.checkIn }));
+
+        const count = st => entries.filter(e=>e.status===st).length;
+        const total = entries.length;
+        const hadir = count("Hadir");
+        return {
+            id:u.id, name:u.name, username:u.username, division:u.division || "-",
+            hadir, izin:count("Izin"), sakit:count("Sakit"), alpha:count("Alpha"),
+            total, pct: total ? Math.round(hadir/total*100) : null,
+            entries: entries.sort((a,b)=> String(b.date).localeCompare(String(a.date)))
+        };
+    });
+
+    rows.sort((a,b)=> String(a.name).localeCompare(String(b.name)));
+    return rows;
+}
+
+function renderStaffRecap(){
+    if(currentUser?.role!=="HRD" && currentUser?.role!=="KOOR KP") return;
+    const container = document.getElementById("staffRecapTable");
+    if(!container) return;
+
+    recapRows = computeStaffRecap();
+    if(!recapRows.length){
+        container.innerHTML = emptyHTML("fa-user-check", "Tidak ada staf yang sesuai filter.");
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nama</th><th>NIM</th><th>Divisi</th>
+                        <th>Hadir</th><th>Izin</th><th>Sakit</th><th>Alpha</th><th>Total</th><th>% Hadir</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${recapRows.map(r=>`
+                        <tr class="recap-row" onclick="openRecapDetail('${r.id}')">
+                            <td><strong>${escapeHTML(r.name)}</strong></td>
+                            <td>${escapeHTML(r.username)}</td>
+                            <td>${escapeHTML(r.division)}</td>
+                            <td>${r.hadir}</td>
+                            <td>${r.izin}</td>
+                            <td>${r.sakit}</td>
+                            <td>${r.alpha}</td>
+                            <td>${r.total}</td>
+                            <td>${r.pct===null
+                                ? `<span style="color:#aaa;">-</span>`
+                                : `<span class="recap-pct">${r.pct}%</span><div class="recap-bar"><span style="width:${r.pct}%"></span></div>`}</td>
+                        </tr>
+                    `).join("")}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function openRecapDetail(userId){
+    const r = recapRows.find(x=>x.id===userId);
+    if(!r) return;
+    document.getElementById("recapDetailTitle").textContent = r.name + " (" + r.username + ")";
+    document.getElementById("recapDetailBody").innerHTML = `
+        <p style="font-size:12px;color:#777;margin-bottom:10px;">
+            ${escapeHTML(r.division)} • Hadir ${r.hadir} • Izin ${r.izin} • Sakit ${r.sakit} • Alpha ${r.alpha}
+            ${r.pct===null ? "" : " • " + r.pct + "% hadir"}
+        </p>
+        ${r.entries.length ? `
+        <div class="table-wrapper">
+            <table>
+                <thead><tr><th>Tanggal</th><th>Kegiatan</th><th>Jam</th><th>Status</th></tr></thead>
+                <tbody>
+                    ${r.entries.map(e=>`
+                        <tr>
+                            <td>${escapeHTML(e.date)}</td>
+                            <td>${escapeHTML(e.activity)}</td>
+                            <td>${e.checkIn ? formatTime(e.checkIn) : "-"}</td>
+                            <td>${statusBadge(e.status)}</td>
+                        </tr>
+                    `).join("")}
+                </tbody>
+            </table>
+        </div>` : emptyHTML("fa-calendar-xmark", "Belum ada kegiatan pada rentang ini.")}
+    `;
+    document.getElementById("recapDetailModal").classList.add("show");
+}
+
+function recapExportRows(){
+    return recapRows.map(r=>({
+        "Nama":r.name, "NIM":r.username, "Divisi":r.division,
+        "Hadir":r.hadir, "Izin":r.izin, "Sakit":r.sakit, "Alpha":r.alpha,
+        "Total Kegiatan":r.total, "% Hadir": r.pct===null ? "-" : r.pct + "%"
+    }));
+}
+
+function exportRecapExcel(){
+    if(currentUser?.role!=="HRD" && currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
+    if(!recapRows.length){ toast("Tidak ada data untuk diexport.","error"); return; }
+    const ws = XLSX.utils.json_to_sheet(recapExportRows());
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Rekap per Staf");
+    XLSX.writeFile(wb, "NEV-Absenku-Rekap-per-Staf.xlsx");
+    toast("Rekap per staf berhasil dibuat.","success");
+}
+
+function exportRecapPDF(){
+    if(currentUser?.role!=="HRD" && currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
+    if(!recapRows.length){ toast("Tidak ada data untuk diexport.","error"); return; }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF("landscape");
+    doc.setFontSize(18);
+    doc.text("NEV Absenku - Rekap per Staf", 14, 15);
+    doc.setFontSize(9);
+    const scope = currentUser.role==="KOOR KP" ? "Divisi: " + (currentUser.division || "-") : "Semua divisi (HRD)";
+    doc.text(scope, 14, 22);
+    doc.autoTable({
+        startY:28,
+        head:[["Nama","NIM","Divisi","Hadir","Izin","Sakit","Alpha","Total","% Hadir"]],
+        body:recapRows.map(r=>[r.name,r.username,r.division,r.hadir,r.izin,r.sakit,r.alpha,r.total,r.pct===null?"-":r.pct+"%"])
+    });
+    doc.save("NEV-Absenku-Rekap-per-Staf.pdf");
+    toast("PDF rekap per staf berhasil dibuat.","success");
+}
+
+
+/* =========================================================
+HAPUS DATA ABSENSI (HRD)
+========================================================= */
+
+async function purgeAttendanceData(){
+    if(currentUser?.role!=="HRD"){ toast("Hanya HRD yang dapat menghapus data absensi.","error"); return; }
+
+    const answer = prompt(
+        "PERINGATAN\n\n" +
+        "Semua sesi QR, data absensi, pengajuan izin/sakit, dan foto di Google Drive akan dihapus.\n" +
+        "Akun pengguna dan lokasi kantor tetap aman.\n\n" +
+        "Ketik HAPUS untuk melanjutkan:"
+    );
+    if(answer===null) return;
+    if(answer.trim()!=="HAPUS"){ toast("Dibatalkan: kata konfirmasi tidak sesuai.","error"); return; }
+
+    const btn = document.getElementById("btnPurgeData");
+    if(btn){ btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menghapus...'; }
+    toast("Menghapus data dan foto, mohon tunggu...","normal");
+
+    try{
+        const r = await purgeCloudData({ rows:true, photos:true });
+        renderAll();
+        if(r.photosFinished===false){
+            toast("Data dihapus. " + r.photosTrashed + " foto dipindah ke Trash; masih ada foto tersisa, jalankan lagi.","success");
+        }else{
+            toast("Data absensi dihapus. " + r.photosTrashed + " foto dipindah ke Trash Google Drive.","success");
+        }
+    }catch(err){
+        toast("Gagal menghapus data: " + friendlyCloudError(err),"error");
+    }finally{
+        if(btn){ btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-trash"></i> Hapus Data Absensi'; }
+    }
+}
+
 
 /* =========================================================
 CALENDAR
@@ -5757,6 +6233,8 @@ function renderSettings(){
     document.getElementById("settingName").value=currentUser.name;
     document.getElementById("settingUsername").value=currentUser.username;
     document.getElementById("settingRole").value=currentUser.role;
+    const purge=document.getElementById("hrdPurgeCard");
+    if(purge) purge.classList.toggle("hidden", currentUser.role!=="HRD");
 }
 
 async function saveSettings(){
@@ -5970,9 +6448,11 @@ function renderAll(){
     }
     if(currentUser.role==="HRD"){
         renderHRDDashboard(); renderHRDReport(); renderUsers(); renderQRSessionList("hrd"); populateSessionAttendancePicker();
+        if(document.getElementById("page-staff-recap")?.classList.contains("active")) renderStaffRecap();
     }
     if(currentUser.role==="KOOR KP"){
         renderKoorDashboard(); renderKoorAttendance(); renderQRSessionList("koor"); renderUsers();
+        if(document.getElementById("page-staff-recap")?.classList.contains("active")) renderStaffRecap();
     }
 }
 
@@ -6010,11 +6490,6 @@ function restoreLogin(){
 
 <!-- File tambahan: sinkronisasi terpusat ke Google Sheets & Google Drive -->
 <script src="cloud-sync.js"></script>
-<script>
-/* V15.1 compatibility bridge: make login handlers explicitly global. */
-window.selectLoginRole = window.selectLoginRole || selectLoginRole;
-window.login = window.login || login;
-</script>
 
 </body>
 </html>

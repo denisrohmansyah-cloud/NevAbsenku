@@ -1,6 +1,6 @@
 /**
  * =========================================================
- * NEV ABSENKU — Backend Terpusat v3
+ * NEV ABSENKU — Backend Terpusat v4
  * Google Sheets + Google Drive + autentikasi & pembatasan divisi
  * =========================================================
  *
@@ -28,7 +28,7 @@ const FALLBACK_FOLDER_NAMES = {
   presensi: "NEV Absenku - Foto Presensi"
 };
 
-const CODE_VERSION = "secure-v3";
+const CODE_VERSION = "secure-v4";
 
 const SHEET_USERS = "Users";
 const SHEET_SESSIONS = "Sessions";
@@ -430,6 +430,7 @@ function updateUser_(actor,data){
     if(user.id!==actor.id) throw new Error("Akses ditolak.");
   }
 
+  const oldName=user.name, oldUsername=user.username;
   if(data.name!==undefined && String(data.name).trim()) user.name=String(data.name).trim();
 
   // HRD dapat mengubah username/NIM, role, dan divisi.
@@ -445,6 +446,7 @@ function updateUser_(actor,data){
     let newRole=user.role;
     if(data.role!==undefined && String(data.role).trim()) newRole=String(data.role).trim().toUpperCase();
     if(!["STAF","KOOR KP","HRD"].includes(newRole)) throw new Error("Role tidak valid.");
+    if(user.id===actor.id && newRole!==user.role) throw new Error("Role akun Anda sendiri tidak dapat diubah.");
     user.role=newRole;
 
     if(newRole==="HRD"){
@@ -470,7 +472,26 @@ function updateUser_(actor,data){
   if(data.password) user.password=hashPassword_(String(data.password));
 
   objectsToSheet_(SHEET_USERS,users);
+
+  // Nama & Username/NIM tersimpan juga di riwayat absensi dan izin.
+  // Disinkronkan supaya rekap/pencarian memakai data terbaru.
+  if(user.name!==oldName || user.username!==oldUsername){
+    syncUserIdentity_(user);
+  }
   return safeUser_(user);
+}
+
+function syncUserIdentity_(user){
+  [SHEET_ATTENDANCE,SHEET_PERMITS].forEach(function(name){
+    const list=sheetToObjects_(name);
+    let changed=false;
+    list.forEach(function(r){
+      if(r.userId===user.id && (r.userName!==user.name || r.username!==user.username)){
+        r.userName=user.name; r.username=user.username; changed=true;
+      }
+    });
+    if(changed) objectsToSheet_(name,list);
+  });
 }
 
 function deleteUser_(actor,data){
@@ -488,6 +509,62 @@ function deleteUser_(actor,data){
 
   objectsToSheet_(SHEET_USERS,users.filter(u=>u.id!==id));
   return {ok:true};
+}
+
+/* =========================================================
+HAPUS DATA ABSENSI (reset)
+-----------------------------------------------------------
+Mengosongkan sheet Sessions, Attendance, Permits dan memindahkan
+semua foto di folder Drive ke Trash (bisa dipulihkan 30 hari).
+Sheet Users dan Settings TIDAK disentuh.
+========================================================= */
+function clearSheetRows_(name){
+  const sheet=getSheet_(name);
+  if(sheet.getLastRow()>=2){
+    sheet.getRange(2,1,sheet.getLastRow()-1,HEADERS[name].length).clearContent();
+  }
+}
+
+function trashFolderFiles_(kind,deadline){
+  let count=0, finished=true;
+  try{
+    const files=getPhotoFolder_(kind).getFiles();
+    while(files.hasNext()){
+      if(Date.now()>deadline){ finished=false; break; }
+      files.next().setTrashed(true);
+      count++;
+    }
+  }catch(err){ console.error("Hapus foto "+kind+" gagal:",err); finished=false; }
+  return {count:count,finished:finished};
+}
+
+function purgeData_(actor,data){
+  if(actor.role!=="HRD") throw new Error("Hanya HRD yang dapat menghapus data absensi.");
+  const opt=data||{};
+  const result={ok:true,photosTrashed:0,photosFinished:true};
+
+  if(opt.rows!==false){
+    clearSheetRows_(SHEET_ATTENDANCE);
+    clearSheetRows_(SHEET_PERMITS);
+    clearSheetRows_(SHEET_SESSIONS);
+  }
+
+  if(opt.photos!==false){
+    const deadline=Date.now()+4*60*1000; // sisakan waktu sebelum batas 6 menit Apps Script
+    ["selfie","permit","presensi"].forEach(function(kind){
+      const r=trashFolderFiles_(kind,deadline);
+      result.photosTrashed+=r.count;
+      if(!r.finished) result.photosFinished=false;
+    });
+  }
+  return result;
+}
+
+/* Alternatif manual: pilih fungsi ini di editor Apps Script lalu klik Run. */
+function resetDataAbsensi(){
+  const fakeHrd={role:"HRD"};
+  const r=withLock_(function(){ return purgeData_(fakeHrd,{}); });
+  Logger.log(JSON.stringify(r));
 }
 
 /* =========================================================
@@ -591,6 +668,9 @@ function doPost(e){
 
       case "deleteUser":
         return jsonResponse_(withLock_(()=>deleteUser_(actor,data)));
+
+      case "purgeData":
+        return jsonResponse_(withLock_(()=>purgeData_(actor,data)));
 
       case "deleteSession":
         return jsonResponse_(withLock_(()=>deleteSession_(actor,String(data.sessionId||""))));

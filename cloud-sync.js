@@ -1,45 +1,21 @@
 /* =========================================================
-   NEV ABSENKU — Sinkronisasi Terpusat (Google Sheets & Drive)
-   -----------------------------------------------------------
-   File terpisah, TIDAK mengubah tampilan lama. File ini membuat
-   semua data (akun, sesi/QR, absensi, pengaturan kantor, dan
-   FOTO selfie) benar-benar terpusat di satu Google Spreadsheet
-   + Google Drive, bukan lagi tersimpan sendiri-sendiri di
-   localStorage tiap HP/browser.
+   NEV ABSENKU V14.1 — CLOUD SYNC FIX
+   Google Apps Script + Google Sheets + Google Drive
 
-   CARA KERJA SINGKAT:
-   1. Backend-nya adalah Google Apps Script (file Code.gs yang
-      disertakan terpisah) yang di-deploy sebagai "Web App".
-      Script itu membaca/menulis 4 sheet di Spreadsheet Anda:
-      Users, Sessions, Attendance, Settings — dan menyimpan foto
-      selfie sebagai file di sebuah folder Google Drive.
-   2. File ini memanggil Web App tersebut lewat fetch():
-      - Saat aplikasi dibuka: ambil semua data terbaru dari
-        Google Sheets → isi ke localStorage (sebagai cache lokal
-        supaya tampilan tetap instan/​responsif).
-      - Setiap kali kode asli memanggil save(...), perubahan itu
-        OTOMATIS ikut dikirim ke Google Sheets (lihat override
-        fungsi save() di bawah).
-      - Saat STAF absen (ambil selfie), foto diunggah ke Google
-        Drive lebih dulu lewat Apps Script, baru linknya dicatat
-        di Google Sheets (bukan base64 mentah).
-      - Setiap ~20 detik, aplikasi menarik ulang data terbaru dari
-        Google Sheets, supaya QR/absensi yang dibuat di HP lain
-        ikut terlihat di perangkat ini.
-
-   YANG PERLU ANDA ISI:
-   Ganti CLOUD_SCRIPT_URL di bawah dengan URL "Web App" hasil
-   deploy Apps Script Anda (lihat panduan di Code.gs / README).
-   Selama URL belum diisi, aplikasi tetap berjalan seperti biasa
-   memakai localStorage saja (tidak ada yang rusak).
+   Perbaikan V14.1:
+   - polling cloud 30 detik
+   - TIDAK menggunakan focus/visibility auto-refresh
+   - cache-busting untuk bootstrap/getAll
+   - tidak hard-code versi server secure-v3
+   - login tidak diblokir hanya karena getAll gagal sementara
+   - error sinkronisasi ditampilkan lebih jelas saat badge diklik
+   - queue perubahan yang benar-benar gagal dikirim
+   - mempertahankan upload selfie/bukti izin ke Drive
 ========================================================= */
 
 const CLOUD_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby5iQt8AxuGmH6Xup3QvLOU1Op8VxnM9vxt4eqBVTmn0lMSTpfvtdYBXSPVOs1fx3lDKQ/exec";
-
-// Spreadsheet acuan (hanya untuk referensi/README — Apps Script yang
-// benar-benar membaca/menulis ke sini harus di-bind ke spreadsheet ini):
-// https://docs.google.com/spreadsheets/d/1E-JqBubHJAl_ym7Z3_FHoNBRh5FIjTL_Mh1pqOMkY_A/edit
-
+const CLOUD_POLL_MS = 30000;
+const CLOUD_QUEUE_KEY = "nev_cloud_queue_v14_1";
 const cloudSyncEnabled = typeof CLOUD_SCRIPT_URL === "string" && CLOUD_SCRIPT_URL.startsWith("http");
 
 const CLOUD_ACTION_BY_KEY = {
@@ -51,41 +27,29 @@ const CLOUD_ACTION_BY_KEY = {
 
 let cloudPollTimer = null;
 let cloudSyncBusy = false;
-
-// Diagnostik sinkronisasi (ditampilkan sebagai lencana di pojok kiri bawah)
 let cloudServerVersion = null;
 let cloudLastSyncAt = null;
 let cloudLastError = null;
-let cloudUnsynced = 0;        // jumlah data lokal yang belum ada di server
+let cloudUnsynced = 0;
 let cloudFlushing = false;
-let cloudLastFlushAt = 0;
 
+const _localSave = save;
 
 /* =========================================================
-OVERRIDE save() — setiap perubahan lokal ikut dikirim ke cloud
+   RESET DATA LOKAL LAMA (sekali per perangkat)
+   Menghapus cache absensi/sesi/izin lama beserta antrean sinkronisasi,
+   supaya data lama tidak terkirim ulang ke server setelah data pusat dibersihkan.
+   Ubah nilai DATA_EPOCH jika suatu saat perlu mengulang pembersihan.
 ========================================================= */
-
-const _localSave = save; // simpan referensi fungsi save() versi localStorage asli
-
-// PENTING: pakai assignment biasa (function expression), BUKAN "function save(){}".
-// Deklarasi "function save(){}" akan di-hoist ke atas SEBELUM baris di atas
-// sempat berjalan, sehingga _localSave malah menyalin dirinya sendiri dan
-// menyebabkan infinite recursion saat dipanggil.
-save = function(key, data){
-    sanitizeList(key, data); // pastikan tanggal/jam tidak pernah berbentuk ISO (…T17:00:00.000Z)
-    _localSave(key, data);
-    pushToCloud(key, data);
-};
-
-function sanitizeList(key, data){
-    if(!Array.isArray(data)) return;
-    data.forEach(o=>{
-        if(!o) return;
-        if(key === DB.sessions){ o.date = fixDateField(o.date); o.start = fixTimeField(o.start); o.end = fixTimeField(o.end); }
-        if(key === DB.attendance){ o.date = fixDateField(o.date); }
-        if(key === DB.permits){ o.sessionDate = fixDateField(o.sessionDate); }
-    });
-}
+const DATA_EPOCH = "reset-2026-10-01";
+(function resetLocalOldData(){
+    try{
+        if(localStorage.getItem("nev_data_epoch") === DATA_EPOCH) return;
+        [DB.sessions, DB.attendance, DB.permits].forEach(k=> localStorage.removeItem(k));
+        localStorage.removeItem(CLOUD_QUEUE_KEY);
+        localStorage.setItem("nev_data_epoch", DATA_EPOCH);
+    }catch(e){ console.warn("Reset data lokal gagal:", e); }
+})();
 
 function getAuthToken(){
     return localStorage.getItem("nev_auth_token") || "";
@@ -94,6 +58,10 @@ function getAuthToken(){
 function clearAuthSession(){
     localStorage.removeItem("nev_auth_token");
     localStorage.removeItem("nev_current_user");
+}
+
+function cacheBust(url){
+    return url + (url.indexOf("?") >= 0 ? "&" : "?") + "_ts=" + Date.now();
 }
 
 function cloudPayload(action, data){
@@ -105,58 +73,42 @@ function cloudPayload(action, data){
     return JSON.stringify(body);
 }
 
-function pushToCloud(key, data){
-    if(!cloudSyncEnabled) return;
-    const action = CLOUD_ACTION_BY_KEY[key];
-    if(!action) return;
-    if(!getAuthToken()) return;
-
-    fetch(CLOUD_SCRIPT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" }, // hindari CORS preflight ke Apps Script
-        body: cloudPayload(action, data)
-    }).catch(err=>{
-        console.error("Gagal sinkron ke Google Sheets:", err);
-        toast("Gagal menyinkronkan data ke Google Sheets. Periksa koneksi internet.", "error");
-    });
+function getCloudQueue(){
+    try{
+        const q = JSON.parse(localStorage.getItem(CLOUD_QUEUE_KEY) || "[]");
+        return Array.isArray(q) ? q : [];
+    }catch(e){ return []; }
 }
 
-
-/* =========================================================
-KIRIM KE APPS SCRIPT (dengan percobaan ulang & pesan error jelas)
-Aman diulang: server menolak duplikat (id/sesi+user yang sama).
-========================================================= */
-
-async function cloudPost(action, data, retries){
-    const maxRetry = retries ?? 1;
-    let lastErr;
-
-    for(let attempt=0; attempt<=maxRetry; attempt++){
-        try{
-            const res = await fetch(CLOUD_SCRIPT_URL, {
-                method: "POST",
-                headers: { "Content-Type": "text/plain;charset=utf-8" },
-                body: cloudPayload(action, data)
-            });
-            const text = await res.text();
-
-            let json;
-            try{ json = JSON.parse(text); }
-            catch(e){ throw new Error("Respons server bukan JSON (periksa deploy Apps Script & izin akses 'Anyone')."); }
-
-            if(!json.ok){
-                const serverErr = new Error(json.error || "Server menolak permintaan.");
-                serverErr.fatal = true; // error dari server tidak akan sembuh dengan mengulang
-                throw serverErr;
-            }
-            return json;
-        }catch(err){
-            lastErr = err;
-            if(err.fatal) break;
-            if(attempt < maxRetry) await new Promise(r=> setTimeout(r, 1500));
-        }
+function setCloudQueue(q){
+    try{ localStorage.setItem(CLOUD_QUEUE_KEY, JSON.stringify(q)); }
+    catch(e){
+        console.error("Queue cloud penuh/tidak dapat disimpan:", e);
+        cloudLastError = "Queue sinkronisasi lokal penuh. Coba hapus cache aplikasi setelah data aman.";
     }
-    throw lastErr;
+}
+
+function queueCloudAction(action, data){
+    if(!action || data === undefined) return;
+    const q = getCloudQueue();
+    // Satu antrean terbaru untuk setiap save-* action agar tidak menumpuk.
+    const replaceable = ["saveSessions","saveAttendance","saveSettings","savePermits"].includes(action);
+    if(replaceable){
+        const idx = q.findIndex(x=>x.action===action);
+        const item = { id:"Q-"+Date.now()+"-"+Math.random().toString(36).slice(2), action, data, createdAt:new Date().toISOString() };
+        if(idx >= 0) q[idx] = item; else q.push(item);
+    }else{
+        q.push({ id:"Q-"+Date.now()+"-"+Math.random().toString(36).slice(2), action, data, createdAt:new Date().toISOString() });
+    }
+    setCloudQueue(q);
+    cloudUnsynced = q.length;
+    updateCloudBadge();
+}
+
+function removeCloudQueueItem(id){
+    const q = getCloudQueue().filter(x=>x.id!==id);
+    setCloudQueue(q);
+    cloudUnsynced = q.length;
 }
 
 function friendlyCloudError(err){
@@ -164,406 +116,409 @@ function friendlyCloudError(err){
     if(/failed to fetch|networkerror|load failed|network request failed/i.test(msg)){
         return "koneksi ke Google terputus atau terlalu lambat";
     }
-    return msg.slice(0, 160) || "kesalahan tidak diketahui";
+    if(/respons server bukan json/i.test(msg)){
+        return "Web App Apps Script tidak mengembalikan JSON; periksa Deployment dan akses Anyone";
+    }
+    return msg.slice(0, 220) || "kesalahan tidak diketahui";
 }
 
+async function cloudPost(action, data, retries){
+    const maxRetry = retries ?? 1;
+    let lastErr;
+
+    for(let attempt=0; attempt<=maxRetry; attempt++){
+        try{
+            const res = await fetch(cacheBust(CLOUD_SCRIPT_URL), {
+                method:"POST",
+                cache:"no-store",
+                headers:{"Content-Type":"text/plain;charset=utf-8"},
+                body:cloudPayload(action,data)
+            });
+            const text = await res.text();
+            let json;
+            try{ json = JSON.parse(text); }
+            catch(e){ throw new Error("Respons server bukan JSON. Periksa Deployment Apps Script dan akses 'Anyone'."); }
+
+            if(json && json.authExpired){
+                const e = new Error(json.error || "Sesi login sudah kedaluwarsa.");
+                e.authExpired = true;
+                e.fatal = true;
+                throw e;
+            }
+            if(!json || !json.ok){
+                const e = new Error((json && json.error) || (res.status ? "HTTP "+res.status : "Server menolak permintaan."));
+                e.fatal = true;
+                throw e;
+            }
+            return json;
+        }catch(err){
+            lastErr = err;
+            if(err.authExpired){
+                clearAuthSession();
+                if(typeof currentUser !== "undefined") currentUser = null;
+            }
+            if(err.fatal) break;
+            if(attempt < maxRetry) await new Promise(r=>setTimeout(r,1500));
+        }
+    }
+    throw lastErr || new Error("Cloud request gagal.");
+}
 
 /* =========================================================
-PEMBERSIH DATA DARI GOOGLE SHEETS
-Sheets bisa mengubah teks "2026-09-28" / "08:00" menjadi Date, sehingga
-kembali sebagai "2026-09-27T17:00:00.000Z". Dinormalkan lagi ke WIB.
+   HAPUS DATA ABSENSI (HRD) — sesi, absensi, izin/sakit + foto di Drive
+   Akun pengguna dan lokasi/radius kantor TIDAK ikut terhapus.
 ========================================================= */
-
-const _wibDate = new Intl.DateTimeFormat("en-CA", { timeZone:"Asia/Jakarta", year:"numeric", month:"2-digit", day:"2-digit" });
-const _wibTime = new Intl.DateTimeFormat("en-GB", { timeZone:"Asia/Jakarta", hour:"2-digit", minute:"2-digit", hourCycle:"h23" });
-const _isoDateTime = /^\d{4}-\d{2}-\d{2}T/;
-
-function fixDateField(v){
-    if(typeof v === "string" && _isoDateTime.test(v)){
-        const d = new Date(v);
-        if(!isNaN(d)) return _wibDate.format(d);
-    }
-    return v;
-}
-
-function fixTimeField(v){
-    if(typeof v === "string" && _isoDateTime.test(v)){
-        const d = new Date(v);
-        if(!isNaN(d)) return _wibTime.format(d);
-    }
-    return v;
-}
-
-function sanitizeCloudData(json){
-    (json.sessions || []).forEach(s=>{ s.date = fixDateField(s.date); s.start = fixTimeField(s.start); s.end = fixTimeField(s.end); });
-    (json.attendance || []).forEach(a=>{ a.date = fixDateField(a.date); });
-    (json.permits || []).forEach(p=>{ p.sessionDate = fixDateField(p.sessionDate); });
+async function purgeCloudData(options){
+    const json = await cloudPost("purgeData", options || {}, 0);
+    setCloudQueue([]);
+    cloudUnsynced = 0;
+    [DB.sessions, DB.attendance, DB.permits].forEach(k=> _localSave(k, []));
+    updateCloudBadge();
     return json;
 }
 
+/* =========================================================
+   OVERRIDE save()
+========================================================= */
+save = function(key,data){
+    sanitizeList(key,data);
+    _localSave(key,data);
+    pushToCloud(key,data);
+};
+
+function sanitizeList(key,data){
+    if(!Array.isArray(data)) return;
+    data.forEach(o=>{
+        if(!o) return;
+        if(key===DB.sessions){ o.date=fixDateField(o.date); o.start=fixTimeField(o.start); o.end=fixTimeField(o.end); }
+        if(key===DB.attendance){ o.date=fixDateField(o.date); }
+        if(key===DB.permits){ o.sessionDate=fixDateField(o.sessionDate); }
+    });
+}
+
+function pushToCloud(key,data){
+    if(!cloudSyncEnabled || !getAuthToken()) return;
+    const action = CLOUD_ACTION_BY_KEY[key];
+    if(!action) return;
+    cloudPost(action,data,1).then(()=>{
+        cloudLastError=null;
+        cloudUnsynced=getCloudQueue().length;
+        updateCloudBadge();
+    }).catch(err=>{
+        if(err.authExpired) return;
+        console.error("Gagal sinkron ke Google Sheets:",err);
+        queueCloudAction(action,data);
+        cloudLastError=friendlyCloudError(err);
+        updateCloudBadge();
+    });
+}
 
 /* =========================================================
-AMBIL SEMUA DATA TERBARU DARI GOOGLE SHEETS
+   NORMALISASI TANGGAL/JAM WIB
 ========================================================= */
+const _wibDate = new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jakarta",year:"numeric",month:"2-digit",day:"2-digit"});
+const _wibTime = new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Jakarta",hour:"2-digit",minute:"2-digit",hourCycle:"h23"});
+const _isoDateTime = /^\d{4}-\d{2}-\d{2}T/;
 
-function isLegacyAttendanceRecord(a){
-    return !a || !a.id || !a.userId || !a.sessionId ||
-        !/^\d{4}-\d{2}-\d{2}$/.test(String(a.date||"")) ||
-        !["Hadir","Izin","Sakit","Alpha"].includes(String(a.status||""));
-}
-
-async function removeLegacyAttendanceFromServer(records){
-    if(!records.length || !getAuthToken()) return;
-    // Hanya HRD yang boleh membersihkan data legacy. Untuk akun lain cukup disembunyikan.
-    if(typeof currentUser === "undefined" || currentUser?.role !== "HRD") return;
-    for(const rec of records.slice(0,50)){
-        try{ await cloudPost("deleteAttendance", {attendanceId:rec.id}, 0); }
-        catch(err){ console.warn("Legacy attendance belum dapat dihapus:", rec.id, err); }
+function fixDateField(v){
+    if(typeof v==="string" && _isoDateTime.test(v)){
+        const d=new Date(v); if(!isNaN(d)) return _wibDate.format(d);
     }
+    return v;
+}
+function fixTimeField(v){
+    if(typeof v==="string" && _isoDateTime.test(v)){
+        const d=new Date(v); if(!isNaN(d)) return _wibTime.format(d);
+    }
+    return v;
+}
+function sanitizeCloudData(json){
+    (json.sessions||[]).forEach(s=>{s.date=fixDateField(s.date);s.start=fixTimeField(s.start);s.end=fixTimeField(s.end);});
+    (json.attendance||[]).forEach(a=>{a.date=fixDateField(a.date);});
+    (json.permits||[]).forEach(p=>{p.sessionDate=fixDateField(p.sessionDate);});
+    return json;
 }
 
+/* =========================================================
+   GET ALL
+========================================================= */
 async function fetchCloudAll(){
     if(!cloudSyncEnabled) return false;
+    const token=getAuthToken();
+    if(!token) return false;
     try{
-        const token=getAuthToken();
-        if(!token) return false;
-        const res=await fetch(`${CLOUD_SCRIPT_URL}?action=getAll&authToken=${encodeURIComponent(token)}&_=${Date.now()}`,{cache:"no-store"});
-        const json=await res.json();
+        const res=await fetch(cacheBust(`${CLOUD_SCRIPT_URL}?action=getAll&authToken=${encodeURIComponent(token)}`),{cache:"no-store"});
+        const text=await res.text();
+        let json;
+        try{json=JSON.parse(text);}catch(e){throw new Error("Respons getAll bukan JSON. Periksa Deployment Apps Script dan akses 'Anyone'.");}
         if(json && json.authExpired){
             clearAuthSession();
             if(typeof currentUser!=="undefined") currentUser=null;
-            return false;
+            throw new Error(json.error||"Sesi login kedaluwarsa.");
         }
-        if(!json || !json.ok) throw new Error((json&&json.error)||"Respons tidak valid");
+        if(!json || !json.ok) throw new Error((json&&json.error)||("HTTP "+(res.status||"?")));
         sanitizeCloudData(json);
 
-        const serverAttendance=json.attendance||[];
-        const legacy=serverAttendance.filter(isLegacyAttendanceRecord);
-        const cleanAttendance=serverAttendance.filter(a=>!isLegacyAttendanceRecord(a));
-
-        // Bersihkan cache lokal dari data legacy/malformed agar tidak muncul lagi.
-        const localAttendance=(load(DB.attendance)||[]).filter(a=>!isLegacyAttendanceRecord(a));
         _localSave(DB.users,json.users||[]);
         _localSave(DB.sessions,json.sessions||[]);
-        _localSave(DB.attendance,cleanAttendance);
+        _localSave(DB.attendance,json.attendance||[]);
         _localSave(DB.settings,json.settings||{officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
         _localSave(DB.permits,json.permits||[]);
 
-        cloudUnsynced=0;
         cloudServerVersion=json.version||null;
         cloudLastSyncAt=new Date();
         cloudLastError=null;
+        cloudUnsynced=getCloudQueue().length;
         updateCloudBadge();
 
-        if(legacy.length) removeLegacyAttendanceFromServer(legacy);
+        if(cloudUnsynced) await flushCloudQueue();
         return true;
     }catch(err){
         console.error("Gagal mengambil data dari Google Sheets:",err);
-        cloudLastError=String((err&&err.message)||err);
+        cloudLastError=friendlyCloudError(err);
         updateCloudBadge();
         return false;
     }
 }
 
-/** Kirim ulang data lokal yang belum tersimpan di server (aman diulang: server menolak duplikat). */
-async function flushUnsynced(att, per){
-    if(cloudFlushing || Date.now() - cloudLastFlushAt < 30000) return;
-    cloudFlushing = true;
-    cloudLastFlushAt = Date.now();
-    updateCloudBadge();
+async function flushCloudQueue(){
+    if(cloudFlushing || !getAuthToken()) return;
+    const q=getCloudQueue();
+    if(!q.length){cloudUnsynced=0;updateCloudBadge();return;}
+    cloudFlushing=true;
     try{
-        for(const r of att){
-            try{ await cloudPost("addAttendance", r, 1); }
-            catch(e){ console.error("Kirim ulang absensi gagal:", e); }
-        }
-        for(const p of per){
-            try{ await cloudPost("addPermit", p, 1); }
-            catch(e){ console.error("Kirim ulang pengajuan gagal:", e); }
+        for(const item of q.slice()){
+            try{
+                await cloudPost(item.action,item.data,1);
+                removeCloudQueueItem(item.id);
+            }catch(err){
+                if(err.authExpired) break;
+                console.error("Queue cloud gagal:",err);
+            }
         }
     }finally{
-        cloudFlushing = false;
+        cloudFlushing=false;
+        cloudUnsynced=getCloudQueue().length;
+        updateCloudBadge();
     }
-    const ok = await fetchCloudAll();
-    if(ok && currentUser) renderAll();
 }
-
-function startCloudPolling(){
-    if(!cloudSyncEnabled || cloudPollTimer) return;
-    cloudPollTimer = setInterval(async ()=>{
-        if(cloudSyncBusy) return;
-        const ok = await fetchCloudAll();
-        if(ok && currentUser) renderAll();
-    }, 30000);
-}
-
 
 /* =========================================================
-LENCANA STATUS SINKRONISASI (pojok kiri bawah)
-Ketuk untuk menyegarkan data dari Google Sheets sekarang juga.
+   LOGIN — cepat, sinkronisasi cloud berjalan setelah dashboard tampil
 ========================================================= */
+window.login = async function(event){
+    if(event && event.preventDefault) event.preventDefault();
+    if(typeof setLoginLoading==="function") setLoginLoading(true);
+    try{
+    const username=(document.getElementById("loginUsername")?.value||"").trim();
+    const password=document.getElementById("loginPassword")?.value||"";
+    try{
+        const result=await cloudPost("login",{username,password,role:loginRole},1);
+        if(!result || !result.ok || !result.user){
+            toast(result?.error||"Username, password, atau role tidak sesuai.","error");
+            return;
+        }
+        currentUser=result.user;
+        if(result.authToken) localStorage.setItem("nev_auth_token",result.authToken);
+        localStorage.setItem("nev_current_user",JSON.stringify(currentUser));
 
+        document.getElementById("loginScreen")?.classList.add("hidden");
+        document.getElementById("app")?.classList.remove("hidden");
+        buildSidebar(); updateUserUI();
+        if(currentUser.role==="STAF") showPage("staf-dashboard");
+        else if(currentUser.role==="HRD") showPage("hrd-dashboard");
+        else if(currentUser.role==="KOOR KP") showPage("koor-dashboard");
+        updateCloudBadge();
+
+        // Jangan gagalkan login hanya karena getAll sedang timeout/gagal.
+        const synced=await fetchCloudAll();
+        if(!synced){
+            toast("Login berhasil. Sinkronisasi pusat sementara gagal; coba ketuk status Cloud.","error");
+        }else if(typeof renderAll==="function"){
+            renderAll();
+        }
+    }catch(err){
+        console.error("Login error:",err);
+        toast("Login gagal: "+friendlyCloudError(err),"error");
+    }
+    }finally{
+        if(typeof setLoginLoading==="function") setLoginLoading(false);
+    }
+};
+
+/* =========================================================
+   BADGE DIAGNOSIS
+========================================================= */
 function updateCloudBadge(){
-    let el = document.getElementById("cloudBadge");
-    if(typeof currentUser === "undefined" || !currentUser){ if(el) el.remove(); return; }
-
+    let el=document.getElementById("cloudBadge");
+    if(typeof currentUser==="undefined" || !currentUser){if(el)el.remove();return;}
     if(!el){
-        el = document.createElement("button");
-        el.id = "cloudBadge";
-        el.type = "button";
-        el.style.cssText = "position:fixed;right:16px;bottom:16px;z-index:9999;border:0;border-radius:999px;padding:8px 14px;font:600 12px Inter,sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);max-width:calc(100vw - 24px);";
-        el.onclick = ()=> manualCloudRefresh(false);
-        document.body.appendChild(el);
+        el=document.createElement("button"); el.id="cloudBadge"; el.type="button";
+        el.style.cssText="position:fixed;right:12px;bottom:12px;left:auto;z-index:9999;border:0;border-radius:999px;padding:8px 14px;font:600 12px Inter,sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);max-width:calc(100vw - 24px);";
+        el.onclick=()=>manualCloudRefresh(false); document.body.appendChild(el);
     }
-
-    let text, bg, fg = "#fff";
-    if(!cloudSyncEnabled){
-        text = "⚠ MODE OFFLINE: CLOUD_SCRIPT_URL di cloud-sync.js belum diisi — data TIDAK terkirim ke HRD"; bg = "#c62828";
-    }else if(cloudUnsynced > 0){
-        text = "⏳ " + cloudUnsynced + " data belum terkirim ke server — sedang dikirim ulang…"; bg = "#ef6c00";
-    }else if(cloudLastError){
-        text = "⚠ Gagal sinkron — ketuk untuk coba lagi"; bg = "#c62828";
-    }else{
-
-        const t = cloudLastSyncAt ? cloudLastSyncAt.toLocaleTimeString("id-ID") : "-";
-        text = "☁ Tersinkron " + t + " · ketuk untuk segarkan"; bg = "#2e7d32";
-    }
-    el.textContent = text;
-    el.style.background = bg;
-    el.style.color = fg;
+    let text,bg;
+    if(!cloudSyncEnabled){text="⚠ CLOUD OFFLINE";bg="#c62828";}
+    else if(cloudUnsynced>0){text="⏳ "+cloudUnsynced+" antrean sinkronisasi";bg="#ef6c00";}
+    else if(cloudLastError){text="⚠ Gagal sinkron — ketuk untuk detail/retry";bg="#c62828";}
+    else{const t=cloudLastSyncAt?cloudLastSyncAt.toLocaleTimeString("id-ID"):"-";text="☁ Tersinkron "+t+" · ketuk untuk segarkan";bg="#2e7d32";}
+    el.textContent=text;el.style.background=bg;el.style.color="#fff";
 }
 
 async function manualCloudRefresh(silent){
     if(!cloudSyncEnabled || cloudSyncBusy) return;
-    const ok = await fetchCloudAll();
-    if(ok && currentUser) renderAll();
-    if(!silent) toast(ok ? "Data berhasil disegarkan dari Google Sheets." : "Gagal mengambil data dari Google Sheets.", ok ? "success" : "error");
+    const ok=await fetchCloudAll();
+    if(ok && currentUser && typeof renderAll==="function") renderAll();
+    if(!silent){
+        if(ok) toast("Data berhasil disegarkan dari Google Sheets.","success");
+        else toast("Gagal sinkron: "+(cloudLastError||"alasan tidak diketahui"),"error");
+    }
 }
 
+function startCloudPolling(){
+    if(!cloudSyncEnabled || cloudPollTimer) return;
+    cloudPollTimer=setInterval(async()=>{
+        if(cloudSyncBusy || !getAuthToken()) return;
+        const ok=await fetchCloudAll();
+        if(ok && currentUser && typeof renderAll==="function") renderAll();
+    },CLOUD_POLL_MS);
+}
 
 /* =========================================================
-OVERRIDE finalizeAttendance() — unggah foto ke Drive dulu,
-baru catat absensi (beserta link foto) ke Google Sheets
+   ATTENDANCE + FOTO DRIVE
 ========================================================= */
+async function finalizeAttendance(session,token,location,photo){
+    const attendance=load(DB.attendance);
+    const duplicate=attendance.find(a=>a.sessionId===session.id&&a.userId===currentUser.id);
+    if(duplicate){toast("Anda sudah melakukan absensi pada kegiatan ini.","error");return;}
 
-async function finalizeAttendance(session, token, location, photo){
-    const attendance = load(DB.attendance);
-    const duplicate = attendance.find(a=> a.sessionId===session.id && a.userId===currentUser.id);
-    if(duplicate){
-        toast("Anda sudah melakukan absensi pada kegiatan ini.", "error");
-        return;
-    }
-
-    const record = {
-        id: "ATT-"+Date.now(), sessionId: session.id, token: session.token,
-        userId: currentUser.id, userName: currentUser.name, username: currentUser.username,
-        activity: session.activity, division: session.division, date: session.date,
-        checkIn: new Date().toISOString(), status: "Hadir",
-        creatorId: session.creatorId, creatorRole: session.creatorRole,
-        lat: location ? location.lat : null,
-        lng: location ? location.lng : null,
-        photo: photo || null // sementara masih base64, akan diganti link Drive di bawah
+    const record={
+        id:"ATT-"+Date.now(),sessionId:session.id,token:session.token,userId:currentUser.id,
+        userName:currentUser.name,username:currentUser.username,activity:session.activity,
+        division:session.division,date:session.date,checkIn:new Date().toISOString(),status:"Hadir",
+        creatorId:session.creatorId,creatorRole:session.creatorRole,lat:location?location.lat:null,
+        lng:location?location.lng:null,photo:photo||null
     };
 
-    // Mode offline / URL Apps Script belum diisi: perilaku sama seperti sebelumnya.
     if(!cloudSyncEnabled){
-        attendance.push(record);
-        save(DB.attendance, attendance);
-        toast("Absensi hanya tersimpan di perangkat ini (mode offline) — BELUM terkirim ke HRD.", "error");
-        updateScannerStatus(`Tersimpan lokal saja: ${session.activity}. Belum terkirim ke server.`, "error");
-        const manualInput = document.getElementById("manualToken");
-        if(manualInput) manualInput.value = "";
-        renderAll();
-        return;
+        attendance.push(record);_localSave(DB.attendance,attendance);
+        toast("Absensi hanya tersimpan di perangkat ini — BELUM terkirim ke HRD.","error");
+        updateScannerStatus(`Tersimpan lokal saja: ${session.activity}. Belum terkirim ke server.`,"error");
+        const manualInput=document.getElementById("manualToken");if(manualInput)manualInput.value="";
+        renderAll();return;
     }
 
-    cloudSyncBusy = true;
-    toast("Mengunggah foto & menyimpan absensi ke Google Sheets...", "normal");
-
+    cloudSyncBusy=true;toast("Mengunggah foto & menyimpan absensi ke Google Sheets...","normal");
     try{
-        const json = await cloudPost("addAttendance", record);
-
-        const saved = json.record || record; // record.photo sudah berupa link Drive dari server
-
-        // Verifikasi: tarik ulang dari Google Sheets & pastikan barisnya benar-benar ada.
-        const refreshed = await fetchCloudAll();
-        const list = load(DB.attendance);
-        const found = list.some(a=> a.id===saved.id || (a.sessionId===saved.sessionId && a.userId===saved.userId));
-        if(refreshed && !found){
-            throw new Error("absensi terkirim tetapi belum terbaca di Google Sheets. Pastikan Code.gs sudah di-deploy ulang (New version)");
-        }
-        if(!found){
-            list.push(saved);
-            _localSave(DB.attendance, list); // fetch gagal: simpan di cache lokal saja
-        }
-
-        toast(`Absensi ${session.activity} berhasil & terverifikasi di Google Sheets.`, "success");
-        updateScannerStatus(`Berhasil hadir: ${session.activity}${session.division!=="-" ? " • "+session.division : ""}`, "success");
-        const manualInput = document.getElementById("manualToken");
-        if(manualInput) manualInput.value = "";
+        const json=await cloudPost("addAttendance",record,1);
+        const saved=json.record||record;
+        const refreshed=await fetchCloudAll();
+        const list=load(DB.attendance)||[];
+        const found=list.some(a=>a.id===saved.id||(a.sessionId===saved.sessionId&&a.userId===saved.userId));
+        if(!found) list.push(saved);
+        if(!refreshed) _localSave(DB.attendance,list);
+        toast(`Absensi ${session.activity} berhasil & tersimpan di Google Sheets.` ,"success");
+        updateScannerStatus(`Berhasil hadir: ${session.activity}${session.division!=="-"?" • "+session.division:""}`,"success");
+        const manualInput=document.getElementById("manualToken");if(manualInput)manualInput.value="";
         renderAll();
     }catch(err){
-        console.error("Gagal menyimpan absensi ke Google Sheets:", err);
-        toast(`Gagal menyimpan absensi: ${friendlyCloudError(err)}. Silakan coba lagi.`, "error");
-    }finally{
-        cloudSyncBusy = false;
-    }
+        console.error("Gagal menyimpan absensi:",err);
+        const list=load(DB.attendance)||[];
+        record.syncPending=true;
+        if(!list.some(a=>a.id===record.id)) list.push(record);
+        _localSave(DB.attendance,list);
+        queueCloudAction("addAttendance",record);
+        cloudLastError=friendlyCloudError(err);updateCloudBadge();
+        toast(`Absensi disimpan sementara. Gagal sinkron: ${friendlyCloudError(err)}.`,"error");
+    }finally{cloudSyncBusy=false;}
 }
 
-
 /* =========================================================
-OVERRIDE submitPermit() — unggah foto bukti izin/sakit ke Drive
-dulu, baru catat pengajuan (beserta link foto) ke Google Sheets
+   PERMIT + FOTO DRIVE
 ========================================================= */
-
 async function submitPermit(event){
     event.preventDefault();
+    const sessionId=document.getElementById("permitSession").value;
+    const type=document.getElementById("permitType").value;
+    const reason=document.getElementById("permitReason").value.trim();
+    if(!sessionId){toast("Pilih kegiatan terlebih dahulu.","error");return;}
+    if(!reason){toast("Alasan wajib diisi.","error");return;}
+    if(!pendingPermitPhoto){toast("Lampirkan foto bukti terlebih dahulu.","error");return;}
+    const sessions=load(DB.sessions); const session=sessions.find(s=>s.id===sessionId);
+    if(!session){toast("Kegiatan tidak ditemukan.","error");return;}
+    const permit=buildPermitRecord(session,type,reason,pendingPermitPhoto);
 
-    const sessionId = document.getElementById("permitSession").value;
-    const type = document.getElementById("permitType").value;
-    const reason = document.getElementById("permitReason").value.trim();
-
-    if(!sessionId){ toast("Pilih kegiatan terlebih dahulu.", "error"); return; }
-    if(!reason){ toast("Alasan wajib diisi.", "error"); return; }
-    if(!pendingPermitPhoto){ toast("Lampirkan foto bukti terlebih dahulu.", "error"); return; }
-
-    const sessions = load(DB.sessions);
-    const session = sessions.find(s=>s.id===sessionId);
-    if(!session){ toast("Kegiatan tidak ditemukan.", "error"); return; }
-
-    const permit = buildPermitRecord(session, type, reason, pendingPermitPhoto);
-
-    // Mode offline / URL Apps Script belum diisi: perilaku sama seperti sebelumnya.
     if(!cloudSyncEnabled){
-        const permits = load(DB.permits);
-        permits.push(permit);
-        save(DB.permits, permits);
-        resetPermitForm();
-        renderPermitHistory();
-        toast(`Pengajuan ${type} berhasil dikirim, menunggu persetujuan.`, "success");
-        return;
+        const permits=load(DB.permits);permits.push(permit);_localSave(DB.permits,permits);
+        resetPermitForm();renderPermitHistory();toast(`Pengajuan ${type} berhasil dikirim, menunggu persetujuan.`,"success");return;
     }
 
-    cloudSyncBusy = true;
-    toast("Mengunggah foto bukti & mengirim pengajuan ke Google Sheets...", "normal");
-
+    cloudSyncBusy=true;toast("Mengunggah foto bukti & mengirim pengajuan ke Google Sheets...","normal");
     try{
-        const json = await cloudPost("addPermit", permit);
-
-        const saved = json.record || permit; // record.photo sudah berupa link Drive dari server
-        const list = load(DB.permits);
-        list.push(saved);
-        _localSave(DB.permits, list); // cache lokal saja, sudah tersimpan di server
-
-        resetPermitForm();
-        renderPermitHistory();
-        toast(`Pengajuan ${type} berhasil dikirim & tersimpan di Google Sheets.`, "success");
+        const json=await cloudPost("addPermit",permit,1); const saved=json.record||permit;
+        const list=load(DB.permits)||[];
+        if(!list.some(p=>p.id===saved.id)) list.push(saved);
+        _localSave(DB.permits,list);
+        resetPermitForm();renderPermitHistory();toast(`Pengajuan ${type} berhasil dikirim & tersimpan di Google Sheets.`,"success");
     }catch(err){
-        console.error("Gagal mengirim pengajuan izin/sakit ke Google Sheets:", err);
-        toast(`Gagal mengirim pengajuan: ${friendlyCloudError(err)}. Silakan coba lagi.`, "error");
-    }finally{
-        cloudSyncBusy = false;
-    }
+        console.error("Gagal mengirim pengajuan:",err);
+        permit.syncPending=true;_localSave(DB.permits,(load(DB.permits)||[]).concat([permit]));
+        queueCloudAction("addPermit",permit);cloudLastError=friendlyCloudError(err);updateCloudBadge();
+        toast(`Pengajuan disimpan sementara. Gagal sinkron: ${friendlyCloudError(err)}.`,"error");
+    }finally{cloudSyncBusy=false;}
 }
 
-
 /* =========================================================
-LOADER SAAT MENGAMBIL DATA PERTAMA KALI
+   BOOT
 ========================================================= */
-
-function showCloudLoader(show){
-    let el = document.getElementById("cloudLoader");
-    if(show){
-        if(!el){
-            el = document.createElement("div");
-            el.id = "cloudLoader";
-            el.style.cssText = "position:fixed;inset:0;background:#101010;color:#fff;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;z-index:99999;font-family:'Inter',sans-serif;text-align:center;padding:20px;";
-            el.innerHTML = `
-                <img src="nev-logo.png" class="nev-loader-logo" alt="NEV Evolution">
-                <div class="nev-loader-title">NevAbsenku</div>
-                <div class="nev-loader-subtitle">Menyiapkan sistem absensi...</div>
-                <div class="nev-loader-dots"><span></span><span></span><span></span></div>
-            `;
-            document.body.appendChild(el);
-        }
-    } else if(el){
-        el.remove();
-    }
-}
-
-
-/* =========================================================
-BOOT SEQUENCE
-Urutan lama: initializeDatabase() lalu restoreLogin() dipanggil
-langsung saat skrip utama dimuat. Sekarang keduanya ditunda dan
-dijalankan di sini, SETELAH data terbaru dari Google Sheets
-selesai diambil — supaya perangkat mana pun selalu mulai dengan
-data terpusat yang sama, bukan data lokal yang mungkin basi.
-========================================================= */
-
 async function bootWithCloud(){
-    if(cloudSyncEnabled){
-        const savedToken = getAuthToken();
-        const savedUser = localStorage.getItem("nev_current_user");
+    if(!cloudSyncEnabled){initializeDatabase();startCloudPolling();return;}
 
-        showCloudLoader(true);
-
-        if(savedToken && savedUser){
-            try{
-                const user = JSON.parse(savedUser);
-                currentUser = user;
-                const ok = await fetchCloudAll();
-                if(ok){
-                    const valid = (load(DB.users) || []).find(u=>u.id===user.id);
-                    if(valid){
-                        currentUser = valid;
-                        localStorage.setItem("nev_current_user", JSON.stringify(valid));
-                        document.getElementById("loginScreen").classList.add("hidden");
-                        document.getElementById("app").classList.remove("hidden");
-                        buildSidebar();
-                        updateUserUI();
-                        if(currentUser.role==="STAF") showPage("staf-dashboard");
-                        else if(currentUser.role==="HRD") showPage("hrd-dashboard");
-                        else if(currentUser.role==="KOOR KP") showPage("koor-dashboard");
-                    }else{
-                        clearAuthSession();
-                        currentUser = null;
-                    }
-                }else{
-                    clearAuthSession();
-                    currentUser = null;
-                }
-            }catch(e){
-                clearAuthSession();
-                currentUser = null;
-            }
-        }
-
-        // Ambil versi/settings tanpa membuka data akun sebelum login.
+    showCloudLoader(true);
+    try{
+        // Bootstrap tanpa auth: hanya untuk settings + versi server.
         try{
-            const res = await fetch(`${CLOUD_SCRIPT_URL}?action=bootstrap`);
-            const boot = await res.json();
-            if(boot && boot.ok){
-                cloudServerVersion = boot.version || cloudServerVersion;
-                _localSave(DB.settings, boot.settings || {officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
+            const res=await fetch(cacheBust(`${CLOUD_SCRIPT_URL}?action=bootstrap`),{cache:"no-store"});
+            const text=await res.text(); const boot=JSON.parse(text);
+            if(boot&&boot.ok){
+                cloudServerVersion=boot.version||null;
+                _localSave(DB.settings,boot.settings||{officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
             }
         }catch(e){
-            console.warn("Bootstrap cloud gagal:",e);
+            cloudLastError=friendlyCloudError(e);console.warn("Bootstrap cloud gagal:",e);updateCloudBadge();
         }
 
+        const savedToken=getAuthToken();
+        const savedUser=localStorage.getItem("nev_current_user");
+        if(savedToken&&savedUser){
+            try{
+                currentUser=JSON.parse(savedUser);
+                const ok=await fetchCloudAll();
+                if(ok){
+                    const valid=(load(DB.users)||[]).find(u=>u.id===currentUser.id);
+                    if(valid){
+                        currentUser=valid;localStorage.setItem("nev_current_user",JSON.stringify(valid));
+                        document.getElementById("loginScreen")?.classList.add("hidden");
+                        document.getElementById("app")?.classList.remove("hidden");
+                        buildSidebar();updateUserUI();
+                        if(currentUser.role==="STAF")showPage("staf-dashboard");
+                        else if(currentUser.role==="HRD")showPage("hrd-dashboard");
+                        else if(currentUser.role==="KOOR KP")showPage("koor-dashboard");
+                    }else{clearAuthSession();currentUser=null;}
+                }
+            }catch(e){
+                console.warn("Restore login cloud gagal:",e);
+                // Jangan menghapus sesi hanya karena network timeout.
+            }
+        }
+        if(!currentUser) initializeDatabase();
+    }finally{
         showCloudLoader(false);
-
-        // Jika belum login, backend tetap menjadi sumber akun. Tidak membuat
-        // daftar akun baru dari halaman login.
-        if(!currentUser){
-            initializeDatabase();
-        }
-    }else{
-        initializeDatabase();
     }
-
-    if(currentUser) renderAll();
+    if(currentUser && typeof renderAll==="function") renderAll();
+    updateCloudBadge();
     startCloudPolling();
 }
 
-setInterval(updateCloudBadge, 2000);
+setInterval(updateCloudBadge,5000);
 bootWithCloud();

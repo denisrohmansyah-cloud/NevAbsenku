@@ -13,6 +13,115 @@
    formatTime, finalizeAttendance, stopScanner, renderAll, dll).
 ========================================================= */
 
+
+/* =========================================================
+LOADER LEAFLET + TILE PETA
+-----------------------------------------------------------
+Sebelumnya ensureLeaflet() & featureLoadError() dipanggil tetapi
+tidak pernah didefinisikan, sehingga peta tidak pernah dibuat.
+Di sini keduanya dibuat, lengkap dengan CDN cadangan (jika unpkg
+diblokir) dan tile cadangan (jika tile OpenStreetMap ditolak).
+========================================================= */
+
+let leafletPromise = null;
+
+function loadExternalScript(src){
+    return new Promise((resolve, reject)=>{
+        const el = document.createElement("script");
+        el.src = src;
+        el.async = true;
+        el.onload = ()=> resolve();
+        el.onerror = ()=>{ el.remove(); reject(new Error("Gagal memuat " + src)); };
+        document.head.appendChild(el);
+    });
+}
+
+function loadExternalCss(href){
+    return new Promise(resolve=>{
+        const el = document.createElement("link");
+        el.rel = "stylesheet";
+        el.href = href;
+        el.onload = ()=> resolve(true);
+        el.onerror = ()=>{ el.remove(); resolve(false); };
+        document.head.appendChild(el);
+    });
+}
+
+function leafletCssApplied(){
+    // Jika leaflet.css termuat, .leaflet-container memiliki overflow hidden.
+    const probe = document.createElement("div");
+    probe.className = "leaflet-container";
+    probe.style.cssText = "position:absolute;left:-9999px;width:1px;height:1px;";
+    document.body.appendChild(probe);
+    const ok = getComputedStyle(probe).overflow === "hidden";
+    probe.remove();
+    return ok;
+}
+
+function ensureLeaflet(){
+    if(window.L && L.map){
+        return leafletCssApplied()
+            ? Promise.resolve(L)
+            : loadExternalCss("https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css").then(()=> L);
+    }
+    if(leafletPromise) return leafletPromise;
+
+    const sources = [
+        "https://unpkg.com/leaflet@1.9.4/dist/",
+        "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/",
+        "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/"
+    ];
+
+    leafletPromise = (async()=>{
+        for(const base of sources){
+            try{
+                await loadExternalScript(base + "leaflet.js");
+                if(window.L && L.map){
+                    if(!leafletCssApplied()) await loadExternalCss(base + "leaflet.css");
+                    return L;
+                }
+            }catch(e){ console.warn("Leaflet dari", base, "gagal:", e); }
+        }
+        leafletPromise = null;
+        throw new Error("Library peta (Leaflet) tidak dapat dimuat. Periksa koneksi internet.");
+    })();
+
+    return leafletPromise;
+}
+
+function featureLoadError(featureName, err){
+    console.error(featureName + " gagal dimuat:", err);
+    toast(featureName + " gagal dimuat. Periksa koneksi internet lalu muat ulang halaman.", "error");
+}
+
+// Tile OpenStreetMap kadang ditolak (misalnya halaman dibuka dari file:// tanpa Referer).
+// Setelah beberapa tile gagal, otomatis pindah ke tile cadangan CARTO.
+function addBaseTiles(map){
+    const osm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        referrerPolicy: "origin",
+        attribution: "&copy; OpenStreetMap contributors"
+    });
+    const carto = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+        maxZoom: 19,
+        subdomains: "abcd",
+        attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
+    });
+
+    let errors = 0, switched = false;
+    osm.on("tileerror", ()=>{
+        errors++;
+        if(errors >= 3 && !switched){
+            switched = true;
+            map.removeLayer(osm);
+            carto.addTo(map);
+        }
+    });
+    osm.addTo(map);
+    return osm;
+}
+
+
 let officeMapInstance = null;
 let officeMarker = null;
 let officeCircle = null;
@@ -52,18 +161,19 @@ kantor untuk kegiatan itu saja.
 
 const sessionGeoPickers = {}; // { hrd:{map,marker,circle}, koor:{map,marker,circle} }
 
-function toggleSessionGeofence(role){
+async function toggleSessionGeofence(role){
     const checkbox = document.getElementById(`${role}GeoEnabled`);
     const section = document.getElementById(`${role}GeoSection`);
     if(!checkbox || !section) return;
 
     section.classList.toggle("hidden", !checkbox.checked);
-    if(checkbox.checked) initSessionGeoPicker(role);
+    if(checkbox.checked) await initSessionGeoPicker(role);
 }
 
-function initSessionGeoPicker(role){
+async function initSessionGeoPicker(role){
     const mapEl = document.getElementById(`${role}GeoMap`);
-    if(!mapEl || typeof L==="undefined") return;
+    if(!mapEl) return;
+    try{ await ensureLeaflet(); }catch(err){ featureLoadError("Peta",err); return; }
 
     if(sessionGeoPickers[role]){
         // Peta sudah pernah dibuat, cukup perbaiki ukurannya (habis disembunyikan lalu ditampilkan lagi).
@@ -74,10 +184,7 @@ function initSessionGeoPicker(role){
     const defaultLat=-6.200000, defaultLng=106.816666;
     const map = L.map(mapEl).setView([defaultLat, defaultLng], 5);
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: "&copy; OpenStreetMap contributors"
-    }).addTo(map);
+    addBaseTiles(map);
 
     const icon = L.divIcon({
         className: "",
@@ -226,9 +333,10 @@ function checkGeofence(session){
 PETA LOKASI KANTOR (HRD - halaman "Lokasi & Radius")
 ========================================================= */
 
-function initOfficeMap(){
+async function initOfficeMap(){
     const mapEl = document.getElementById("officeMap");
-    if(!mapEl || typeof L==="undefined") return;
+    if(!mapEl) return;
+    try{ await ensureLeaflet(); }catch(err){ featureLoadError("Peta",err); return; }
 
     const settings = getSettings();
     const defaultLat = settings.officeLat ?? -6.200000;
@@ -250,10 +358,7 @@ function initOfficeMap(){
 
     officeMapInstance = L.map("officeMap").setView([defaultLat, defaultLng], settings.officeLat!=null ? 17 : 5);
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: "&copy; OpenStreetMap contributors"
-    }).addTo(officeMapInstance);
+    addBaseTiles(officeMapInstance);
 
     const officeIcon = L.divIcon({
         className: "",
