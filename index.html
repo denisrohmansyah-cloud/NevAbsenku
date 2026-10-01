@@ -1145,20 +1145,17 @@ LOGIN
 
             <div class="role-selector">
 
-                <button class="role-btn active"
-                        onclick="selectLoginRole('STAF',this)">
+                <button type="button" class="role-btn active" data-login-role="STAF">
                     <i class="fa-solid fa-user"></i><br>
                     STAF
                 </button>
 
-                <button class="role-btn"
-                        onclick="selectLoginRole('HRD',this)">
+                <button type="button" class="role-btn" data-login-role="HRD">
                     <i class="fa-solid fa-user-tie"></i><br>
                     HRD
                 </button>
 
-                <button class="role-btn"
-                        onclick="selectLoginRole('KOOR KP',this)">
+                <button type="button" class="role-btn" data-login-role="KOOR KP">
                     <i class="fa-solid fa-users-gear"></i><br>
                     Koor KP
                 </button>
@@ -3722,10 +3719,38 @@ LOGIN
 ========================================================= */
 
 function selectLoginRole(role,button){
-    loginRole = role;
-    document.querySelectorAll(".role-btn").forEach(btn=>btn.classList.remove("active"));
-    button.classList.add("active");
+    loginRole = String(role || "STAF").trim().toUpperCase();
+
+    document.querySelectorAll(".role-btn").forEach(btn=>{
+        btn.classList.toggle(
+            "active",
+            String(btn.dataset.loginRole || "").toUpperCase() === loginRole
+        );
+    });
+
+    // Pastikan fungsi tetap tersedia untuk handler HTML lama/ekstensi lain.
+    window.loginRole = loginRole;
 }
+
+// Ekspos ke window agar selalu dapat dipanggil dari browser.
+window.selectLoginRole = selectLoginRole;
+
+document.addEventListener("DOMContentLoaded", ()=>{
+    const roleButtons = document.querySelectorAll(".role-btn");
+
+    roleButtons.forEach(btn=>{
+        btn.type = "button";
+
+        btn.addEventListener("click", (event)=>{
+            event.preventDefault();
+            event.stopPropagation();
+            selectLoginRole(btn.dataset.loginRole, btn);
+        });
+    });
+
+    // Default: STAF
+    selectLoginRole(loginRole || "STAF");
+});
 
 async function login(event){
   event.preventDefault();
