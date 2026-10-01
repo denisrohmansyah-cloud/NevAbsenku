@@ -1,4 +1,3 @@
-/* NEV ABSENKU CLOUD SYNC V14.7.1 */
 /* =========================================================
    NEV ABSENKU V14.1 — CLOUD SYNC FIX
    Google Apps Script + Google Sheets + Google Drive
@@ -278,9 +277,10 @@ async function flushCloudQueue(){
 /* =========================================================
    LOGIN — cepat, sinkronisasi cloud berjalan setelah dashboard tampil
 ========================================================= */
-const _indexLogin = (typeof window.login === "function") ? window.login : null;
 window.login = async function(event){
     if(event && event.preventDefault) event.preventDefault();
+    if(typeof setLoginLoading==="function") setLoginLoading(true);
+    try{
     const username=(document.getElementById("loginUsername")?.value||"").trim();
     const password=document.getElementById("loginPassword")?.value||"";
     try{
@@ -311,6 +311,9 @@ window.login = async function(event){
     }catch(err){
         console.error("Login error:",err);
         toast("Login gagal: "+friendlyCloudError(err),"error");
+    }
+    }finally{
+        if(typeof setLoginLoading==="function") setLoginLoading(false);
     }
 };
 
