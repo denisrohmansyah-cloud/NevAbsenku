@@ -1,6 +1,6 @@
 /**
  * =========================================================
- * NEV ABSENKU — Backend Terpusat v6 (perbaikan hasil audit keamanan)
+ * NEV ABSENKU — Backend Terpusat v5 (hardening audit)
  * Google Sheets + Google Drive + autentikasi & pembatasan divisi
  * =========================================================
  *
@@ -28,7 +28,7 @@ const FALLBACK_FOLDER_NAMES = {
   presensi: "NEV Absenku - Foto Presensi"
 };
 
-const CODE_VERSION = "secure-v6";
+const CODE_VERSION = "secure-v5";
 
 const SHEET_USERS = "Users";
 const SHEET_SESSIONS = "Sessions";
@@ -83,26 +83,6 @@ const MIN_PASSWORD_LEN  = 8;
 const LOGIN_MAX_FAIL    = 5;         // percobaan gagal per username
 const LOGIN_LOCK_SEC    = 900;       // kunci 15 menit
 const CHECKIN_GRACE_MIN = 10;        // toleransi setelah jam selesai (jaringan lambat)
-
-/* ---------- Util acak & perbandingan aman (v6) ---------- */
-function randomHex_(bytes){
-  let out="";
-  while(out.length<bytes*2) out+=Utilities.getUuid().replace(/-/g,"");
-  return out.slice(0,bytes*2);
-}
-function constEq_(a,b){
-  a=String(a); b=String(b);
-  if(a.length!==b.length) return false;
-  let r=0;
-  for(let i=0;i<a.length;i++) r|=a.charCodeAt(i)^b.charCodeAt(i);
-  return r===0;
-}
-/* Token QR: acak kuat dari server/klien, TIDAK boleh diturunkan dari data sesi.
-   Format lama (NEV-ABS- + base64 JSON, selalu diawali "eyJ") dianggap tidak aman dan ditolak. */
-const STRONG_TOKEN_RE = /^NEV-ABS-[A-Za-z0-9_-]{32,4000}$/;
-function isLegacyToken_(t){ return String(t||"").indexOf("NEV-ABS-eyJ")===0; }
-function isStrongToken_(t){ return typeof t==="string" && STRONG_TOKEN_RE.test(t) && !isLegacyToken_(t); }
-function newToken_(){ return "NEV-ABS-"+randomHex_(32); }
 
 function str_(v,max){
   if(v===undefined || v===null) return null;
@@ -302,35 +282,7 @@ function sanitizePermit_(p){
 
 /* Merge dengan kebijakan kepemilikan. policy(old, clean, actor) mengembalikan record yang
    boleh ditulis, null untuk melewati record, atau melempar error jika melanggar aturan role. */
-let CTX_=null;
-function ctx_(){ if(!CTX_) CTX_={sessions:null,users:null,photos:null}; return CTX_; }
-function sessionById_(id){
-  const c=ctx_();
-  if(!c.sessions){ c.sessions={}; sheetToObjects_(SHEET_SESSIONS).forEach(x=>{ if(x.id) c.sessions[x.id]=x; }); }
-  return c.sessions[id]||null;
-}
-function userById_(id){
-  const c=ctx_();
-  if(!c.users){ c.users={}; sheetToObjects_(SHEET_USERS).forEach(x=>{ if(x.id) c.users[x.id]=x; }); }
-  return c.users[id]||null;
-}
-/* Foto yang boleh dikaitkan ke absensi: hanya URL yang SUDAH tercatat di server untuk user itu
-   (selfie miliknya atau foto bukti izin miliknya). Klien tidak bisa menyisipkan URL Drive arbitrer. */
-function knownPhotosOf_(userId){
-  const c=ctx_();
-  if(!c.photos){
-    c.photos={};
-    [SHEET_ATTENDANCE,SHEET_PERMITS].forEach(n=>{
-      sheetToObjects_(n).forEach(r=>{
-        if(r.userId && r.photo){ (c.photos[r.userId]=c.photos[r.userId]||{})[r.photo]=true; }
-      });
-    });
-  }
-  return c.photos[userId]||{};
-}
-
 function mergeSanitized_(name,incoming,actor,sanitize,policy){
-  CTX_=null;
   if(!Array.isArray(incoming)) throw new Error("Format data tidak valid.");
   if(incoming.length>MAX_BATCH) throw new Error("Data terlalu banyak dalam satu permintaan.");
   const current=sheetToObjects_(name);
@@ -360,47 +312,21 @@ function sessionPolicy_(old,clean,actor){
   if(old){
     // Pemilik, peran pembuat, dan token tidak boleh diganti lewat edit.
     clean.creatorId=old.creatorId; clean.creatorName=old.creatorName;
-    clean.creatorRole=old.creatorRole;
-    // Token lama yang bisa ditebak (format base64 data sesi) diganti token acak.
-    clean.token=isStrongToken_(old.token) ? old.token : newToken_();
+    clean.creatorRole=old.creatorRole; clean.token=old.token;
   }else{
     // Sesi baru: pembuat selalu akun yang sedang login.
     clean.creatorId=actor.id; clean.creatorName=actor.name; clean.creatorRole=actor.role;
-    if(!isStrongToken_(clean.token)) clean.token=newToken_();
   }
   return clean;
 }
 
 function attendancePolicy_(old,clean,actor){
-  const isKoor=actor.role==="KOOR KP";
-  const own=r=>r.creatorId===actor.id && r.activity==="Ngoprek" && r.division===actor.division;
-
-  if(old){
-    if(isKoor && !own(old)) throw new Error("Koor KP hanya dapat mengubah absensi Ngoprek miliknya.");
-    // Identitas record tidak boleh diubah lewat edit.
-    clean.userId=old.userId; clean.sessionId=old.sessionId; clean.token=old.token;
-    clean.activity=old.activity; clean.division=old.division;
-    clean.creatorId=old.creatorId; clean.creatorRole=old.creatorRole;
-  }else{
-    // Record baru (input manual HRD/Koor): sesi dan staf harus nyata, field turunan diisi dari server.
-    const session=sessionById_(clean.sessionId);
-    if(!session) throw new Error("Sesi untuk absensi ini tidak ditemukan di server.");
-    const user=userById_(clean.userId);
-    if(!user || user.role!=="STAF") throw new Error("Staf untuk absensi ini tidak ditemukan.");
-    if(session.division && session.division!=="-" && user.division!==session.division){
-      throw new Error("Staf bukan anggota divisi sesi ini.");
-    }
-    clean.activity=session.activity; clean.division=session.division; clean.date=session.date;
-    clean.creatorId=session.creatorId; clean.creatorRole=session.creatorRole; clean.token=null;
-    clean.userName=user.name; clean.username=user.username;
-    if(isKoor){
-      if(!own(clean) || user.division!==actor.division){
-        throw new Error("Koor KP hanya dapat mengubah absensi Ngoprek miliknya.");
-      }
-    }
+  if(actor.role==="KOOR KP"){
+    const own=r=>r.creatorId===actor.id && r.activity==="Ngoprek" && r.division===actor.division;
+    if(old && !own(old)) throw new Error("Koor KP hanya dapat mengubah absensi Ngoprek miliknya.");
+    if(!own(clean)) throw new Error("Koor KP hanya dapat mengubah absensi Ngoprek miliknya.");
   }
-  // Foto hanya boleh berupa URL yang sudah dikenal server untuk user ini.
-  if(clean.photo && !knownPhotosOf_(clean.userId)[clean.photo]) clean.photo=null;
+  if(old){ clean.userId=old.userId; clean.sessionId=old.sessionId; }
   return clean;
 }
 
@@ -438,57 +364,20 @@ function objectToSettingsSheet_(obj){ objectsToSheet_(SHEET_SETTINGS,[obj||{}]);
 /* =========================================================
 PASSWORD + AUTH
 ========================================================= */
-/* Format hash:
-   - lama  : sha256$<64 hex>              (tanpa salt; dimigrasi otomatis saat login berhasil)
-   - baru  : s2$<iterasi>$<salt 32 hex>$<64 hex>  (salt acak per akun + iterasi) */
-const HASH_ITER = 200;
-const DUMMY_SALT_ = "00000000000000000000000000000000";
-
-function sha256Hex_(input){
-  const bytes=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,String(input),Utilities.Charset.UTF_8);
-  return bytes.map(b=>{
+function hashPassword_(password){
+  const bytes=Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(password),
+    Utilities.Charset.UTF_8
+  );
+  return "sha256$"+bytes.map(b=>{
     const v=(b<0?b+256:b).toString(16);
     return v.length===1?"0"+v:v;
   }).join("");
 }
 
-function hashPasswordLegacy_(password){ return "sha256$"+sha256Hex_(password); }
-
-function hashPassword_(password,salt,iter){
-  salt=salt||randomHex_(16);
-  iter=iter||HASH_ITER;
-  let h=sha256Hex_(salt+":"+String(password));
-  for(let i=1;i<iter;i++) h=sha256Hex_(h+":"+salt);
-  return "s2$"+iter+"$"+salt+"$"+h;
-}
-
-function isLegacyHash_(value){ return typeof value==="string" && /^sha256\$[0-9a-f]{64}$/i.test(value); }
 function isHashedPassword_(value){
-  return isLegacyHash_(value) || (typeof value==="string" && /^s2\$\d{1,6}\$[0-9a-f]{32}\$[0-9a-f]{64}$/.test(value));
-}
-
-function verifyPassword_(password,stored){
-  stored=String(stored||"");
-  if(isLegacyHash_(stored)) return constEq_(hashPasswordLegacy_(password),stored.toLowerCase());
-  const m=stored.match(/^s2\$(\d{1,6})\$([0-9a-f]{32})\$([0-9a-f]{64})$/);
-  if(!m) return false;
-  const iter=Math.min(Number(m[1]),5000);
-  return constEq_(hashPassword_(password,m[2],iter),"s2$"+m[1]+"$"+m[2]+"$"+m[3]);
-}
-
-/* Ubah hash lama (tanpa salt) menjadi hash baru setelah login berhasil. */
-function upgradeHashIfNeeded_(user,password){
-  if(!isLegacyHash_(user.password)) return user;
-  return withLock_(function(){
-    const users=sheetToObjects_(SHEET_USERS);
-    const u=users.find(x=>x.id===user.id);
-    if(!u) return user;
-    if(isLegacyHash_(u.password)){
-      u.password=hashPassword_(password);
-      objectsToSheet_(SHEET_USERS,users);
-    }
-    return u;
-  });
+  return typeof value==="string" && /^sha256\$[0-9a-f]{64}$/i.test(value);
 }
 
 function safeUser_(u){
@@ -500,11 +389,9 @@ function safeUser_(u){
 }
 
 function randomPassword_(){
-  // Memakai UUID server (bukan Math.random) agar tidak dapat diprediksi.
   const chars="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-  const hex=randomHex_(16);
   let out="";
-  for(let i=0;i<14;i++) out+=chars.charAt(parseInt(hex.substr(i*2,2),16)%chars.length);
+  for(let i=0;i<14;i++) out+=chars.charAt(Math.floor(Math.random()*chars.length));
   return out+"7a";
 }
 
@@ -534,7 +421,8 @@ function resetPasswordHRD001(){
 
 /* Jalankan manual: menampilkan akun yang MASIH memakai password default 123456. */
 function cekAkunPasswordDefault(){
-  const list=sheetToObjects_(SHEET_USERS).filter(u=>verifyPassword_("123456",u.password)).map(u=>u.username+" ("+u.role+")");
+  const weak=hashPassword_("123456");
+  const list=sheetToObjects_(SHEET_USERS).filter(u=>String(u.password)===weak).map(u=>u.username+" ("+u.role+")");
   Logger.log(list.length ? "MASIH PASSWORD DEFAULT: "+list.join(", ")+" -> segera ganti!" : "Tidak ada akun dengan password 123456.");
   return list;
 }
@@ -578,7 +466,7 @@ function authUser_(token){
   return user;
 }
 
-function pwFingerprint_(user){ return String(user.password||"").slice(-24); }
+function pwFingerprint_(user){ return String(user.password||"").slice(7,31); }
 
 function createAuthToken_(user){
   const token=Utilities.getUuid().replace(/-/g,"")+Utilities.getUuid().replace(/-/g,"");
@@ -656,15 +544,10 @@ function savePhotoToDrive_(base64DataUrl,fileNameHint,kind){
   if(text.length>MAX_PHOTO_CHARS) throw new Error("Ukuran foto terlalu besar (maksimal sekitar 2 MB).");
   const match=text.match(DATA_IMG_RE);
   if(!match) throw new Error("Format foto tidak didukung. Gunakan JPEG atau PNG.");
-  const bytes=Utilities.base64Decode(match[2]);
-  // Periksa isi file (magic bytes), bukan hanya awalan data URL.
-  const isJpg=bytes.length>3 && bytes[0]===-1 && bytes[1]===-40 && bytes[2]===-1;
-  const isPng=bytes.length>8 && bytes[0]===-119 && bytes[1]===80 && bytes[2]===78 && bytes[3]===71;
-  if(!isJpg && !isPng) throw new Error("Isi berkas bukan gambar JPEG/PNG yang valid.");
-  const mime=isPng?"image/png":"image/jpeg";
-  const ext=isPng?"png":"jpg";
+  const mime=match[1];
+  const ext=mime==="image/png"?"png":"jpg";
   const safeName=String(fileNameHint||"photo").replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,80);
-  const blob=Utilities.newBlob(bytes,mime,safeName+"."+ext);
+  const blob=Utilities.newBlob(Utilities.base64Decode(match[2]),mime,safeName+"."+ext);
   const file=getPhotoFolder_(kind).createFile(blob);
   // Bukti izin/sakit bersifat sensitif: TIDAK dibuka lewat link. Ditampilkan lewat action getPhoto (dicek per role).
   // Selfie absensi tetap berbagi lewat link agar thumbnail tampil seperti sebelumnya.
@@ -705,19 +588,10 @@ function getPhoto_(actor,data){
   }
   if(!allowed) throw new Error("Akses ditolak.");
 
-  // Confused-deputy guard: hanya berkas gambar yang berada di folder foto aplikasi.
-  const file=DriveApp.getFileById(id);
-  const mime=file.getMimeType();
-  if(mime!=="image/jpeg" && mime!=="image/png") throw new Error("Berkas bukan foto yang valid.");
-  const allowedFolders=["selfie","permit","presensi"].map(k=>{ try{ return getPhotoFolder_(k).getId(); }catch(e){ return null; } });
-  let inFolder=false;
-  const parents=file.getParents();
-  while(parents.hasNext()){ if(allowedFolders.indexOf(parents.next().getId())>=0){ inFolder=true; break; } }
-  if(!inFolder) throw new Error("Berkas berada di luar folder foto aplikasi.");
-
-  const bytes=file.getBlob().getBytes();
+  const blob=DriveApp.getFileById(id).getBlob();
+  const bytes=blob.getBytes();
   if(bytes.length>4*1024*1024) throw new Error("Foto terlalu besar untuk ditampilkan.");
-  return {ok:true,dataUrl:"data:"+mime+";base64,"+Utilities.base64Encode(bytes)};
+  return {ok:true,dataUrl:"data:"+blob.getContentType()+";base64,"+Utilities.base64Encode(bytes)};
 }
 
 function withLock_(fn){
@@ -887,16 +761,6 @@ function updateUser_(actor,data){
   }
 
   if(data.password){
-    if(user.id===actor.id){
-      // Ganti password akun sendiri wajib menyertakan password saat ini (token curian tidak cukup).
-      const cache=CacheService.getScriptCache(), fkey=loginKey_(user.username);
-      const f=Number(cache.get(fkey)||0);
-      if(f>=LOGIN_MAX_FAIL) throw new Error("Terlalu banyak percobaan gagal. Coba lagi dalam "+Math.round(LOGIN_LOCK_SEC/60)+" menit.");
-      if(!verifyPassword_(String(data.currentPassword||""),user.password)){
-        cache.put(fkey,String(f+1),LOGIN_LOCK_SEC);
-        throw new Error("Password saat ini salah.");
-      }
-    }
     checkPassword_(data.password);
     user.password=hashPassword_(String(data.password)); // token login lama otomatis tidak berlaku
   }
@@ -1062,27 +926,6 @@ function targetGeo_(session){
   return null;
 }
 
-/* STAF memindai QR: server mencocokkan token dan mengembalikan info sesi minimal.
-   Token tidak lagi memuat data sesi, sehingga tidak bisa dipalsukan dari data yang terlihat. */
-function resolveToken_(actor,data){
-  if(actor.role!=="STAF") throw new Error("Hanya STAF yang dapat memindai QR absensi.");
-  const token=String((data && data.token)||"");
-  if(isLegacyToken_(token)) throw new Error("QR lama tidak lagi berlaku. Minta HRD/Koor membuat QR baru.");
-  if(!isStrongToken_(token)) throw new Error("Format QR tidak dikenali.");
-  const s=sheetToObjects_(SHEET_SESSIONS).find(x=>x.token && isStrongToken_(x.token) && constEq_(x.token,token));
-  if(!s) throw new Error("QR tidak dikenali.");
-  if(s.active!==true) throw new Error("Kegiatan ini sudah dinonaktifkan.");
-  if(s.division && s.division!=="-" && s.division!==actor.division){
-    throw new Error("Kegiatan ini untuk divisi "+s.division+".");
-  }
-  return {ok:true,session:{
-    id:s.id, activity:s.activity, division:s.division, date:s.date, start:s.start, end:s.end,
-    location:s.location, notes:s.notes, creatorId:s.creatorId, creatorName:s.creatorName,
-    creatorRole:s.creatorRole, active:true, token:s.token,
-    geoEnabled:s.geoEnabled, geoLat:s.geoLat, geoLng:s.geoLng, geoRadius:s.geoRadius
-  }};
-}
-
 function addAttendance_(actor,data){
   if(actor.role!=="STAF") throw new Error("Hanya STAF yang dapat mengirim absensi dirinya sendiri.");
   if(!data || !idOk_(data.sessionId)) throw new Error("Data absensi tidak valid.");
@@ -1090,8 +933,7 @@ function addAttendance_(actor,data){
   const session=findSession_(data.sessionId);
   if(!session) throw new Error("Kegiatan tidak ditemukan di server. Minta HRD/Koor memastikan QR sudah tersinkron.");
   if(session.active!==true) throw new Error("Kegiatan ini sudah dinonaktifkan.");
-  if(isLegacyToken_(session.token)) throw new Error("QR ini memakai format lama dan tidak lagi berlaku. Minta HRD/Koor membuat QR baru.");
-  if(!data.token || !constEq_(String(data.token),String(session.token))) throw new Error("Token QR tidak cocok. Pindai ulang QR kegiatan.");
+  if(!data.token || String(data.token)!==String(session.token)) throw new Error("Token QR tidak cocok. Pindai ulang QR kegiatan.");
   if(session.division && session.division!=="-" && session.division!==actor.division){
     throw new Error("Kegiatan ini untuk divisi "+session.division+".");
   }
@@ -1112,11 +954,6 @@ function addAttendance_(actor,data){
     const dist=distanceMeters_(lat,lng,target.lat,target.lng);
     if(dist>target.radius) throw new Error("Anda berada di luar radius "+target.label+" ("+Math.round(dist)+" m dari titik, batas "+target.radius+" m).");
   }
-
-  // Cek duplikat SEBELUM mengunggah foto agar tidak menumpuk berkas yatim di Drive.
-  const existing=sheetToObjects_(SHEET_ATTENDANCE).filter(validAttendance_)
-    .find(r=>r.sessionId===session.id && r.userId===actor.id);
-  if(existing) return {ok:true,record:existing,duplicate:true};
 
   let photoUrl=null;
   if(data.photo){
@@ -1209,22 +1046,20 @@ function doPost(e){
       }
 
       const users=migratePlaintextPasswords_();
-      const candidate=users.find(u=>
+      const hash=hashPassword_(password);
+      const user=users.find(u=>
         String(u.username).toLowerCase()===username.toLowerCase() &&
-        String(u.role)===role
+        String(u.role)===role &&
+        String(u.password)===hash
       );
-      // Selalu menghitung satu hash agar waktu respons tidak membocorkan keberadaan username.
-      const passOk=candidate ? verifyPassword_(password,candidate.password) : (hashPassword_(password,DUMMY_SALT_,HASH_ITER),false);
-      const user=passOk ? candidate : null;
       if(!user){
         cache.put(key,String(fails+1),LOGIN_LOCK_SEC);
         return jsonResponse_({ok:false,error:"Username, password, atau role tidak sesuai."});
       }
 
       cache.remove(key);
-      const fresh=upgradeHashIfNeeded_(user,password);
-      const authToken=createAuthToken_(fresh);
-      return jsonResponse_({ok:true,authToken:authToken,user:safeUser_(fresh)});
+      const authToken=createAuthToken_(user);
+      return jsonResponse_({ok:true,authToken:authToken,user:safeUser_(user)});
     }
 
     if(action==="logout"){
@@ -1293,9 +1128,6 @@ function doPost(e){
         const skipped=withLock_(()=>mergeSanitized_(SHEET_PERMITS,data,actor,sanitizePermit_,permitPolicy_));
         return jsonResponse_({ok:true,skipped:skipped});
       }
-
-      case "resolveToken":
-        return jsonResponse_(resolveToken_(actor,data));
 
       case "addAttendance":
         return jsonResponse_(addAttendance_(actor,data));

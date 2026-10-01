@@ -25,17 +25,10 @@ diblokir) dan tile cadangan (jika tile OpenStreetMap ditolak).
 
 let leafletPromise = null;
 
-// Hash SRI Leaflet 1.9.4 (diverifikasi dengan hash resmi leafletjs.com). Berkas yang tidak cocok akan diblokir browser.
-const LEAFLET_SRI = {
-    js:  "sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH",
-    css: "sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H"
-};
-
-function loadExternalScript(src, integrity){
+function loadExternalScript(src){
     return new Promise((resolve, reject)=>{
         const el = document.createElement("script");
         el.src = src;
-        if(integrity){ el.integrity = integrity; el.crossOrigin = "anonymous"; }
         el.async = true;
         el.onload = ()=> resolve();
         el.onerror = ()=>{ el.remove(); reject(new Error("Gagal memuat " + src)); };
@@ -43,12 +36,11 @@ function loadExternalScript(src, integrity){
     });
 }
 
-function loadExternalCss(href, integrity){
+function loadExternalCss(href){
     return new Promise(resolve=>{
         const el = document.createElement("link");
         el.rel = "stylesheet";
         el.href = href;
-        if(integrity){ el.integrity = integrity; el.crossOrigin = "anonymous"; }
         el.onload = ()=> resolve(true);
         el.onerror = ()=>{ el.remove(); resolve(false); };
         document.head.appendChild(el);
@@ -70,22 +62,22 @@ function ensureLeaflet(){
     if(window.L && L.map){
         return leafletCssApplied()
             ? Promise.resolve(L)
-            : loadExternalCss("https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css", LEAFLET_SRI.css).then(()=> L);
+            : loadExternalCss("https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css").then(()=> L);
     }
     if(leafletPromise) return leafletPromise;
 
-    // Hanya sumber yang berisi berkas identik dengan paket npm resmi (dapat diverifikasi SRI).
     const sources = [
         "https://unpkg.com/leaflet@1.9.4/dist/",
+        "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/",
         "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/"
     ];
 
     leafletPromise = (async()=>{
         for(const base of sources){
             try{
-                await loadExternalScript(base + "leaflet.js", LEAFLET_SRI.js);
+                await loadExternalScript(base + "leaflet.js");
                 if(window.L && L.map){
-                    if(!leafletCssApplied()) await loadExternalCss(base + "leaflet.css", LEAFLET_SRI.css);
+                    if(!leafletCssApplied()) await loadExternalCss(base + "leaflet.css");
                     return L;
                 }
             }catch(e){ console.warn("Leaflet dari", base, "gagal:", e); }
