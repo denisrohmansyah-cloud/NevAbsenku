@@ -2356,140 +2356,72 @@ APP
             <section id="page-koor-dashboard" class="page">
 
                 <div class="welcome">
-
                     <h1>Dashboard Koor KP</h1>
-
-                    <p>
+                    <p id="koorWelcomeText">
                         Kelola QR dan absensi kegiatan Ngoprek.
                     </p>
-
                 </div>
 
                 <div class="stats">
 
                     <div class="stat-card">
-
                         <div class="stat-icon">
                             <i class="fa-solid fa-qrcode"></i>
                         </div>
-
                         <h3 id="koorTotalQR">0</h3>
-
                         <p>QR Ngoprek</p>
-
                     </div>
 
                     <div class="stat-card">
-
                         <div class="stat-icon">
                             <i class="fa-solid fa-users"></i>
                         </div>
-
                         <h3 id="koorTotalHadir">0</h3>
-
                         <p>Kehadiran</p>
-
                     </div>
 
                     <div class="stat-card">
-
                         <div class="stat-icon">
-                            <i class="fa-solid fa-network-wired"></i>
+                            <i class="fa-solid fa-user-group"></i>
                         </div>
-
-                        <h3 id="koorNetworking">0</h3>
-
-                        <p>Networking</p>
-
+                        <h3 id="koorTotalStaff">0</h3>
+                        <p id="koorStaffLabel">Staf Divisi</p>
                     </div>
 
                     <div class="stat-card">
-
                         <div class="stat-icon">
-                            <i class="fa-solid fa-shield-halved"></i>
+                            <i class="fa-solid fa-file-medical"></i>
                         </div>
-
-                        <h3 id="koorCyber">0</h3>
-
-                        <p>Cyber</p>
-
+                        <h3 id="koorIzinSakit">0</h3>
+                        <p>Izin / Sakit</p>
                     </div>
 
                 </div>
 
-
                 <div class="section-card">
 
                     <div class="section-header">
-
                         <div>
-
                             <h3>Ngoprek</h3>
-
-                            <p>
-                                Buat QR berdasarkan divisi.
-                            </p>
-
+                            <p id="koorDivSubtitle">Buat QR untuk divisi Anda.</p>
                         </div>
 
                         <button
                             class="btn btn-primary"
                             onclick="showPage('koor-qr')">
-
                             <i class="fa-solid fa-qrcode"></i>
                             Buat QR Ngoprek
-
                         </button>
-
                     </div>
 
-                    <div class="grid-3">
-
+                    <div class="grid-3" style="grid-template-columns:minmax(0,1fr);">
                         <div class="activity-card">
-
                             <div class="activity-icon">
-                                <i class="fa-solid fa-network-wired"></i>
+                                <i id="koorDivIcon" class="fa-solid fa-network-wired"></i>
                             </div>
-
-                            <h4>Networking</h4>
-
-                            <p>
-                                QR khusus kegiatan Ngoprek
-                                divisi Networking.
-                            </p>
-
+                            <h4 id="koorDivName">-</h4>
+                            <p id="koorDivDesc">QR khusus kegiatan Ngoprek divisi Anda.</p>
                         </div>
-
-                        <div class="activity-card">
-
-                            <div class="activity-icon">
-                                <i class="fa-solid fa-shield-halved"></i>
-                            </div>
-
-                            <h4>Cyber</h4>
-
-                            <p>
-                                QR khusus kegiatan Ngoprek
-                                divisi Cyber.
-                            </p>
-
-                        </div>
-
-                        <div class="activity-card">
-
-                            <div class="activity-icon">
-                                <i class="fa-solid fa-server"></i>
-                            </div>
-
-                            <h4>Sysadmin</h4>
-
-                            <p>
-                                QR khusus kegiatan Ngoprek
-                                divisi Sysadmin.
-                            </p>
-
-                        </div>
-
                     </div>
 
                 </div>
@@ -5178,13 +5110,27 @@ function renderStafDashboard(){
 }
 
 function renderKoorDashboard(){
-    const sessions=load(DB.sessions).filter(s=> s.creatorId===currentUser.id && s.activity==="Ngoprek");
-    const attendance=load(DB.attendance).filter(a=> a.creatorId===currentUser.id && a.activity==="Ngoprek");
-    
+    if(currentUser?.role!=="KOOR KP") return;
+    const division=currentUser.division || "";
+
+    // Hanya data milik Koor ini pada divisinya sendiri.
+    const sessions=load(DB.sessions).filter(s=> s.creatorId===currentUser.id && s.activity==="Ngoprek" && s.division===division);
+    const attendance=load(DB.attendance).filter(a=> a.creatorId===currentUser.id && a.activity==="Ngoprek" && a.division===division);
+    const staffCount=load(DB.users).filter(u=> u.role==="STAF" && u.division===division).length;
+
+    const icons={Networking:"fa-network-wired", Cyber:"fa-shield-halved", Sysadmin:"fa-server"};
+
     document.getElementById("koorTotalQR").textContent=sessions.length;
     document.getElementById("koorTotalHadir").textContent=attendance.filter(a=>a.status==="Hadir").length;
-    document.getElementById("koorNetworking").textContent=attendance.filter(a=>a.division==="Networking").length;
-    document.getElementById("koorCyber").textContent=attendance.filter(a=>a.division==="Cyber").length;
+    document.getElementById("koorTotalStaff").textContent=staffCount;
+    document.getElementById("koorIzinSakit").textContent=attendance.filter(a=>a.status==="Izin" || a.status==="Sakit").length;
+    document.getElementById("koorStaffLabel").textContent="Staf " + (division || "Divisi");
+
+    document.getElementById("koorWelcomeText").textContent="Kelola QR dan absensi kegiatan Ngoprek divisi " + (division || "-") + ".";
+    document.getElementById("koorDivSubtitle").textContent="Buat QR khusus divisi " + (division || "-") + ".";
+    document.getElementById("koorDivName").textContent=division || "-";
+    document.getElementById("koorDivDesc").textContent="QR khusus kegiatan Ngoprek divisi " + (division || "-") + ".";
+    document.getElementById("koorDivIcon").className="fa-solid " + (icons[division] || "fa-users");
 }
 
 function renderKoorAttendance(){
