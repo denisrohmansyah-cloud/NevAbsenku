@@ -242,6 +242,22 @@ function sanitizeCloudData(json){
 /* =========================================================
    GET ALL
 ========================================================= */
+// Menyimpan hasil getAll (atau data awal dari login) ke penyimpanan lokal.
+function applyCloudAll(json){
+    sanitizeCloudData(json);
+    _localSave(DB.users,json.users||[]);
+    _localSave(DB.sessions,json.sessions||[]);
+    _localSave(DB.attendance,json.attendance||[]);
+    _localSave(DB.settings,json.settings||{officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
+    _localSave(DB.permits,json.permits||[]);
+
+    cloudServerVersion=json.version||null;
+    cloudLastSyncAt=new Date();
+    cloudLastError=null;
+    cloudUnsynced=getCloudQueue().length;
+    updateCloudBadge();
+}
+
 async function fetchCloudAll(){
     if(!cloudSyncEnabled) return false;
     const token=getAuthToken();
@@ -262,19 +278,7 @@ async function fetchCloudAll(){
             throw new Error(json.error||"Sesi login kedaluwarsa.");
         }
         if(!json || !json.ok) throw new Error((json&&json.error)||("HTTP "+(res.status||"?")));
-        sanitizeCloudData(json);
-
-        _localSave(DB.users,json.users||[]);
-        _localSave(DB.sessions,json.sessions||[]);
-        _localSave(DB.attendance,json.attendance||[]);
-        _localSave(DB.settings,json.settings||{officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
-        _localSave(DB.permits,json.permits||[]);
-
-        cloudServerVersion=json.version||null;
-        cloudLastSyncAt=new Date();
-        cloudLastError=null;
-        cloudUnsynced=getCloudQueue().length;
-        updateCloudBadge();
+        applyCloudAll(json);
 
         if(cloudUnsynced) await flushCloudQueue();
         return true;
@@ -340,18 +344,18 @@ window.login = async function(event){
         else if(currentUser.role==="KOOR KP") showPage("koor-dashboard");
         updateCloudBadge();
 
-        // Tampilkan dashboard segera. Sinkronisasi pusat berjalan di background
-        // agar login tidak menunggu getAll + Google Sheets.
-        if(typeof renderAll==="function") renderAll();
-        fetchCloudAll().then(synced=>{
-            if(synced && typeof renderAll==="function") renderAll();
-            else if(!synced) updateCloudBadge();
-            const pending=typeof getPendingQR==="function" ? getPendingQR() : "";
-            if(synced && pending && currentUser?.role==="STAF"){
-                clearPendingQR();
-                processAttendance(pending);
-            }
-        }).catch(()=>{});
+        // Server kini mengirim data awal bersama respons login: tidak perlu request getAll kedua.
+        if(result.all && result.all.ok){
+            applyCloudAll(result.all);
+            if(typeof renderAll==="function") renderAll();
+            if(cloudUnsynced) flushCloudQueue();
+        }else{
+            // Server lama (belum diperbarui): ambil data di latar belakang agar tombol login tidak menunggu.
+            fetchCloudAll().then(ok=>{
+                if(ok && typeof renderAll==="function") renderAll();
+                else if(!ok) toast("Login berhasil, sinkron data tertunda. Ketuk status Cloud.","error");
+            });
+        }
     }catch(err){
         console.error("Login error:",err);
         toast("Login gagal: "+friendlyCloudError(err),"error");
@@ -400,12 +404,46 @@ function startCloudPolling(){
 }
 
 /* =========================================================
+   NOTIFIKASI GAGAL ABSENSI — singkat & tidak dobel
+========================================================= */
+function shortAttendError(err){
+    const msg = String((err && err.message) || err || "");
+    const rules = [
+        [/sudah melakukan absensi/i, "Sudah absen di kegiatan ini."],
+        [/luar radius/i, () => { const m = msg.match(/\((\d+)\s*m dari titik, batas (\d+)/i); return m ? `Di luar radius (${m[1]} m, batas ${m[2]} m).` : "Di luar radius lokasi."; }],
+        [/lokasi perangkat tidak terbaca/i, "Lokasi tidak terbaca. Aktifkan GPS."],
+        [/belum aktif/i, "QR belum aktif."],
+        [/kadaluwarsa|melewati tanggal|hanya dapat dilakukan pukul/i, "Waktu absensi sudah lewat."],
+        [/token qr/i, "QR tidak cocok. Pindai ulang."],
+        [/dinonaktifkan/i, "Kegiatan sudah ditutup."],
+        [/untuk divisi/i, "Bukan untuk divisi Anda."],
+        [/tidak ditemukan/i, "Kegiatan tidak ditemukan."],
+        [/foto/i, "Foto bermasalah. Ambil ulang."],
+        [/sesi login|login kembali/i, "Sesi habis. Login ulang."],
+        [/failed to fetch|network|koneksi/i, "Koneksi lambat/terputus."]
+    ];
+    for(const [re,out] of rules){
+        if(re.test(msg)) return typeof out==="function" ? out() : out;
+    }
+    return msg.length > 60 ? msg.slice(0,57) + "..." : (msg || "Absensi gagal.");
+}
+
+// Satu notifikasi saja per kegagalan (pesan sama dalam 4 detik tidak ditampilkan ulang).
+let _lastFailToast = { msg:"", at:0 };
+function failToast(msg){
+    const now = Date.now();
+    if(_lastFailToast.msg === msg && now - _lastFailToast.at < 4000) return;
+    _lastFailToast = { msg, at: now };
+    toast(msg, "error");
+}
+
+/* =========================================================
    ATTENDANCE + FOTO DRIVE
 ========================================================= */
 async function finalizeAttendance(session,token,location,photo){
     const attendance=load(DB.attendance);
     const duplicate=attendance.find(a=>a.sessionId===session.id&&a.userId===currentUser.id);
-    if(duplicate){toast("Anda sudah melakukan absensi pada kegiatan ini.","error");return;}
+    if(duplicate){failToast("Sudah absen di kegiatan ini.");return;}
 
     const record={
         id:"ATT-"+Date.now(),sessionId:session.id,token:session.token,userId:currentUser.id,
@@ -417,30 +455,29 @@ async function finalizeAttendance(session,token,location,photo){
 
     if(!cloudSyncEnabled){
         attendance.push(record);_localSave(DB.attendance,attendance);
-        toast("Absensi hanya tersimpan di perangkat ini — BELUM terkirim ke HRD.","error");
-        updateScannerStatus(`Tersimpan lokal saja: ${session.activity}. Belum terkirim ke server.`,"error");
+        failToast("Tersimpan di perangkat saja, belum terkirim.");
         const manualInput=document.getElementById("manualToken");if(manualInput)manualInput.value="";
         renderAll();return;
     }
 
-    cloudSyncBusy=true;toast("Mengunggah foto & menyimpan absensi ke Google Sheets...","normal");
+    cloudSyncBusy=true; // tanpa toast "mengunggah..." — tombol Kirim sudah menampilkan status loading
     try{
         const json=await cloudPost("addAttendance",record,1);
         const saved=json.record||record;
-        const refreshed=await fetchCloudAll();
+        // Tampilkan hasil langsung dari respons server; tidak menunggu getAll (data penuh menyusul di latar belakang).
         const list=load(DB.attendance)||[];
-        const found=list.some(a=>a.id===saved.id||(a.sessionId===saved.sessionId&&a.userId===saved.userId));
-        if(!found) list.push(saved);
-        if(!refreshed) _localSave(DB.attendance,list);
-        toast(`Absensi ${session.activity} berhasil & tersimpan di Google Sheets.` ,"success");
+        if(!list.some(a=>a.id===saved.id||(a.sessionId===saved.sessionId&&a.userId===saved.userId))) list.push(saved);
+        _localSave(DB.attendance,list);
+        toast("Absensi berhasil.","success");
         updateScannerStatus(`Berhasil hadir: ${session.activity}${session.division!=="-"?" • "+session.division:""}`,"success");
         const manualInput=document.getElementById("manualToken");if(manualInput)manualInput.value="";
         renderAll();
+        setTimeout(()=>{ fetchCloudAll().then(ok=>{ if(ok && currentUser) renderAll(); }); }, 1500);
     }catch(err){
         console.error("Gagal menyimpan absensi:",err);
         if(err && err.fatal){
-            const reason=friendlyCloudError(err);
-            toast("Absensi ditolak: "+reason,"error");
+            const reason=shortAttendError(err);
+            failToast("Absensi ditolak: "+reason);
             updateScannerStatus("Absensi ditolak: "+reason,"error");
             return;
         }
@@ -450,7 +487,7 @@ async function finalizeAttendance(session,token,location,photo){
         _localSave(DB.attendance,list);
         queueCloudAction("addAttendance",record);
         cloudLastError=friendlyCloudError(err);updateCloudBadge();
-        toast("Absensi belum tersinkron. Periksa koneksi Cloud lalu coba sinkronisasi ulang.","error");
+        failToast("Koneksi lambat. Absensi disimpan sementara.");
     }finally{cloudSyncBusy=false;}
 }
 
@@ -499,10 +536,12 @@ async function submitPermit(event){
 async function bootWithCloud(){
     if(!cloudSyncEnabled){initializeDatabase();startCloudPolling();return;}
 
-    showCloudLoader(true);
+    const hasSavedLogin = !!(getAuthToken() && localStorage.getItem("nev_current_user"));
+    // Tanpa sesi tersimpan, layar login langsung tampil; bootstrap hanya "membangunkan" server di latar belakang.
+    if(hasSavedLogin) showCloudLoader(true);
     try{
         // Bootstrap tanpa auth: hanya untuk settings + versi server.
-        try{
+        const bootstrapTask = (async()=>{ try{
             const res=await fetch(cacheBust(`${CLOUD_SCRIPT_URL}?action=bootstrap`),{cache:"no-store"});
             const text=await res.text(); const boot=JSON.parse(text);
             if(boot&&boot.ok){
@@ -514,7 +553,8 @@ async function bootWithCloud(){
             }
         }catch(e){
             cloudLastError=friendlyCloudError(e);console.warn("Bootstrap cloud gagal:",e);updateCloudBadge();
-        }
+        } })();
+        if(hasSavedLogin) await bootstrapTask;
 
         const savedToken=getAuthToken();
         const savedUser=localStorage.getItem("nev_current_user");
@@ -532,11 +572,6 @@ async function bootWithCloud(){
                         if(currentUser.role==="STAF")showPage("staf-dashboard");
                         else if(currentUser.role==="HRD")showPage("hrd-dashboard");
                         else if(currentUser.role==="KOOR KP")showPage("koor-dashboard");
-                        const pending=typeof getPendingQR==="function" ? getPendingQR() : "";
-                        if(pending && currentUser.role==="STAF"){
-                            clearPendingQR();
-                            setTimeout(()=>processAttendance(pending),250);
-                        }
                     }else{clearAuthSession();currentUser=null;}
                 }
             }catch(e){
