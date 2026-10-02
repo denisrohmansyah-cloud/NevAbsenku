@@ -28,7 +28,7 @@ const FALLBACK_FOLDER_NAMES = {
   presensi: "NEV Absenku - Foto Presensi"
 };
 
-const CODE_VERSION = "secure-v5";
+const CODE_VERSION = "secure-v5.1-fast";
 
 const SHEET_USERS = "Users";
 const SHEET_SESSIONS = "Sessions";
@@ -189,6 +189,7 @@ function sheetToObjects_(name){
 }
 
 function objectsToSheet_(name, list){
+  if(name===SHEET_USERS) invalidateUsersCache_();
   const sheet = getSheet_(name);
   const headers = HEADERS[name];
   if(sheet.getLastRow() >= 2){
@@ -201,6 +202,7 @@ function objectsToSheet_(name, list){
     range.setNumberFormat("@");
     range.setValues(rows);
   }
+  if(name===SHEET_USERS) invalidateUsersCache_();
 }
 
 function ensureRows_(sheet,needed){
@@ -209,6 +211,7 @@ function ensureRows_(sheet,needed){
 }
 
 function appendObject_(name,obj){
+  if(name===SHEET_USERS) invalidateUsersCache_();
   const sheet=getSheet_(name);
   const headers=HEADERS[name];
   ensureRows_(sheet,sheet.getLastRow()+1);
@@ -432,6 +435,26 @@ function cekAkunPasswordDefault(){
   return list;
 }
 
+/* Cache daftar user (5 menit) khusus untuk login & verifikasi token supaya tidak membaca
+   sheet Users setiap request. Otomatis dibuang setiap kali sheet Users berubah. */
+const USERS_CACHE_KEY = "nev-users-cache-v1";
+function invalidateUsersCache_(){
+  try{ CacheService.getScriptCache().remove(USERS_CACHE_KEY); }catch(e){}
+}
+function usersCached_(){
+  const cache=CacheService.getScriptCache();
+  try{
+    const raw=cache.get(USERS_CACHE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  const users=migratePlaintextPasswords_();
+  try{
+    const json=JSON.stringify(users);
+    if(json.length<90000) cache.put(USERS_CACHE_KEY,json,300);
+  }catch(e){}
+  return users;
+}
+
 function migratePlaintextPasswords_(){
   const users=seedUsers_();
   let changed=false;
@@ -454,7 +477,7 @@ function authUser_(token){
     throw err;
   }
   const session=JSON.parse(raw);
-  const users=migratePlaintextPasswords_();
+  const users=usersCached_();
   const user=users.find(u=>u.id===session.userId);
   if(!user){
     const err=new Error("Akun tidak ditemukan.");
@@ -1058,7 +1081,7 @@ function doPost(e){
         return jsonResponse_({ok:false,error:"Terlalu banyak percobaan login gagal. Coba lagi dalam "+Math.round(LOGIN_LOCK_SEC/60)+" menit."});
       }
 
-      const users=migratePlaintextPasswords_();
+      const users=usersCached_();
       const hash=hashPassword_(password);
       const user=users.find(u=>
         String(u.username).toLowerCase()===username.toLowerCase() &&
@@ -1072,7 +1095,10 @@ function doPost(e){
 
       cache.remove(key);
       const authToken=createAuthToken_(user);
-      return jsonResponse_({ok:true,authToken:authToken,user:safeUser_(user)});
+      const resp={ok:true,authToken:authToken,user:safeUser_(user)};
+      // Kirim data awal sekaligus supaya klien tidak perlu request getAll kedua setelah login.
+      try{ resp.all=getAllFor_(user); }catch(e){}
+      return jsonResponse_(resp);
     }
 
     if(action==="logout"){
