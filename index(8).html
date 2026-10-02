@@ -1160,6 +1160,9 @@ LOGIN
             <p class="login-subtitle">
                 Masuk ke akun NEV Absenku
             </p>
+            <div id="qrLoginHint" class="hidden" style="background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;border-radius:10px;padding:10px 12px;font-size:11px;margin-bottom:16px;">
+                QR absensi terdeteksi. Login untuk melanjutkan proses absensi.
+            </div>
 
             <div class="role-selector">
 
@@ -1527,8 +1530,8 @@ APP
                             </h3>
 
                             <p>
-                                Arahkan kamera ke QR yang
-                                dibuat oleh HRD atau Koor KP.
+                                Arahkan kamera ke QR yang dibuat oleh HRD atau Koor KP.
+                                QR juga dapat dipindai dengan Google Lens untuk langsung membuka halaman absensi.
                             </p>
 
                         </div>
@@ -3285,6 +3288,8 @@ APP
                         </div>
                     </div>
 
+                    <div id="koorSubmitSessions" style="margin-bottom:18px;"></div>
+
                     <div id="koorAttendanceTable"></div>
 
                 </div>
@@ -3924,6 +3929,7 @@ document.addEventListener("DOMContentLoaded",()=>{
     setDefaultDates();
     updateCurrentDate();
     setInterval(updateCurrentDate,30000);
+    storePendingQRFromUrl();
 });
 
 function setDefaultDates(){
@@ -4351,46 +4357,63 @@ function generateQR(event,creatorRole){
  * memindai/menginput token bisa membaca ulang datanya langsung dari token itu.
  */
 function createUniqueToken(activity,division){
-    const prefix="NEV-ABS";
-    const date=new Date().toISOString().slice(0,10).replaceAll("-","");
-    const act=activity.replaceAll(" ","").substring(0,4).toUpperCase();
-    const div=(division || "ALL").replaceAll(" ","").substring(0,4).toUpperCase();
-    const random=Math.random().toString(36).substring(2,8).toUpperCase();
-    return `${prefix}-${date}-${act}-${div}-${random}`;
+    const chars="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+    let random="";
+    for(let i=0;i<12;i++) random += chars[Math.floor(Math.random()*chars.length)];
+    return "NEV-Q-"+random;
 }
 
 function encodeSessionToken(session){
-    const payload={
-        id:session.id, activity:session.activity, division:session.division,
-        date:session.date, start:session.start, end:session.end,
-        location:session.location, notes:session.notes,
-        creatorId:session.creatorId, creatorName:session.creatorName, creatorRole:session.creatorRole,
-        geoEnabled:session.geoEnabled || false, geoLat:session.geoLat ?? null,
-        geoLng:session.geoLng ?? null, geoRadius:session.geoRadius ?? null,
-        expireMinutes:session.expireMinutes ?? null
-    };
-    try{
-        const json=JSON.stringify(payload);
-        const b64=btoa(unescape(encodeURIComponent(json)))
-            .replaceAll("+","-").replaceAll("/","_").replaceAll("=","");
-        return `NEV-ABS-${b64}`;
-    }catch(e){
-        return createUniqueToken(session.activity, session.division);
-    }
+    // Token baru sengaja pendek. Detail sesi tetap disimpan di server.
+    return createUniqueToken(session.activity, session.division);
 }
 
-function decodeSessionToken(token){
-    if(!token || !token.startsWith("NEV-ABS-")) return null;
+function buildQRValue(token){
+    // Google Lens dapat langsung membuka URL halaman aplikasi.
     try{
-        let b64=token.slice("NEV-ABS-".length).replaceAll("-","+").replaceAll("_","/");
-        while(b64.length % 4) b64+="=";
-        const json=decodeURIComponent(escape(atob(b64)));
-        const data=JSON.parse(json);
-        if(!data || !data.id || !data.activity || !data.date || !data.start || !data.end) return null;
-        return data;
-    }catch(e){
-        return null;
-    }
+        if(/^https?:$/i.test(window.location.protocol)){
+            const url=new URL(window.location.href);
+            url.search="";
+            url.hash="";
+            url.searchParams.set("qr",token);
+            return url.toString();
+        }
+    }catch(e){}
+    return token;
+}
+
+function normalizeQRInput(value){
+    let raw=String(value||"").trim();
+    try{
+        if(/^https?:\/\//i.test(raw)){
+            const url=new URL(raw);
+            raw=url.searchParams.get("qr") || url.searchParams.get("token") || raw;
+        }
+    }catch(e){}
+    return raw.replace(/\s+/g,"").trim();
+}
+
+function storePendingQRFromUrl(){
+    try{
+        const url=new URL(window.location.href);
+        const token=url.searchParams.get("qr") || url.searchParams.get("token");
+        if(token){
+            const normalized=normalizeQRInput(token);
+            if(normalized) sessionStorage.setItem("nev_pending_qr",normalized);
+            document.getElementById("qrLoginHint")?.classList.remove("hidden");
+            url.searchParams.delete("qr");
+            url.searchParams.delete("token");
+            history.replaceState({},document.title,url.toString());
+        }
+    }catch(e){}
+}
+
+function getPendingQR(){
+    try{return normalizeQRInput(sessionStorage.getItem("nev_pending_qr")||"");}catch(e){return "";}
+}
+
+function clearPendingQR(){
+    try{sessionStorage.removeItem("nev_pending_qr");}catch(e){}
 }
 
 
@@ -4408,8 +4431,8 @@ function renderGeneratedQR(type,session){
     box.appendChild(qr);
 
     new QRCode(qr,{
-        text:session.token,
-        width:210, height:210,
+        text:buildQRValue(session.token),
+        width:190, height:190,
         colorDark:"#000000", colorLight:"#ffffff",
         correctLevel:QRCode.CorrectLevel.M
     });
@@ -4437,108 +4460,62 @@ function renderGeneratedQR(type,session){
 QR VALIDATION
 ========================================================= */
 
-function processAttendance(token){
+let lastAttendanceErrorMessage="";
+let lastAttendanceErrorAt=0;
+function attendanceFail(message){
+    const msg=String(message||"Absensi gagal.");
+    updateScannerStatus(msg,"error");
+    const now=Date.now();
+    if(msg!==lastAttendanceErrorMessage || now-lastAttendanceErrorAt>5000){
+        lastAttendanceErrorMessage=msg; lastAttendanceErrorAt=now;
+        toast(msg,"error");
+    }
+}
+
+async function processAttendance(token){
     if(currentUser?.role!=="STAF"){
-        toast("Hanya STAF yang dapat melakukan absensi.", "error"); return;
+        attendanceFail("Hanya STAF yang dapat melakukan absensi."); return;
     }
-
-    token=(token || "").replace(/\s+/g,"").trim();
-    if(!token){
-        toast("Token QR belum diisi.", "error"); return;
+    token=normalizeQRInput(token);
+    if(!token){ attendanceFail("QR absensi belum terbaca."); return; }
+    if(typeof cloudPost!=="function"){
+        attendanceFail("Koneksi server absensi belum siap. Muat ulang halaman."); return;
     }
+    try{
+        // Status aktif/nonaktif selalu diverifikasi di server.
+        const resolved=await cloudPost("resolveQR",{token},0);
+        const session=resolved?.session;
+        if(!session){ attendanceFail("QR absensi tidak ditemukan."); return; }
 
-    const sessions = load(DB.sessions);
+        const now=new Date();
+        const parts=new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Jakarta",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now);
+        const wib={}; parts.forEach(p=>{if(p.type!=="literal")wib[p.type]=p.value;});
+        const currentDate=`${wib.year}-${wib.month}-${wib.day}`;
+        const currentTime=`${wib.hour}:${wib.minute}`;
+        const openMin=Math.max(0,timeToMinutes(session.start)-15);
+        const deadline=getSessionDeadline(session);
 
-let session = sessions.find(s =>
-    String(s.token || "").trim() === token
-);
-
-if(!session){
-    const decoded = decodeSessionToken(token);
-
-    if(decoded){
-        session = {
-            ...decoded,
-            token: token,
-            active: true
-        };
-
-        // Simpan hanya jika belum ada token yang sama
-        const existingIndex = sessions.findIndex(s =>
-            String(s.token || "").trim() === token
-        );
-
-        if(existingIndex >= 0){
-            sessions[existingIndex] = session;
-        }else{
-            sessions.push(session);
+        if(currentDate!==session.date){ attendanceFail("QR belum atau sudah melewati tanggal kegiatan."); return; }
+        if(currentTime<minutesToTime(openMin)){
+            attendanceFail(`Absensi baru dapat dilakukan 15 menit sebelum jam mulai (${minutesToTime(openMin)}).`); return;
+        }
+        if(currentTime>deadline){
+            attendanceFail(Number(session.expireMinutes)>0 && deadline!==session.end
+                ? `QR sudah kadaluwarsa (batas pukul ${deadline}).`
+                : `Absensi hanya dapat dilakukan pukul ${session.start} - ${session.end}.`);
+            return;
+        }
+        if((load(DB.attendance)||[]).some(a=>a.sessionId===session.id && a.userId===currentUser.id)){
+            attendanceFail("Anda sudah melakukan absensi pada kegiatan ini."); return;
         }
 
-        _localSave(DB.sessions, sessions);
+        stopScanner();
+        updateScannerStatus(`QR valid: ${session.activity}. Lanjutkan verifikasi lokasi & selfie.`,"success");
+        beginAttendanceCapture(session,token);
+    }catch(err){
+        attendanceFail(friendlyCloudError(err));
     }
 }
-
-    const now = new Date();
-
-const wibParts = new Intl.DateTimeFormat("en-US", {
-  timeZone: "Asia/Jakarta",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23"
-}).formatToParts(now);
-
-const wib = {};
-wibParts.forEach(part => {
-  if (part.type !== "literal") {
-    wib[part.type] = part.value;
-  }
-});
-
-const currentDate = `${wib.year}-${wib.month}-${wib.day}`;
-const currentTime = `${wib.hour}:${wib.minute}`;
-
-    if(currentDate !== session.date){
-        toast("QR belum atau sudah melewati tanggal kegiatan.", "error"); return;
-    }
-
-    const deadline = getSessionDeadline(session);
-
-    if(currentTime < session.start){
-        toast(`QR belum aktif. Absensi dibuka pukul ${session.start}.`, "error");
-        updateScannerStatus(`QR ditemukan, tetapi absensi baru dibuka pukul ${session.start}.`, "error");
-        return;
-    }
-
-    if(currentTime > deadline){
-        const expiredByLimit = deadline !== session.end;
-        if(expiredByLimit){
-            toast(`QR sudah kadaluwarsa (batas pukul ${deadline}).`, "error");
-            updateScannerStatus(`QR sudah kadaluwarsa. Batas absensi pukul ${deadline}.`, "error");
-        }else{
-            toast(`Absensi hanya dapat dilakukan pukul ${session.start} - ${session.end}.`, "error");
-            updateScannerStatus(`QR ditemukan, tetapi saat ini bukan waktu absensi. Jadwal: ${session.start} - ${session.end}.`, "error");
-        }
-        return;
-    }
-
-    const attendance=load(DB.attendance);
-    const duplicate=attendance.find(a=> a.sessionId===session.id && a.userId===currentUser.id);
-    if(duplicate){
-        toast("Anda sudah melakukan absensi pada kegiatan ini.", "error");
-        updateScannerStatus("Absensi sudah tercatat sebelumnya.", "error");
-        return;
-    }
-
-    // Token & jadwal valid. Hentikan kamera scanner (kalau aktif) lalu lanjut ke
-    // langkah verifikasi lokasi (geofencing) dan selfie sebelum absensi disimpan.
-    stopScanner();
-    updateScannerStatus(`QR valid: ${session.activity}. Lanjutkan verifikasi lokasi & selfie.`, "success");
-    beginAttendanceCapture(session, token);
-}
-
 function finalizeAttendance(session, token, location, photo){
     const attendance=load(DB.attendance);
     const duplicate=attendance.find(a=> a.sessionId===session.id && a.userId===currentUser.id);
@@ -4786,20 +4763,10 @@ function copyToken(type){
     });
 }
 
-function toggleCurrentQR(type){
+async function toggleCurrentQR(type){
     const session=currentQR[type];
     if(!session)return;
-    const sessions=load(DB.sessions);
-    const target=sessions.find(s=>s.id===session.id);
-    if(!target)return;
-
-    target.active=!target.active;
-    save(DB.sessions,sessions);
-    currentQR[type]=target;
-
-    renderGeneratedQR(type, target);
-    renderQRSessionList(type);
-    toast(target.active ? "QR diaktifkan." : "QR dinonaktifkan.", "success");
+    await toggleSessionActive(session.id,type);
 }
 
 async function deleteCurrentQR(type){
@@ -4819,6 +4786,9 @@ async function deleteSession(id,type){
        (session.creatorId!==currentUser.id || session.activity!=="Ngoprek" || session.division!==currentUser.division)){
         toast("Akses ditolak. Koor KP hanya dapat menghapus QR Ngoprek miliknya sendiri.","error");
         return;
+    }
+    if(currentUser.role==="KOOR KP" && session.attendanceSubmitted){
+        toast("Rekap sudah disubmit ke HRD. Koor KP tidak dapat menghapus kegiatan ini.","error"); return;
     }
     if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
         toast("Akses ditolak.","error"); return;
@@ -4880,12 +4850,16 @@ function renderQRSessionList(type){
                             <td>${s.geoEnabled ? `<span class="badge badge-active" title="Radius ${Number(s.geoRadius)||0} m"><i class="fa-solid fa-location-dot"></i> ${Number(s.geoRadius)||0}m</span>` : `<span style="color:#999;font-size:12px;">Kantor</span>`}</td>
                             <td><span class="badge ${s.active ? "badge-active" : "badge-inactive"}">${s.active ? "Aktif" : "Nonaktif"}</span></td>
                             <td style="display:flex;gap:5px;">
-                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="loadSessionToQR('${jsId(s.id)}','${type}')">
+                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="loadSessionToQR('${jsId(s.id)}','${type}')" title="Tampilkan QR">
                                     <i class="fa-solid fa-qrcode"></i>
                                 </button>
-                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteSession('${jsId(s.id)}','${type}')">
-                                    <i class="fa-solid fa-trash"></i>
+                                <button class="btn btn-warning" style="padding:7px 9px;" onclick="toggleSessionActive('${jsId(s.id)}','${type}')" title="${s.active ? "Nonaktifkan" : "Aktifkan"}">
+                                    <i class="fa-solid ${s.active ? "fa-toggle-on" : "fa-toggle-off"}"></i>
                                 </button>
+                                ${type==="koor" ? (s.attendanceSubmitted
+                                    ? `<span class="badge badge-active">Submitted</span>`
+                                    : `<button class="btn btn-success" style="padding:7px 9px;" onclick="submitKoorSession('${jsId(s.id)}')" title="Submit rekap ke HRD"><i class="fa-solid fa-paper-plane"></i></button>`) : ""}
+                                ${type==="koor" && s.attendanceSubmitted ? "" : `<button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteSession('${jsId(s.id)}','${type}')"><i class="fa-solid fa-trash"></i></button>`}
                             </td>
                         </tr>
                     `).join("")}
@@ -5011,6 +4985,9 @@ function openSessionAttendanceEdit(sessionId,userId){
     if(currentUser.role==="KOOR KP" && (session.creatorId!==currentUser.id || session.activity!=="Ngoprek")){
         toast("Koor KP hanya dapat mengubah absensi Ngoprek yang dibuatnya.", "error"); return;
     }
+    if(currentUser.role==="KOOR KP" && session.attendanceSubmitted){
+        toast("Rekap sudah disubmit ke HRD. Absensi tidak dapat diedit lagi.","error"); return;
+    }
 
     const attendance=load(DB.attendance);
     const record=attendance.find(a=>a.sessionId===sessionId && a.userId===userId);
@@ -5047,6 +5024,7 @@ function renderStafHistory(){
 }
 
 function attendanceTable(data,canEdit){
+    const sessionMap=Object.fromEntries((load(DB.sessions)||[]).map(s=>[s.id,s]));
     return `
         <div class="table-wrapper">
             <table>
@@ -5067,12 +5045,10 @@ function attendanceTable(data,canEdit){
                             <td>${statusBadge(a.status)}</td>
                             <td>${attendanceProofCell(a)}</td>
                             ${canEdit ? `<td style="display:flex;gap:5px;">
-                                <button class="btn btn-outline" style="padding:7px 9px;" onclick="openEditAttendance('${jsId(a.id)}')">
-                                    <i class="fa-solid fa-pen"></i>
-                                </button>
-                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteAttendance('${jsId(a.id)}')">
-                                    <i class="fa-solid fa-trash"></i>
-                                </button>
+                                ${currentUser?.role==="KOOR KP" && sessionMap[a.sessionId]?.attendanceSubmitted
+                                    ? `<span class="badge badge-inactive">Submitted</span>`
+                                    : `<button class="btn btn-outline" style="padding:7px 9px;" onclick="openEditAttendance('${jsId(a.id)}')"><i class="fa-solid fa-pen"></i></button>
+                                       <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteAttendance('${jsId(a.id)}')"><i class="fa-solid fa-trash"></i></button>`}
                             </td>` : ""}
                         </tr>
                     `).join("")}
@@ -5339,21 +5315,27 @@ function renderKoorDashboard(){
 
 function renderKoorAttendance(){
     if(currentUser?.role!=="KOOR KP")return;
-    let attendance=load(DB.attendance).filter(a=>
-        a.creatorId===currentUser.id &&
-        a.activity==="Ngoprek" &&
-        a.division===currentUser.division
-    );
+    const allSessions=load(DB.sessions)||[];
+    let sessions=allSessions.filter(s=>s.creatorId===currentUser.id && s.activity==="Ngoprek" && s.division===currentUser.division);
+    const submitBox=document.getElementById("koorSubmitSessions");
+    if(submitBox){
+        submitBox.innerHTML=sessions.length ? `
+            <div style="background:#f7f7f7;border-radius:12px;padding:14px;">
+                <div style="font-size:12px;font-weight:800;margin-bottom:10px;">Submit Rekap Ngoprek ke HRD</div>
+                ${sessions.map(s=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid #e5e7eb;">
+                    <div style="min-width:0;"><strong style="font-size:12px;">${escapeHTML(s.date)} • ${escapeHTML(s.start)}-${escapeHTML(s.end)}</strong><div style="font-size:10px;color:#777;">${s.attendanceSubmitted ? "Sudah disubmit ke HRD" : "Masih dapat diedit oleh Koor KP"}</div></div>
+                    ${s.attendanceSubmitted ? `<span class="badge badge-active">Submitted</span>` : `<button class="btn btn-success" style="padding:8px 11px;" onclick="submitKoorSession('${jsId(s.id)}')"><i class="fa-solid fa-paper-plane"></i> Submit</button>`}
+                </div>`).join("")}
+            </div>` : `<div class="empty" style="padding:18px;">Belum ada sesi Ngoprek untuk disubmit.</div>`;
+    }
 
+    let attendance=load(DB.attendance).filter(a=>
+        a.creatorId===currentUser.id && a.activity==="Ngoprek" && a.division===currentUser.division
+    );
     const date=document.getElementById("koorFilterDate")?.value || "";
     const search=(document.getElementById("koorFilterSearch")?.value || "").trim().toLowerCase();
-
     if(date) attendance=attendance.filter(a=>a.date===date);
-    if(search) attendance=attendance.filter(a=>
-        String(a.userName||"").toLowerCase().includes(search) ||
-        String(a.username||"").toLowerCase().includes(search)
-    );
-
+    if(search) attendance=attendance.filter(a=>String(a.userName||"").toLowerCase().includes(search) || String(a.username||"").toLowerCase().includes(search));
     const container=document.getElementById("koorAttendanceTable");
     if(!attendance.length){
         container.innerHTML=emptyHTML("fa-clipboard-check", "Tidak ada absensi Ngoprek sesuai filter.");
@@ -5362,7 +5344,6 @@ function renderKoorAttendance(){
     attendance.sort((a,b)=> String(b.date).localeCompare(String(a.date)) || String(b.checkIn).localeCompare(String(a.checkIn)));
     container.innerHTML=attendanceTable(attendance,true);
 }
-
 function clearKoorAttendanceFilter(){
     const d=document.getElementById("koorFilterDate");
     const s=document.getElementById("koorFilterSearch");
@@ -5387,6 +5368,10 @@ function openEditAttendance(id){
     if(currentUser.role==="KOOR KP" && (record.creatorId!==currentUser.id || record.activity!=="Ngoprek")){
         toast("Koor KP hanya dapat mengubah absensi Ngoprek yang dibuatnya.", "error"); return;
     }
+    if(currentUser.role==="KOOR KP"){
+        const s=load(DB.sessions).find(x=>x.id===record.sessionId);
+        if(s?.attendanceSubmitted){ toast("Rekap sudah disubmit ke HRD. Absensi tidak dapat diedit lagi.","error"); return; }
+    }
 
     document.getElementById("editAttendanceId").value=id;
     document.getElementById("editAttendanceSessionId").value="";
@@ -5401,53 +5386,47 @@ function openEditAttendance(id){
     document.getElementById("editAttendanceModal").classList.add("show");
 }
 
-function saveAttendanceEdit(){
+async function saveAttendanceEdit(){
+    if(currentUser?.role!=="HRD" && currentUser?.role!=="KOOR KP"){
+        toast("Akses ditolak.","error"); return;
+    }
     const id=document.getElementById("editAttendanceId").value;
     const status=document.getElementById("editAttendanceStatus").value;
     const sessionId=document.getElementById("editAttendanceSessionId")?.value;
     const userId=document.getElementById("editAttendanceUserId")?.value;
     const attendance=load(DB.attendance);
-    let record = id ? attendance.find(a=>a.id===id) : null;
+    let record=id ? attendance.find(a=>a.id===id) : null;
+    const sessions=load(DB.sessions);
+    const session=sessionId ? sessions.find(s=>s.id===sessionId) : (record ? sessions.find(s=>s.id===record.sessionId) : null);
 
+    if(currentUser.role==="KOOR KP" && session?.attendanceSubmitted){
+        toast("Rekap sudah disubmit ke HRD. Hanya HRD yang dapat mengeditnya.","error"); return;
+    }
     if(record){
-        if(currentUser.role==="KOOR KP" && (record.creatorId!==currentUser.id || record.activity!=="Ngoprek")){
-            toast("Akses ditolak.", "error"); return;
+        if(currentUser.role==="KOOR KP" && (record.creatorId!==currentUser.id || record.activity!=="Ngoprek" || record.division!==currentUser.division)){
+            toast("Akses ditolak.","error"); return;
         }
         record.status=status;
-    } else if(sessionId && userId){
-        // Staf belum pernah absen pada sesi ini -> HRD/Koor KP menandai statusnya secara manual.
-        const sessions=load(DB.sessions);
-        const session=sessions.find(s=>s.id===sessionId);
-        const users=load(DB.users);
-        const staff=users.find(u=>u.id===userId);
+    }else if(sessionId && userId){
+        const staff=load(DB.users).find(u=>u.id===userId);
         if(!session || !staff){ closeModal("editAttendanceModal"); return; }
-
-        if(currentUser.role==="KOOR KP" && (session.creatorId!==currentUser.id || session.activity!=="Ngoprek")){
-            toast("Akses ditolak.", "error"); return;
+        if(currentUser.role==="KOOR KP" && (session.creatorId!==currentUser.id || session.activity!=="Ngoprek" || session.division!==currentUser.division)){
+            toast("Akses ditolak.","error"); return;
         }
+        attendance.push({id:"ATT-"+Date.now(),sessionId:session.id,token:session.token,userId:staff.id,userName:staff.name,username:staff.username,activity:session.activity,division:session.division,date:session.date,checkIn:new Date().toISOString(),status,creatorId:session.creatorId,creatorRole:session.creatorRole,markedManuallyBy:currentUser.id});
+    }else{ closeModal("editAttendanceModal"); return; }
 
-        const duplicate=attendance.find(a=>a.sessionId===session.id && a.userId===staff.id);
-        if(duplicate){
-            duplicate.status=status;
-        }else{
-            attendance.push({
-                id: "ATT-"+Date.now(), sessionId: session.id, token: session.token,
-                userId: staff.id, userName: staff.name, username: staff.username,
-                activity: session.activity, division: session.division, date: session.date,
-                checkIn: new Date().toISOString(), status,
-                creatorId: session.creatorId, creatorRole: session.creatorRole,
-                markedManuallyBy: currentUser.id
-            });
-        }
-    } else {
-        closeModal("editAttendanceModal"); return;
-    }
-
-    save(DB.attendance,attendance);
-    closeModal("editAttendanceModal");
-    renderAll();
-    renderSessionStaffStatus();
-    toast("Status absensi berhasil diperbarui.", "success");
+    const btn=document.querySelector("#editAttendanceModal .btn-primary");
+    if(btn) btn.disabled=true;
+    try{
+        if(cloudSyncEnabled) await cloudPost("saveAttendance",attendance,0);
+        _localSave(DB.attendance,attendance);
+        closeModal("editAttendanceModal");
+        renderAll(); renderSessionStaffStatus();
+        toast("Status absensi berhasil diperbarui.","success");
+    }catch(err){
+        toast("Gagal memperbarui status: "+friendlyCloudError(err),"error");
+    }finally{ if(btn) btn.disabled=false; }
 }
 
 async function deleteAttendance(id){

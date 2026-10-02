@@ -474,16 +474,13 @@ function beginAttendanceCapture(session, token){
 
     document.getElementById("selfieModal").classList.add("show");
 
-    // "Bangunkan" server Apps Script selagi pengguna berfoto, supaya pengiriman nanti tidak kena cold start.
-    try{ if(typeof CLOUD_SCRIPT_URL==="string") fetch(cacheBust(CLOUD_SCRIPT_URL+"?action=bootstrap"),{cache:"no-store"}).catch(()=>{}); }catch(e){}
-
     navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio:false })
         .then(stream=>{
             selfieStream = stream;
             video.srcObject = stream;
         })
         .catch(()=>{
-            toast("Kamera tidak bisa diakses. Aktifkan izin kamera.", "error");
+            toast("Tidak dapat mengakses kamera depan untuk selfie. Pastikan izin kamera aktif dan halaman dibuka lewat HTTPS.", "error");
             closeSelfieModal();
         });
 
@@ -524,9 +521,9 @@ function captureSelfie(){
         return;
     }
 
-    // Perkecil ke lebar maks. 720 px: cukup jelas sebagai bukti, tapi ukurannya
-    // jauh lebih kecil (puluhan KB) sehingga upload tidak gagal di jaringan HP yang lambat.
-    const MAX_W = 480;
+    // Kompresi lebih agresif agar upload selfie lebih cepat di jaringan HP.
+    // 600 px tetap cukup untuk bukti kehadiran dan jauh lebih ringan.
+    const MAX_W = 600;
     const scale = Math.min(1, MAX_W / video.videoWidth);
     canvas.width = Math.round(video.videoWidth * scale);
     canvas.height = Math.round(video.videoHeight * scale);
@@ -536,7 +533,7 @@ function captureSelfie(){
     ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.58);
     pendingAttendance.photo = dataUrl;
 
     document.getElementById("selfiePreview").src = dataUrl;
@@ -562,11 +559,11 @@ async function submitAttendanceWithSelfie(){
         return;
     }
     if(!pendingAttendance.photo){
-        toast("Ambil selfie dulu.", "error");
+        toast("Ambil foto selfie terlebih dahulu.", "error");
         return;
     }
     if(pendingAttendance.locationOk === false){
-        toast("Di luar radius lokasi absensi.", "error");
+        toast("Absensi ditolak: Anda berada di luar radius kantor.", "error");
         return;
     }
 
