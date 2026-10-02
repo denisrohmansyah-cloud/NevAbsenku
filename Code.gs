@@ -40,7 +40,7 @@ const HEADERS = {
   Users: ["id", "name", "username", "password", "role", "division"],
   Sessions: ["id", "activity", "division", "date", "start", "end", "location", "notes",
              "creatorId", "creatorName", "creatorRole", "active", "createdAt", "token",
-             "geoEnabled", "geoLat", "geoLng", "geoRadius"],
+             "geoEnabled", "geoLat", "geoLng", "geoRadius", "expireMinutes"],
   Attendance: ["id", "sessionId", "token", "userId", "userName", "username", "activity",
                "division", "date", "checkIn", "status", "creatorId", "creatorRole",
                "lat", "lng", "photo", "permitId", "approvedFromPermit"],
@@ -51,7 +51,7 @@ const HEADERS = {
             "reviewedBy", "reviewedByName", "reviewedAt", "reviewNote"]
 };
 
-const NUMERIC_COLS = ["lat", "lng", "geoLat", "geoLng", "geoRadius", "officeLat", "officeLng", "radius"];
+const NUMERIC_COLS = ["lat", "lng", "geoLat", "geoLng", "geoRadius", "expireMinutes", "officeLat", "officeLng", "radius"];
 const BOOL_COLS = ["active", "geofenceEnabled", "geoEnabled", "approvedFromPermit"];
 const DATE_COLS = ["date", "sessionDate"];
 const TIME_COLS = ["start", "end"];
@@ -71,9 +71,9 @@ const TOKEN_RE     = /^NEV-ABS-[A-Za-z0-9_-]{4,4000}$/;
 const DRIVE_URL_RE = /^https:\/\/drive\.google\.com\/file\/d\/[A-Za-z0-9_-]{10,100}\/view$/;
 const DATA_IMG_RE  = /^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+\/=]+)$/;
 
-const ATT_STATUS    = ["Hadir","Izin","Sakit","Alpha"];
+const ATT_STATUS    = ["Hadir","Izin","Sakit","Dispen","Alpha"];
 const PERMIT_STATUS = ["Menunggu","Disetujui","Ditolak"];
-const PERMIT_TYPES  = ["Izin","Sakit"];
+const PERMIT_TYPES  = ["Izin","Sakit","Dispen"];
 const ROLES         = ["STAF","KOOR KP","HRD"];
 
 const MAX_BODY_CHARS    = 6000000;   // batas satu request
@@ -107,6 +107,10 @@ function nowWIB_(){
     time:Utilities.formatDate(now,"Asia/Jakarta","HH:mm"),
     iso:now.toISOString()
   };
+}
+function minutesToHHMM_(min){
+  const m=((Math.round(min)%1440)+1440)%1440;
+  return ("0"+Math.floor(m/60)).slice(-2)+":"+("0"+(m%60)).slice(-2);
 }
 function minutesOf_(hhmm){ const p=String(hhmm).split(":"); return Number(p[0])*60+Number(p[1]); }
 
@@ -235,7 +239,8 @@ function sanitizeSession_(s){
     geoEnabled:geoEnabled,
     geoLat:geoEnabled?numOrNull_(s.geoLat,-90,90):null,
     geoLng:geoEnabled?numOrNull_(s.geoLng,-180,180):null,
-    geoRadius:geoEnabled?numOrNull_(s.geoRadius,1,5000):null
+    geoRadius:geoEnabled?numOrNull_(s.geoRadius,1,5000):null,
+    expireMinutes:numOrNull_(s.expireMinutes,1,1440)
   };
 }
 
@@ -942,7 +947,15 @@ function addAttendance_(actor,data){
   const now=nowWIB_();
   if(now.date!==session.date) throw new Error("QR belum atau sudah melewati tanggal kegiatan.");
   const nowMin=minutesOf_(now.time);
-  if(nowMin<minutesOf_(session.start) || nowMin>minutesOf_(session.end)+CHECKIN_GRACE_MIN){
+  const startMin=minutesOf_(session.start), endMin=minutesOf_(session.end);
+  const expire=Number(session.expireMinutes);
+  const expireAt=(isFinite(expire) && expire>0) ? startMin+expire : null;
+  const limitedByExpiry=(expireAt!==null && expireAt<endMin);
+  // Jika masa berlaku QR diatur lebih singkat dari durasi kegiatan, batasnya ketat (tanpa toleransi).
+  const deadlineMin=limitedByExpiry ? expireAt : endMin+CHECKIN_GRACE_MIN;
+  if(nowMin<startMin) throw new Error("QR belum aktif. Absensi dibuka pukul "+session.start+".");
+  if(nowMin>deadlineMin){
+    if(limitedByExpiry) throw new Error("QR sudah kadaluwarsa (batas pukul "+minutesToHHMM_(expireAt)+").");
     throw new Error("Absensi hanya dapat dilakukan pukul "+session.start+" - "+session.end+".");
   }
 
@@ -983,7 +996,7 @@ function addPermit_(actor,data){
   if(actor.role!=="STAF") throw new Error("Akses ditolak.");
   if(!data || !idOk_(data.sessionId)) throw new Error("Data pengajuan tidak valid.");
   const type=String(data.type||"");
-  if(PERMIT_TYPES.indexOf(type)<0) throw new Error("Jenis pengajuan harus Izin atau Sakit.");
+  if(PERMIT_TYPES.indexOf(type)<0) throw new Error("Jenis pengajuan harus Izin, Sakit, atau Dispen.");
   const reason=str_(data.reason,1000);
   if(!reason) throw new Error("Alasan wajib diisi.");
 

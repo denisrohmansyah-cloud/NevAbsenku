@@ -735,6 +735,15 @@ td{
     color:#b91c1c;
 }
 
+.badge-dispen{
+    background:#ede9fe;
+    color:#6d28d9;
+}
+
+.stats.stats-5{
+    grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+}
+
 .badge-active{
     background:#dcfce7;
     color:#15803d;
@@ -1340,7 +1349,7 @@ APP
                 </div>
 
 
-                <div class="stats">
+                <div class="stats stats-5">
 
                     <div class="stat-card">
 
@@ -1384,6 +1393,14 @@ APP
                         <h3 id="stafTotalAlpha">0</h3>
                         <p>Alpha</p>
 
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fa-solid fa-file-signature"></i>
+                        </div>
+                        <h3 id="stafTotalDispen">0</h3>
+                        <p>Dispen</p>
                     </div>
 
                 </div>
@@ -1795,6 +1812,8 @@ APP
                                     <option value="Izin">Izin</option>
                                     <option value="Sakit">Sakit</option>
 
+                                <option value="Dispen">Dispen (Dispensasi)</option>
+
                                 </select>
 
                             </div>
@@ -1883,7 +1902,7 @@ APP
 
                 </div>
 
-                <div class="stats">
+                <div class="stats stats-5">
 
                     <div class="stat-card">
 
@@ -1931,6 +1950,14 @@ APP
 
                         <p>Alpha</p>
 
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fa-solid fa-file-signature"></i>
+                        </div>
+                        <h3 id="hrdDispen">0</h3>
+                        <p>Dispen</p>
                     </div>
 
                 </div>
@@ -2118,6 +2145,39 @@ APP
                                         required>
 
                                 </div>
+
+                            </div>
+
+                            <div class="form-group">
+
+                                <label>Masa Berlaku QR</label>
+
+                                <select
+                                    id="hrdExpire"
+                                    class="form-control"
+                                    onchange="toggleExpireCustom('hrd')">
+                                    <option value="">Sampai jam selesai kegiatan</option>
+                                    <option value="5">5 menit setelah jam mulai</option>
+                                    <option value="10">10 menit setelah jam mulai</option>
+                                    <option value="15">15 menit setelah jam mulai</option>
+                                    <option value="30">30 menit setelah jam mulai</option>
+                                    <option value="60">60 menit setelah jam mulai</option>
+                                    <option value="custom">Atur sendiri (menit)...</option>
+                                </select>
+
+                                <input
+                                    id="hrdExpireCustom"
+                                    type="number"
+                                    min="1"
+                                    max="1440"
+                                    class="form-control hidden"
+                                    style="margin-top:8px;"
+                                    placeholder="Jumlah menit sejak jam mulai">
+
+                                <p style="font-size:11px;color:#777;margin-top:4px;">
+                                    Dihitung dari jam mulai. Setelah batas ini lewat, QR tidak bisa
+                                    dipakai absen walau kegiatan belum selesai.
+                                </p>
 
                             </div>
 
@@ -2362,7 +2422,7 @@ APP
                     </p>
                 </div>
 
-                <div class="stats">
+                <div class="stats stats-5">
 
                     <div class="stat-card">
                         <div class="stat-icon">
@@ -2394,6 +2454,14 @@ APP
                         </div>
                         <h3 id="koorIzinSakit">0</h3>
                         <p>Izin / Sakit</p>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fa-solid fa-file-signature"></i>
+                        </div>
+                        <h3 id="koorDispen">0</h3>
+                        <p>Dispen</p>
                     </div>
 
                 </div>
@@ -2556,6 +2624,39 @@ APP
                                         required>
 
                                 </div>
+
+                            </div>
+
+                            <div class="form-group">
+
+                                <label>Masa Berlaku QR</label>
+
+                                <select
+                                    id="koorExpire"
+                                    class="form-control"
+                                    onchange="toggleExpireCustom('koor')">
+                                    <option value="">Sampai jam selesai kegiatan</option>
+                                    <option value="5">5 menit setelah jam mulai</option>
+                                    <option value="10">10 menit setelah jam mulai</option>
+                                    <option value="15">15 menit setelah jam mulai</option>
+                                    <option value="30">30 menit setelah jam mulai</option>
+                                    <option value="60">60 menit setelah jam mulai</option>
+                                    <option value="custom">Atur sendiri (menit)...</option>
+                                </select>
+
+                                <input
+                                    id="koorExpireCustom"
+                                    type="number"
+                                    min="1"
+                                    max="1440"
+                                    class="form-control hidden"
+                                    style="margin-top:8px;"
+                                    placeholder="Jumlah menit sejak jam mulai">
+
+                                <p style="font-size:11px;color:#777;margin-top:4px;">
+                                    Dihitung dari jam mulai. Setelah batas ini lewat, QR tidak bisa
+                                    dipakai absen walau kegiatan belum selesai.
+                                </p>
 
                             </div>
 
@@ -2898,6 +2999,7 @@ APP
                                 <option>Hadir</option>
                                 <option>Izin</option>
                                 <option>Sakit</option>
+                                <option>Dispen</option>
                                 <option>Alpha</option>
 
                             </select>
@@ -3086,7 +3188,7 @@ APP
                     </div>
 
                     <p class="recap-note">
-                        Alpha = kegiatan yang sudah selesai dan staf tidak tercatat hadir, izin, maupun sakit.
+                        Alpha = kegiatan yang sudah selesai dan staf tidak tercatat hadir, izin, sakit, maupun dispen.
                         Kegiatan yang belum selesai tidak dihitung.
                     </p>
 
@@ -3596,6 +3698,7 @@ EDIT ATTENDANCE MODAL
                     <option>Hadir</option>
                     <option>Izin</option>
                     <option>Sakit</option>
+                    <option>Dispen</option>
                     <option>Alpha</option>
 
                 </select>
@@ -4106,6 +4209,54 @@ function updateUserUI(){
 QR GENERATION
 ========================================================= */
 
+/* ---- Masa berlaku QR ---- */
+function timeToMinutes(hhmm){
+    const p = String(hhmm).split(":");
+    return Number(p[0])*60 + Number(p[1]);
+}
+
+function minutesToTime(min){
+    const m = ((Math.round(min) % 1440) + 1440) % 1440;
+    return String(Math.floor(m/60)).padStart(2,"0") + ":" + String(m%60).padStart(2,"0");
+}
+
+/* Batas akhir QR bisa dipakai: jam selesai, atau jam mulai + masa berlaku jika lebih awal. */
+function getSessionDeadline(session){
+    const m = Number(session.expireMinutes);
+    if(Number.isFinite(m) && m > 0){
+        return minutesToTime(Math.min(timeToMinutes(session.end), timeToMinutes(session.start) + m));
+    }
+    return session.end;
+}
+
+function toggleExpireCustom(prefix){
+    const sel = document.getElementById(`${prefix}Expire`);
+    const input = document.getElementById(`${prefix}ExpireCustom`);
+    if(!sel || !input) return;
+    const custom = sel.value === "custom";
+    input.classList.toggle("hidden", !custom);
+    if(!custom) input.value = "";
+}
+
+function readExpireMinutes(prefix, start, end){
+    const sel = document.getElementById(`${prefix}Expire`);
+    if(!sel || !sel.value) return { ok:true, value:null };
+    const raw = sel.value === "custom"
+        ? document.getElementById(`${prefix}ExpireCustom`).value
+        : sel.value;
+    const m = parseInt(raw, 10);
+    if(!Number.isFinite(m) || m < 1){
+        toast("Isi masa berlaku QR dengan jumlah menit yang benar.", "error");
+        return { ok:false };
+    }
+    const duration = timeToMinutes(end) - timeToMinutes(start);
+    if(m > duration){
+        toast(`Masa berlaku QR (${m} menit) tidak boleh lebih lama dari durasi kegiatan (${duration} menit).`, "error");
+        return { ok:false };
+    }
+    return { ok:true, value:m };
+}
+
 function generateQR(event,creatorRole){
     event.preventDefault();
     let activity, division, date, start, end, location, notes;
@@ -4146,6 +4297,10 @@ function generateQR(event,creatorRole){
         return;
     }
 
+    const expireRes = readExpireMinutes(geoRole, start, end);
+    if(!expireRes.ok) return;
+    const expireMinutes = expireRes.value;
+
     // Lokasi & radius khusus kegiatan ini (opsional, memperketat absensi).
     let geoEnabled=false, geoLat=null, geoLng=null, geoRadius=null;
     const geoCheckbox=document.getElementById(`${geoRole}GeoEnabled`);
@@ -4169,7 +4324,7 @@ function generateQR(event,creatorRole){
         location: location || "-", notes: notes || "-",
         creatorId: currentUser.id, creatorName: currentUser.name, creatorRole,
         active:true, createdAt: new Date().toISOString(),
-        geoEnabled, geoLat, geoLng, geoRadius
+        geoEnabled, geoLat, geoLng, geoRadius, expireMinutes
     };
     session.token = encodeSessionToken(session);
 
@@ -4180,6 +4335,8 @@ function generateQR(event,creatorRole){
 
     renderGeneratedQR(creatorRole==="HRD" ? "hrd" : "koor", session);
     if(typeof resetSessionGeoForm==="function") resetSessionGeoForm(geoRole);
+    const expSel = document.getElementById(`${geoRole}Expire`);
+    if(expSel){ expSel.value = ""; toggleExpireCustom(geoRole); }
     renderAll();
     toast("QR berhasil dibuat otomatis.", "success");
 }
@@ -4209,7 +4366,8 @@ function encodeSessionToken(session){
         location:session.location, notes:session.notes,
         creatorId:session.creatorId, creatorName:session.creatorName, creatorRole:session.creatorRole,
         geoEnabled:session.geoEnabled || false, geoLat:session.geoLat ?? null,
-        geoLng:session.geoLng ?? null, geoRadius:session.geoRadius ?? null
+        geoLng:session.geoLng ?? null, geoRadius:session.geoRadius ?? null,
+        expireMinutes:session.expireMinutes ?? null
     };
     try{
         const json=JSON.stringify(payload);
@@ -4262,6 +4420,7 @@ function renderGeneratedQR(type,session){
             <div class="qr-info-row"><span>Divisi</span><span>${escapeHTML(session.division)}</span></div>
             <div class="qr-info-row"><span>Tanggal</span><span>${escapeHTML(session.date)}</span></div>
             <div class="qr-info-row"><span>Waktu</span><span>${escapeHTML(session.start)} - ${escapeHTML(session.end)}</span></div>
+            <div class="qr-info-row"><span>QR berlaku s/d</span><span>${escapeHTML(getSessionDeadline(session))}</span></div>
             <div class="qr-info-row"><span>Status</span><span>${session.active ? "Aktif" : "Nonaktif"}</span></div>
         </div>
     `;
@@ -4345,9 +4504,23 @@ const currentTime = `${wib.hour}:${wib.minute}`;
         toast("QR belum atau sudah melewati tanggal kegiatan.", "error"); return;
     }
 
-    if(currentTime < session.start || currentTime > session.end){
-        toast(`Absensi hanya dapat dilakukan pukul ${session.start} - ${session.end}.`, "error");
-        updateScannerStatus(`QR ditemukan, tetapi saat ini bukan waktu absensi. Jadwal: ${session.start} - ${session.end}.`, "error");
+    const deadline = getSessionDeadline(session);
+
+    if(currentTime < session.start){
+        toast(`QR belum aktif. Absensi dibuka pukul ${session.start}.`, "error");
+        updateScannerStatus(`QR ditemukan, tetapi absensi baru dibuka pukul ${session.start}.`, "error");
+        return;
+    }
+
+    if(currentTime > deadline){
+        const expiredByLimit = deadline !== session.end;
+        if(expiredByLimit){
+            toast(`QR sudah kadaluwarsa (batas pukul ${deadline}).`, "error");
+            updateScannerStatus(`QR sudah kadaluwarsa. Batas absensi pukul ${deadline}.`, "error");
+        }else{
+            toast(`Absensi hanya dapat dilakukan pukul ${session.start} - ${session.end}.`, "error");
+            updateScannerStatus(`QR ditemukan, tetapi saat ini bukan waktu absensi. Jadwal: ${session.start} - ${session.end}.`, "error");
+        }
         return;
     }
 
@@ -4702,7 +4875,7 @@ function renderQRSessionList(type){
                             <td><strong>${escapeHTML(s.activity)}</strong></td>
                             <td>${escapeHTML(s.division)}</td>
                             <td>${escapeHTML(s.date)}</td>
-                            <td>${escapeHTML(s.start)} - ${escapeHTML(s.end)}</td>
+                            <td>${escapeHTML(s.start)} - ${escapeHTML(s.end)}${Number(s.expireMinutes)>0 ? `<br><span style="font-size:11px;color:#b45309;">QR s/d ${escapeHTML(getSessionDeadline(s))}</span>` : ""}</td>
                             <td>${escapeHTML(s.creatorName)}</td>
                             <td>${s.geoEnabled ? `<span class="badge badge-active" title="Radius ${Number(s.geoRadius)||0} m"><i class="fa-solid fa-location-dot"></i> ${Number(s.geoRadius)||0}m</span>` : `<span style="color:#999;font-size:12px;">Kantor</span>`}</td>
                             <td><span class="badge ${s.active ? "badge-active" : "badge-inactive"}">${s.active ? "Aktif" : "Nonaktif"}</span></td>
@@ -4810,7 +4983,7 @@ function renderSessionStaffStatus(){
                             <td>${escapeHTML(u.username)}</td>
                             <td>${escapeHTML(u.division || "-")}</td>
                             <td>${record ? formatTime(record.checkIn) : "-"}</td>
-                            <td>${record ? statusBadge(record.status) : `<span class="badge badge-inactive">Belum Hadir</span>`}</td>
+                            <td>${statusBadge(record ? record.status : "Alpha")}</td>
                             <td>
                                 <button class="btn btn-outline" style="padding:7px 9px;" onclick="openSessionAttendanceEdit('${jsId(session.id)}','${jsId(u.id)}')">
                                     <i class="fa-solid fa-pen"></i>
@@ -5112,7 +5285,8 @@ function renderHRDDashboard(){
     document.getElementById("hrdTotalStaff").textContent=staff.length;
     document.getElementById("hrdHadir").textContent=attendance.filter(a=>a.status==="Hadir").length;
     document.getElementById("hrdIzinSakit").textContent=attendance.filter(a=>a.status==="Izin" || a.status==="Sakit").length;
-    document.getElementById("hrdAlpha").textContent=attendance.filter(a=>a.status==="Alpha").length;
+    document.getElementById("hrdAlpha").textContent=attendance.filter(a=>a.status==="Alpha").length + implicitAlphaCount(staff, load(DB.sessions), attendance);
+    document.getElementById("hrdDispen").textContent=attendance.filter(a=>a.status==="Dispen").length;
 
     const recent=[...attendance].sort((a,b)=> new Date(b.checkIn) - new Date(a.checkIn)).slice(0,8);
     const container=document.getElementById("hrdRecentAttendance");
@@ -5130,7 +5304,8 @@ function renderStafDashboard(){
     document.getElementById("stafTotalHadir").textContent=attendance.filter(a=>a.status==="Hadir").length;
     document.getElementById("stafTotalIzin").textContent=attendance.filter(a=>a.status==="Izin").length;
     document.getElementById("stafTotalSakit").textContent=attendance.filter(a=>a.status==="Sakit").length;
-    document.getElementById("stafTotalAlpha").textContent=attendance.filter(a=>a.status==="Alpha").length;
+    document.getElementById("stafTotalAlpha").textContent=attendance.filter(a=>a.status==="Alpha").length + implicitAlphaCount([currentUser], load(DB.sessions), attendance);
+    document.getElementById("stafTotalDispen").textContent=attendance.filter(a=>a.status==="Dispen").length;
 
     const recent=[...attendance].sort((a,b)=> new Date(b.checkIn) - new Date(a.checkIn)).slice(0,5);
     const container=document.getElementById("stafRecentAttendance");
@@ -5152,6 +5327,7 @@ function renderKoorDashboard(){
     document.getElementById("koorTotalHadir").textContent=attendance.filter(a=>a.status==="Hadir").length;
     document.getElementById("koorTotalStaff").textContent=staffCount;
     document.getElementById("koorIzinSakit").textContent=attendance.filter(a=>a.status==="Izin" || a.status==="Sakit").length;
+    document.getElementById("koorDispen").textContent=attendance.filter(a=>a.status==="Dispen").length;
     document.getElementById("koorStaffLabel").textContent="Staf " + (division || "Divisi");
 
     document.getElementById("koorWelcomeText").textContent="Kelola QR dan absensi kegiatan Ngoprek divisi " + (division || "-") + ".";
@@ -5633,6 +5809,22 @@ function isSessionEnded(session){
     return !!session.end && String(session.end) <= now;
 }
 
+/* Alpha otomatis: staf yang tidak punya catatan absensi pada sesi yang sudah selesai
+   dihitung Alpha tanpa perlu ada record. Dipakai untuk kartu dashboard. */
+function implicitAlphaCount(staffList, sessions, attendance){
+    let n = 0;
+    sessions.forEach(s=>{
+        if(!isSessionEnded(s)) return;
+        const general = !s.division || s.division==="-";
+        staffList.forEach(u=>{
+            if(!general && s.division!==u.division) return;
+            if(attendance.some(a=>a.sessionId===s.id && a.userId===u.id)) return;
+            n++;
+        });
+    });
+    return n;
+}
+
 function initStaffRecapPage(){
     const isKoor = currentUser.role==="KOOR KP";
     const div = document.getElementById("recapDivision");
@@ -5711,7 +5903,7 @@ function computeStaffRecap(){
         const hadir = count("Hadir");
         return {
             id:u.id, name:u.name, username:u.username, division:u.division || "-",
-            hadir, izin:count("Izin"), sakit:count("Sakit"), alpha:count("Alpha"),
+            hadir, izin:count("Izin"), sakit:count("Sakit"), dispen:count("Dispen"), alpha:count("Alpha"),
             total, pct: total ? Math.round(hadir/total*100) : null,
             entries: entries.sort((a,b)=> String(b.date).localeCompare(String(a.date)))
         };
@@ -5738,7 +5930,7 @@ function renderStaffRecap(){
                 <thead>
                     <tr>
                         <th>Nama</th><th>NIM</th><th>Divisi</th>
-                        <th>Hadir</th><th>Izin</th><th>Sakit</th><th>Alpha</th><th>Total</th><th>% Hadir</th>
+                        <th>Hadir</th><th>Izin</th><th>Sakit</th><th>Dispen</th><th>Alpha</th><th>Total</th><th>% Hadir</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -5750,6 +5942,7 @@ function renderStaffRecap(){
                             <td>${r.hadir}</td>
                             <td>${r.izin}</td>
                             <td>${r.sakit}</td>
+                            <td>${r.dispen}</td>
                             <td>${r.alpha}</td>
                             <td>${r.total}</td>
                             <td>${r.pct===null
@@ -5769,7 +5962,7 @@ function openRecapDetail(userId){
     document.getElementById("recapDetailTitle").textContent = r.name + " (" + r.username + ")";
     document.getElementById("recapDetailBody").innerHTML = `
         <p style="font-size:12px;color:#777;margin-bottom:10px;">
-            ${escapeHTML(r.division)} • Hadir ${r.hadir} • Izin ${r.izin} • Sakit ${r.sakit} • Alpha ${r.alpha}
+            ${escapeHTML(r.division)} • Hadir ${r.hadir} • Izin ${r.izin} • Sakit ${r.sakit} • Dispen ${r.dispen} • Alpha ${r.alpha}
             ${r.pct===null ? "" : " • " + r.pct + "% hadir"}
         </p>
         ${r.entries.length ? `
@@ -5795,7 +5988,7 @@ function openRecapDetail(userId){
 function recapExportRows(){
     return recapRows.map(r=>({
         "Nama":r.name, "NIM":r.username, "Divisi":r.division,
-        "Hadir":r.hadir, "Izin":r.izin, "Sakit":r.sakit, "Alpha":r.alpha,
+        "Hadir":r.hadir, "Izin":r.izin, "Sakit":r.sakit, "Dispen":r.dispen, "Alpha":r.alpha,
         "Total Kegiatan":r.total, "% Hadir": r.pct===null ? "-" : r.pct + "%"
     }));
 }
@@ -5822,8 +6015,8 @@ function exportRecapPDF(){
     doc.text(scope, 14, 22);
     doc.autoTable({
         startY:28,
-        head:[["Nama","NIM","Divisi","Hadir","Izin","Sakit","Alpha","Total","% Hadir"]],
-        body:recapRows.map(r=>[r.name,r.username,r.division,r.hadir,r.izin,r.sakit,r.alpha,r.total,r.pct===null?"-":r.pct+"%"])
+        head:[["Nama","NIM","Divisi","Hadir","Izin","Sakit","Dispen","Alpha","Total","% Hadir"]],
+        body:recapRows.map(r=>[r.name,r.username,r.division,r.hadir,r.izin,r.sakit,r.dispen,r.alpha,r.total,r.pct===null?"-":r.pct+"%"])
     });
     doc.save("NEV-Absenku-Rekap-per-Staf.pdf");
     toast("PDF rekap per staf berhasil dibuat.","success");
@@ -6361,7 +6554,7 @@ function formatTime(dateString){
 }
 
 function statusBadge(status){
-    const map={"Hadir":"badge-hadir", "Izin":"badge-izin", "Sakit":"badge-sakit", "Alpha":"badge-alpha"};
+    const map={"Hadir":"badge-hadir", "Izin":"badge-izin", "Sakit":"badge-sakit", "Dispen":"badge-dispen", "Alpha":"badge-alpha"};
     return `<span class="badge ${map[status] || "badge-inactive"}">${escapeHTML(status)}</span>`;
 }
 
