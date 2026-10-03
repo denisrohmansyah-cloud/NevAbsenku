@@ -28,7 +28,7 @@ const FALLBACK_FOLDER_NAMES = {
   presensi: "NEV Absenku - Foto Presensi"
 };
 
-const CODE_VERSION = "secure-v5.1-fast";
+const CODE_VERSION = "secure-v5.2-submit";
 
 const SHEET_USERS = "Users";
 const SHEET_SESSIONS = "Sessions";
@@ -40,7 +40,8 @@ const HEADERS = {
   Users: ["id", "name", "username", "password", "role", "division"],
   Sessions: ["id", "activity", "division", "date", "start", "end", "location", "notes",
              "creatorId", "creatorName", "creatorRole", "active", "createdAt", "token",
-             "geoEnabled", "geoLat", "geoLng", "geoRadius", "expireMinutes"],
+             "geoEnabled", "geoLat", "geoLng", "geoRadius", "expireMinutes",
+             "attendanceSubmitted", "submittedAt", "submittedBy", "submittedByName"],
   Attendance: ["id", "sessionId", "token", "userId", "userName", "username", "activity",
                "division", "date", "checkIn", "status", "creatorId", "creatorRole",
                "lat", "lng", "photo", "permitId", "approvedFromPermit"],
@@ -52,7 +53,7 @@ const HEADERS = {
 };
 
 const NUMERIC_COLS = ["lat", "lng", "geoLat", "geoLng", "geoRadius", "expireMinutes", "officeLat", "officeLng", "radius"];
-const BOOL_COLS = ["active", "geofenceEnabled", "geoEnabled", "approvedFromPermit"];
+const BOOL_COLS = ["active", "geofenceEnabled", "geoEnabled", "approvedFromPermit", "attendanceSubmitted"];
 const DATE_COLS = ["date", "sessionDate"];
 const TIME_COLS = ["start", "end"];
 
@@ -189,6 +190,7 @@ function sheetToObjects_(name){
 }
 
 function objectsToSheet_(name, list){
+  if(name===SHEET_SESSIONS) _sessMapCache = null;   // daftar sesi berubah: buang cache isSubmitted/isDraft
   if(name===SHEET_USERS) invalidateUsersCache_();
   const sheet = getSheet_(name);
   const headers = HEADERS[name];
@@ -211,6 +213,7 @@ function ensureRows_(sheet,needed){
 }
 
 function appendObject_(name,obj){
+  if(name===SHEET_SESSIONS) _sessMapCache = null;
   if(name===SHEET_USERS) invalidateUsersCache_();
   const sheet=getSheet_(name);
   const headers=HEADERS[name];
@@ -243,7 +246,9 @@ function sanitizeSession_(s){
     geoLat:geoEnabled?numOrNull_(s.geoLat,-90,90):null,
     geoLng:geoEnabled?numOrNull_(s.geoLng,-180,180):null,
     geoRadius:geoEnabled?numOrNull_(s.geoRadius,1,5000):null,
-    expireMinutes:numOrNull_(s.expireMinutes,1,1440)
+    expireMinutes:numOrNull_(s.expireMinutes,1,1440),
+    // Status submit HANYA diubah lewat action submitSessionAttendance, bukan dari klien.
+    attendanceSubmitted:false, submittedAt:null, submittedBy:null, submittedByName:null
   };
 }
 
@@ -310,6 +315,27 @@ function mergeSanitized_(name,incoming,actor,sanitize,policy){
   return skipped;
 }
 
+/* Cache daftar sesi selama satu eksekusi doPost (dibuang setiap kali sesi ditulis). */
+let _sessMapCache = null;
+function sessionMap_(){
+  if(!_sessMapCache){
+    const m={};
+    sheetToObjects_(SHEET_SESSIONS).forEach(x=>{ if(x.id) m[x.id]=x; });
+    _sessMapCache=m;
+  }
+  return _sessMapCache;
+}
+/* Sesi yang absensinya sudah di-submit Koor KP: terkunci untuk Koor, hanya HRD yang boleh ubah. */
+function isSubmittedSession_(sessionId){
+  const x=sessionMap_()[sessionId];
+  return !!(x && x.attendanceSubmitted===true);
+}
+/* Sesi Koor KP yang belum di-submit: masih draft milik Koor, belum terlihat oleh HRD. */
+function isDraftKoorSession_(sessionId){
+  const x=sessionMap_()[sessionId];
+  return !!(x && x.creatorRole==="KOOR KP" && x.attendanceSubmitted!==true);
+}
+
 function sessionPolicy_(old,clean,actor){
   if(actor.role==="KOOR KP"){
     if(old && old.creatorId!==actor.id) throw new Error("Koor KP tidak dapat mengubah sesi milik orang lain.");
@@ -321,6 +347,12 @@ function sessionPolicy_(old,clean,actor){
     // Pemilik, peran pembuat, dan token tidak boleh diganti lewat edit.
     clean.creatorId=old.creatorId; clean.creatorName=old.creatorName;
     clean.creatorRole=old.creatorRole; clean.token=old.token;
+    // Status aktif & submit hanya boleh berubah lewat action khusus (setSessionActive / submitSessionAttendance).
+    // Tanpa ini, perangkat yang datanya basi bisa membalikkan QR yang sudah dinonaktifkan.
+    clean.active=old.active;
+    clean.attendanceSubmitted=old.attendanceSubmitted===true;
+    clean.submittedAt=old.submittedAt||null; clean.submittedBy=old.submittedBy||null;
+    clean.submittedByName=old.submittedByName||null;
   }else{
     // Sesi baru: pembuat selalu akun yang sedang login.
     clean.creatorId=actor.id; clean.creatorName=actor.name; clean.creatorRole=actor.role;
@@ -333,6 +365,12 @@ function attendancePolicy_(old,clean,actor){
     const own=r=>r.creatorId===actor.id && r.activity==="Ngoprek" && r.division===actor.division;
     if(old && !own(old)) throw new Error("Koor KP hanya dapat mengubah absensi Ngoprek miliknya.");
     if(!own(clean)) throw new Error("Koor KP hanya dapat mengubah absensi Ngoprek miliknya.");
+    // Sudah di-submit: abaikan perubahan Koor, pertahankan versi server (record lama tetap ikut terkirim
+    // dalam save-massal, jadi tidak boleh melempar error yang menggagalkan seluruh batch).
+    if(isSubmittedSession_(old ? old.sessionId : clean.sessionId)) return old || null;
+  }else if(actor.role==="HRD"){
+    // Draft Koor belum terlihat HRD, jadi HRD juga tidak mengubahnya sebelum di-submit.
+    if(isDraftKoorSession_(old ? old.sessionId : clean.sessionId)) return old || null;
   }
   if(old){ clean.userId=old.userId; clean.sessionId=old.sessionId; }
   return clean;
@@ -346,6 +384,8 @@ function permitPolicy_(old,clean,actor){
     throw new Error("Koor KP hanya dapat mengelola pengajuan miliknya.");
   }
   if(clean.status===old.status && (clean.reviewNote||null)===(old.reviewNote||null)) return old;
+  if(actor.role==="KOOR KP" && isSubmittedSession_(old.sessionId)) return old;   // sudah di-submit: hanya HRD
+  if(actor.role==="HRD" && isDraftKoorSession_(old.sessionId)) return old;       // draft Koor belum diserahkan
   const out=Object.assign({},old);
   out.status=clean.status;
   out.reviewNote=clean.reviewNote;
@@ -528,7 +568,7 @@ function validPermit_(p){ return !!(p && p.id && p.userId && p.sessionId); }
 
 function attendanceFor_(user){
   const all=sheetToObjects_(SHEET_ATTENDANCE).filter(validAttendance_);
-  if(user.role==="HRD") return all;
+  if(user.role==="HRD") return all.filter(a=>!isDraftKoorSession_(a.sessionId));   // draft Koor belum terlihat
   if(user.role==="KOOR KP"){
     return all.filter(a=>a.creatorId===user.id && a.activity==="Ngoprek" && a.division===user.division);
   }
@@ -537,7 +577,7 @@ function attendanceFor_(user){
 
 function permitsFor_(user){
   const all=sheetToObjects_(SHEET_PERMITS).filter(validPermit_);
-  if(user.role==="HRD") return all;
+  if(user.role==="HRD") return all.filter(p=>!isDraftKoorSession_(p.sessionId));
   if(user.role==="KOOR KP"){
     return all.filter(p=>p.sessionCreatorId===user.id && p.sessionActivity==="Ngoprek");
   }
@@ -909,6 +949,7 @@ function deleteSession_(actor,sessionId){
     if(session.creatorId!==actor.id || session.activity!=="Ngoprek" || session.division!==actor.division){
       throw new Error("Koor KP hanya dapat menghapus QR Ngoprek miliknya.");
     }
+    if(session.attendanceSubmitted===true) throw new Error("Absensi sesi ini sudah disubmit ke HRD. Hanya HRD yang dapat menghapusnya.");
   }else if(actor.role!=="HRD"){
     throw new Error("Akses ditolak.");
   }
@@ -928,6 +969,7 @@ function deleteAttendance_(actor,id){
     if(rec.creatorId!==actor.id || rec.activity!=="Ngoprek" || rec.division!==actor.division){
       throw new Error("Koor KP hanya dapat menghapus absensi Ngoprek miliknya.");
     }
+    if(isSubmittedSession_(rec.sessionId)) throw new Error("Absensi sudah disubmit ke HRD. Hanya HRD yang dapat mengubahnya.");
   }else if(actor.role!=="HRD"){
     throw new Error("Akses ditolak.");
   }
@@ -961,6 +1003,7 @@ function addAttendance_(actor,data){
   const session=findSession_(data.sessionId);
   if(!session) throw new Error("Kegiatan tidak ditemukan di server. Minta HRD/Koor memastikan QR sudah tersinkron.");
   if(session.active!==true) throw new Error("Kegiatan ini sudah dinonaktifkan.");
+  if(session.attendanceSubmitted===true) throw new Error("Absensi kegiatan ini sudah ditutup (sudah disubmit ke HRD).");
   if(!data.token || String(data.token)!==String(session.token)) throw new Error("Token QR tidak cocok. Pindai ulang QR kegiatan.");
   if(session.division && session.division!=="-" && session.division!==actor.division){
     throw new Error("Kegiatan ini untuk divisi "+session.division+".");
@@ -1012,6 +1055,70 @@ function addAttendance_(actor,data){
     };
     appendObject_(SHEET_ATTENDANCE,record);
     return {ok:true,record:record};
+  });
+}
+
+/* Staf mengecek status QR sebelum lanjut ke lokasi & selfie. Hanya mengembalikan aktif/tidak. */
+function checkSession_(actor,data){
+  const id=String(data && data.sessionId || "");
+  if(!idOk_(id)) throw new Error("Data tidak valid.");
+  const session=findSession_(id);
+  if(!session) throw new Error("Kegiatan tidak ditemukan di server. Minta HRD/Koor memastikan QR sudah tersinkron.");
+  if(!data.token || String(data.token)!==String(session.token)) throw new Error("Token QR tidak cocok. Pindai ulang QR kegiatan.");
+  return {ok:true, active: session.active===true && session.attendanceSubmitted!==true};
+}
+
+/* Aktif/nonaktifkan QR. Dilakukan atomik di server (satu field saja), bukan lewat save-massal. */
+function setSessionActive_(actor,data){
+  const id=String(data && data.sessionId || "");
+  if(!idOk_(id)) throw new Error("Data tidak valid.");
+  const active=boolOf_(data.active);
+  return withLock_(function(){
+    const list=sheetToObjects_(SHEET_SESSIONS);
+    const session=list.find(x=>x.id===id);
+    if(!session) throw new Error("Kegiatan/QR tidak ditemukan.");
+    if(actor.role==="KOOR KP"){
+      if(session.creatorId!==actor.id || session.activity!=="Ngoprek" || session.division!==actor.division){
+        throw new Error("Koor KP hanya dapat mengubah QR Ngoprek miliknya.");
+      }
+      if(session.attendanceSubmitted===true){
+        throw new Error("Absensi sesi ini sudah disubmit ke HRD. Hanya HRD yang dapat mengaktifkan kembali QR.");
+      }
+    }else if(actor.role!=="HRD"){
+      throw new Error("Akses ditolak.");
+    }
+    session.active=active;
+    objectsToSheet_(SHEET_SESSIONS,list);
+    _sessMapCache=null;
+    return {ok:true, active:active};
+  });
+}
+
+/* Koor KP menyerahkan absensi satu sesi Ngoprek ke HRD. Setelah ini Koor tidak bisa mengubahnya lagi. */
+function submitSessionAttendance_(actor,data){
+  if(actor.role!=="KOOR KP") throw new Error("Hanya Koor KP yang dapat men-submit absensi Ngoprek.");
+  const id=String(data && data.sessionId || "");
+  if(!idOk_(id)) throw new Error("Data tidak valid.");
+  return withLock_(function(){
+    const list=sheetToObjects_(SHEET_SESSIONS);
+    const session=list.find(x=>x.id===id);
+    if(!session) throw new Error("Kegiatan tidak ditemukan.");
+    if(session.creatorId!==actor.id || session.activity!=="Ngoprek" || session.division!==actor.division){
+      throw new Error("Koor KP hanya dapat men-submit sesi Ngoprek miliknya.");
+    }
+    if(session.attendanceSubmitted!==true){
+      session.attendanceSubmitted=true;
+      session.submittedAt=new Date().toISOString();
+      session.submittedBy=actor.id;
+      session.submittedByName=actor.name;
+      session.active=false;   // QR ditutup supaya tidak ada absen baru yang masuk setelah data diserahkan
+      objectsToSheet_(SHEET_SESSIONS,list);
+      _sessMapCache=null;
+    }
+    return {ok:true, session:{
+      id:session.id, active:session.active, attendanceSubmitted:true,
+      submittedAt:session.submittedAt, submittedBy:session.submittedBy, submittedByName:session.submittedByName
+    }};
   });
 }
 
@@ -1167,6 +1274,15 @@ function doPost(e){
         const skipped=withLock_(()=>mergeSanitized_(SHEET_PERMITS,data,actor,sanitizePermit_,permitPolicy_));
         return jsonResponse_({ok:true,skipped:skipped});
       }
+
+      case "checkSession":
+        return jsonResponse_(checkSession_(actor,data));
+
+      case "setSessionActive":
+        return jsonResponse_(setSessionActive_(actor,data));
+
+      case "submitSessionAttendance":
+        return jsonResponse_(submitSessionAttendance_(actor,data));
 
       case "addAttendance":
         return jsonResponse_(addAttendance_(actor,data));

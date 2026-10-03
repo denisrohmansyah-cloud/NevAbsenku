@@ -415,7 +415,7 @@ function shortAttendError(err){
         [/belum aktif/i, "QR belum aktif."],
         [/kadaluwarsa|melewati tanggal|hanya dapat dilakukan pukul/i, "Waktu absensi sudah lewat."],
         [/token qr/i, "QR tidak cocok. Pindai ulang."],
-        [/dinonaktifkan/i, "Kegiatan sudah ditutup."],
+        [/dinonaktifkan|sudah ditutup/i, "QR dinonaktifkan oleh HRD/Koor KP."],
         [/untuk divisi/i, "Bukan untuk divisi Anda."],
         [/tidak ditemukan/i, "Kegiatan tidak ditemukan."],
         [/foto/i, "Foto bermasalah. Ambil ulang."],

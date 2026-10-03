@@ -3240,6 +3240,26 @@ APP
 
             <section id="page-koor-attendance" class="page">
 
+                <div class="section-card" style="margin-bottom:20px;">
+                    <div class="section-header">
+                        <div>
+                            <h3>Kehadiran Staf per Sesi</h3>
+                            <p>
+                                Ubah status absensi staf selama Ngoprek berlangsung. HRD baru bisa melihat
+                                rekapnya setelah Anda menekan <b>Submit ke HRD</b>.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="form-group" style="max-width:420px;">
+                        <label>Pilih Sesi Ngoprek</label>
+                        <select id="koorSessionPicker" class="form-control" onchange="renderKoorSessionRoster()">
+                            <option value="">Pilih sesi...</option>
+                        </select>
+                    </div>
+                    <div id="koorSessionSubmitBar"></div>
+                    <div id="koorSessionAttendanceTable"></div>
+                </div>
+
                 <div class="section-card">
 
                     <div class="section-header">
@@ -4185,6 +4205,7 @@ function showPage(page){
         const div = document.getElementById("koorFilterDivision");
         if(div) div.value = currentUser.division || "-";
         renderKoorAttendance();
+        populateKoorSessionPicker();
     }
     if(page==="koor-permit") renderPermitApproval("koor");
     if(page==="settings") renderSettings();
@@ -4422,13 +4443,16 @@ function renderGeneratedQR(type,session){
             <div class="qr-info-row"><span>Waktu</span><span>${escapeHTML(session.start)} - ${escapeHTML(session.end)}</span></div>
             <div class="qr-info-row"><span>QR berlaku s/d</span><span>${escapeHTML(getSessionDeadline(session))}</span></div>
             <div class="qr-info-row"><span>Status</span><span>${session.active ? "Aktif" : "Nonaktif"}</span></div>
+            ${session.attendanceSubmitted ? `<div class="qr-info-row"><span>Absensi</span><span>Sudah disubmit ke HRD</span></div>` : ""}
         </div>
     `;
 
     actions.classList.remove("hidden");
     const toggle = type==="hrd" ? document.getElementById("hrdToggleQRBtn") : document.querySelector("#koorQrActions .btn-warning");
     if(toggle){
-        toggle.textContent= session.active ? "Nonaktifkan" : "Aktifkan";
+        const lockedForKoor = currentUser?.role==="KOOR KP" && session.attendanceSubmitted===true;
+        toggle.disabled = lockedForKoor;
+        toggle.textContent = lockedForKoor ? "Terkunci (sudah disubmit)" : (session.active ? "Nonaktifkan" : "Aktifkan");
     }
 }
 
@@ -4437,46 +4461,106 @@ function renderGeneratedQR(type,session){
 QR VALIDATION
 ========================================================= */
 
-function processAttendance(token){
+/* Status sesi dari data sinkron. Sesi Koor KP yang belum di-submit disebut "draft" dan belum terlihat HRD. */
+function isDraftKoorSession(s){ return !!(s && s.creatorRole==="KOOR KP" && s.attendanceSubmitted!==true); }
+function hrdVisibleSessions(){ return load(DB.sessions).filter(s=>!isDraftKoorSession(s)); }
+function hrdVisibleAttendance(){
+    const draft=new Set(load(DB.sessions).filter(isDraftKoorSession).map(s=>s.id));
+    return load(DB.attendance).filter(a=>!draft.has(a.sessionId));
+}
+
+/* Siapa yang boleh mengubah absensi satu sesi:
+   - HRD: semua sesi yang sudah terlihat (sesi Koor KP baru bisa diubah HRD setelah di-submit)
+   - Koor KP: hanya Ngoprek miliknya dan hanya selama belum di-submit */
+function canEditSessionAttendance(session){
+    if(!session || !currentUser) return false;
+    if(currentUser.role==="HRD") return !isDraftKoorSession(session);
+    if(currentUser.role==="KOOR KP"){
+        return session.creatorId===currentUser.id && session.activity==="Ngoprek" && session.attendanceSubmitted!==true;
+    }
+    return false;
+}
+function lockedEditMessage(){
+    return currentUser?.role==="KOOR KP"
+        ? "Absensi sesi ini sudah disubmit ke HRD. Hanya HRD yang dapat mengubahnya."
+        : "Absensi Ngoprek ini belum disubmit oleh Koor KP.";
+}
+
+let scanBusy=false;
+const scanCooldown={ key:"", until:0 };
+
+function scanBlocked(message, statusText){
+    toast(message,"error");
+    updateScannerStatus(statusText || message,"error");
+}
+
+/* Kamera membaca QR yang sama berkali-kali per detik, jadi QR yang baru ditolak
+   tidak diperiksa/dinotifikasi ulang selama beberapa detik (hanya untuk jalur kamera). */
+async function processAttendance(token, fromScanner){
+    if(scanBusy) return;
+    const clean=(token || "").replace(/\s+/g,"").trim();
+    if(fromScanner && clean && scanCooldown.key===clean && Date.now()<scanCooldown.until) return;
+    scanBusy=true;
+    try{
+        const ok=await processAttendanceCore(token);
+        if(fromScanner && ok!==true){ scanCooldown.key=clean; scanCooldown.until=Date.now()+3000; }
+    }catch(err){
+        console.error("Gagal memproses QR:",err);
+        toast("Gagal memproses QR. Coba lagi.","error");
+    }finally{
+        scanBusy=false;
+    }
+}
+
+async function processAttendanceCore(token){
     if(currentUser?.role!=="STAF"){
-        toast("Hanya STAF yang dapat melakukan absensi.", "error"); return;
+        toast("Hanya STAF yang dapat melakukan absensi.", "error"); return false;
     }
 
     token=(token || "").replace(/\s+/g,"").trim();
     if(!token){
-        toast("Token QR belum diisi.", "error"); return;
+        toast("Token QR belum diisi.", "error"); return false;
     }
 
     const sessions = load(DB.sessions);
-
-let session = sessions.find(s =>
-    String(s.token || "").trim() === token
-);
-
-if(!session){
     const decoded = decodeSessionToken(token);
+    const byToken = sessions.find(s => String(s.token || "").trim() === token);
+    const local = byToken || (decoded && sessions.find(s => s.id === decoded.id)) || null;
 
+    let session = null;
     if(decoded){
+        // Jadwal & koordinat diambil dari isi QR (salinan sesi di perangkat staf tidak memuat token/koordinat).
+        // Status aktif/submit diambil dari data sinkron, supaya QR yang sudah dinonaktifkan tidak "hidup lagi"
+        // hanya karena isi tokennya terbaca ulang.
         session = {
-            ...decoded,
-            token: token,
-            active: true
+            ...decoded, token,
+            active: local ? local.active!==false : true,
+            attendanceSubmitted: local ? local.attendanceSubmitted===true : false
         };
+    }else if(byToken){
+        session = byToken;
+    }
 
-        // Simpan hanya jika belum ada token yang sama
-        const existingIndex = sessions.findIndex(s =>
-            String(s.token || "").trim() === token
-        );
+    if(!session){
+        toast("Token QR tidak valid.", "error");
+        updateScannerStatus("Token QR tidak valid atau bukan dari NEV Absenku.", "error");
+        return false;
+    }
 
-        if(existingIndex >= 0){
-            sessions[existingIndex] = session;
-        }else{
-            sessions.push(session);
-        }
-
+    // Sesi yang belum dikenal perangkat ini disimpan dulu agar bisa dipakai form izin/kalender.
+    if(!local){
+        sessions.push({ ...session });
         _localSave(DB.sessions, sessions);
     }
-}
+
+    // QR dinonaktifkan: staf tidak bisa absen sampai HRD / Koor KP mengaktifkannya kembali.
+    if(session.active===false || session.attendanceSubmitted===true){
+        scanBlocked(
+            "QR ini sudah dinonaktifkan. Absensi baru bisa dilakukan setelah HRD atau Koor KP mengaktifkannya kembali.",
+            "QR dinonaktifkan oleh HRD/Koor KP. Absensi tidak dapat dilakukan."
+        );
+        return false;
+    }
 
     const now = new Date();
 
@@ -4532,11 +4616,41 @@ const currentTime = `${wib.hour}:${wib.minute}`;
         return;
     }
 
+    // Cek status terbaru ke server: QR bisa saja baru dinonaktifkan dan belum sampai ke perangkat ini
+    // (sinkronisasi berkala 30 detik). Server tetap memvalidasi ulang saat absensi dikirim.
+    if(typeof cloudSyncEnabled!=="undefined" && cloudSyncEnabled){
+        updateScannerStatus("Memeriksa status QR...", "normal");
+        try{
+            const check = await cloudPost("checkSession", { sessionId: session.id, token }, 0);
+            if(check && check.active===false){
+                const list=load(DB.sessions);
+                const i=list.findIndex(s=>s.id===session.id);
+                if(i>=0){ list[i].active=false; _localSave(DB.sessions, list); }
+                scanBlocked(
+                    "QR ini sudah dinonaktifkan. Absensi baru bisa dilakukan setelah HRD atau Koor KP mengaktifkannya kembali.",
+                    "QR dinonaktifkan oleh HRD/Koor KP. Absensi tidak dapat dilakukan."
+                );
+                return false;
+            }
+        }catch(err){
+            if(err && err.authExpired){ scanBlocked("Sesi login habis. Silakan login ulang."); return false; }
+            const msg=String((err && err.message) || "");
+            // Server lama yang belum diperbarui tidak mengenal pemeriksaan ini: lanjutkan, validasi tetap di server saat kirim.
+            if(err && err.fatal && !/action tidak dikenali/i.test(msg)){
+                const reason = typeof shortAttendError==="function" ? shortAttendError(err) : msg;
+                scanBlocked("Absensi ditolak: "+reason);
+                return false;
+            }
+            // Gangguan koneksi: lanjutkan.
+        }
+    }
+
     // Token & jadwal valid. Hentikan kamera scanner (kalau aktif) lalu lanjut ke
     // langkah verifikasi lokasi (geofencing) dan selfie sebelum absensi disimpan.
     stopScanner();
     updateScannerStatus(`QR valid: ${session.activity}. Lanjutkan verifikasi lokasi & selfie.`, "success");
     beginAttendanceCapture(session, token);
+    return true;
 }
 
 function finalizeAttendance(session, token, location, photo){
@@ -4600,7 +4714,7 @@ function startScanner(){
 
     html5QrCode = new Html5Qrcode("reader");
     html5QrCode.start({facingMode:"environment"}, {fps:10, qrbox:{width:250, height:250}},
-        decodedText=>{ processAttendance(decodedText); },
+        decodedText=>{ processAttendance(decodedText, true); },
         errorMessage=>{}
     ).then(()=>{
         updateScannerStatus("Kamera aktif. Arahkan kamera ke QR.", "normal");
@@ -4786,20 +4900,35 @@ function copyToken(type){
     });
 }
 
-function toggleCurrentQR(type){
+async function toggleCurrentQR(type){
     const session=currentQR[type];
     if(!session)return;
     const sessions=load(DB.sessions);
     const target=sessions.find(s=>s.id===session.id);
     if(!target)return;
 
-    target.active=!target.active;
-    save(DB.sessions,sessions);
+    if(currentUser.role==="KOOR KP" && target.attendanceSubmitted===true){
+        toast("Absensi sesi ini sudah disubmit ke HRD. Hanya HRD yang dapat mengaktifkan kembali QR.", "error");
+        return;
+    }
+
+    const next=!target.active;
+    try{
+        if(typeof cloudSyncEnabled!=="undefined" && cloudSyncEnabled){
+            await cloudPost("setSessionActive",{ sessionId:target.id, active:next },1);
+        }
+    }catch(err){
+        toast("Gagal mengubah status QR: "+friendlyCloudError(err), "error");
+        return;
+    }
+
+    target.active=next;
+    _localSave(DB.sessions,sessions);
     currentQR[type]=target;
 
     renderGeneratedQR(type, target);
     renderQRSessionList(type);
-    toast(target.active ? "QR diaktifkan." : "QR dinonaktifkan.", "success");
+    toast(target.active ? "QR diaktifkan." : "QR dinonaktifkan. Staf tidak bisa absen sampai QR diaktifkan kembali.", "success");
 }
 
 async function deleteCurrentQR(type){
@@ -4851,7 +4980,7 @@ function renderQRSessionList(type){
     let sessions=load(DB.sessions);
 
     if(type==="hrd"){
-        sessions=sessions.filter(s=>s.creatorRole==="HRD");
+        // HRD melihat semua sesi, termasuk Ngoprek buatan Koor KP, supaya bisa mengaktifkan kembali QR.
     }else{
         sessions=sessions.filter(s=>s.creatorRole==="KOOR KP" && s.activity==="Ngoprek");
     }
@@ -4878,12 +5007,12 @@ function renderQRSessionList(type){
                             <td>${escapeHTML(s.start)} - ${escapeHTML(s.end)}${Number(s.expireMinutes)>0 ? `<br><span style="font-size:11px;color:#b45309;">QR s/d ${escapeHTML(getSessionDeadline(s))}</span>` : ""}</td>
                             <td>${escapeHTML(s.creatorName)}</td>
                             <td>${s.geoEnabled ? `<span class="badge badge-active" title="Radius ${Number(s.geoRadius)||0} m"><i class="fa-solid fa-location-dot"></i> ${Number(s.geoRadius)||0}m</span>` : `<span style="color:#999;font-size:12px;">Kantor</span>`}</td>
-                            <td><span class="badge ${s.active ? "badge-active" : "badge-inactive"}">${s.active ? "Aktif" : "Nonaktif"}</span></td>
+                            <td><span class="badge ${s.active ? "badge-active" : "badge-inactive"}">${s.active ? "Aktif" : "Nonaktif"}</span>${s.attendanceSubmitted ? `<br><span style="font-size:11px;color:#15803d;"><i class="fa-solid fa-paper-plane"></i> Disubmit</span>` : (s.creatorRole==="KOOR KP" ? `<br><span style="font-size:11px;color:#b45309;">Draft Koor</span>` : "")}</td>
                             <td style="display:flex;gap:5px;">
                                 <button class="btn btn-outline" style="padding:7px 9px;" onclick="loadSessionToQR('${jsId(s.id)}','${type}')">
                                     <i class="fa-solid fa-qrcode"></i>
                                 </button>
-                                <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteSession('${jsId(s.id)}','${type}')">
+                                <button class="btn btn-danger" style="padding:7px 9px;" ${(currentUser.role==="KOOR KP" && s.attendanceSubmitted) ? 'disabled title="Sudah disubmit. Hanya HRD yang dapat menghapus."' : ""} onclick="deleteSession('${jsId(s.id)}','${type}')">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
                             </td>
@@ -4914,12 +5043,12 @@ function populateSessionAttendancePicker(){
     const select=document.getElementById("hrdSessionAttendancePicker");
     if(!select)return;
 
-    const sessions=load(DB.sessions).filter(s=>s.creatorRole==="HRD")
+    const sessions=load(DB.sessions).filter(s=>s.creatorRole==="HRD" || (s.creatorRole==="KOOR KP" && s.attendanceSubmitted===true))
         .sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt));
 
     const previousValue=select.value;
     select.innerHTML=`<option value="">Pilih sesi...</option>` + sessions.map(s=>
-        `<option value="${s.id}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${escapeHTML(s.date)} (${escapeHTML(s.start)}-${escapeHTML(s.end)})</option>`
+        `<option value="${s.id}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${escapeHTML(s.date)} (${escapeHTML(s.start)}-${escapeHTML(s.end)})${s.creatorRole==="KOOR KP" ? " • oleh "+escapeHTML(s.creatorName) : ""}</option>`
     ).join("");
 
     // Pertahankan pilihan sebelumnya, atau otomatis pilih QR yang sedang tampil di layar.
@@ -4933,6 +5062,7 @@ function populateSessionAttendancePicker(){
 }
 
 function renderSessionStaffStatus(){
+    if(currentUser?.role==="KOOR KP"){ renderKoorSessionRoster(); return; }
     if(currentUser?.role!=="HRD")return;
     const container=document.getElementById("hrdSessionAttendanceTable");
     if(!container)return;
@@ -5012,6 +5142,10 @@ function openSessionAttendanceEdit(sessionId,userId){
         toast("Koor KP hanya dapat mengubah absensi Ngoprek yang dibuatnya.", "error"); return;
     }
 
+    if(!canEditSessionAttendance(session)){
+        toast(lockedEditMessage(), "error"); return;
+    }
+
     const attendance=load(DB.attendance);
     const record=attendance.find(a=>a.sessionId===sessionId && a.userId===userId);
 
@@ -5047,6 +5181,13 @@ function renderStafHistory(){
 }
 
 function attendanceTable(data,canEdit){
+    const sessionById = canEdit ? new Map(load(DB.sessions).map(x=>[x.id,x])) : null;
+    const rowEditable = a => {
+        if(!canEdit) return false;
+        const sess = sessionById.get(a.sessionId);
+        return sess ? canEditSessionAttendance(sess) : currentUser.role==="HRD";
+    };
+    const lockBadge = `<span class="badge badge-inactive" title="Sudah disubmit ke HRD. Hanya HRD yang dapat mengubah."><i class="fa-solid fa-lock"></i> Terkunci</span>`;
     return `
         <div class="table-wrapper">
             <table>
@@ -5066,14 +5207,14 @@ function attendanceTable(data,canEdit){
                             <td>${formatTime(a.checkIn)}</td>
                             <td>${statusBadge(a.status)}</td>
                             <td>${attendanceProofCell(a)}</td>
-                            ${canEdit ? `<td style="display:flex;gap:5px;">
+                            ${canEdit ? (rowEditable(a) ? `<td style="display:flex;gap:5px;">
                                 <button class="btn btn-outline" style="padding:7px 9px;" onclick="openEditAttendance('${jsId(a.id)}')">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
                                 <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteAttendance('${jsId(a.id)}')">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
-                            </td>` : ""}
+                            </td>` : `<td>${lockBadge}</td>`) : ""}
                         </tr>
                     `).join("")}
                 </tbody>
@@ -5254,7 +5395,7 @@ HRD REPORT & DASHBOARD
 
 function renderHRDReport(){
     if(currentUser?.role!=="HRD")return;
-    let data=load(DB.attendance);
+    let data=hrdVisibleAttendance();
     const date=document.getElementById("filterDate").value;
     const activity=document.getElementById("filterActivity").value;
     const division=document.getElementById("filterDivision").value;
@@ -5279,13 +5420,13 @@ function renderHRDReport(){
 
 function renderHRDDashboard(){
     const users=load(DB.users);
-    const attendance=load(DB.attendance);
+    const attendance=hrdVisibleAttendance();
     const staff=users.filter(u=>u.role==="STAF");
     
     document.getElementById("hrdTotalStaff").textContent=staff.length;
     document.getElementById("hrdHadir").textContent=attendance.filter(a=>a.status==="Hadir").length;
     document.getElementById("hrdIzinSakit").textContent=attendance.filter(a=>a.status==="Izin" || a.status==="Sakit").length;
-    document.getElementById("hrdAlpha").textContent=attendance.filter(a=>a.status==="Alpha").length + implicitAlphaCount(staff, load(DB.sessions), attendance);
+    document.getElementById("hrdAlpha").textContent=attendance.filter(a=>a.status==="Alpha").length + implicitAlphaCount(staff, hrdVisibleSessions(), attendance);
     document.getElementById("hrdDispen").textContent=attendance.filter(a=>a.status==="Dispen").length;
 
     const recent=[...attendance].sort((a,b)=> new Date(b.checkIn) - new Date(a.checkIn)).slice(0,8);
@@ -5363,6 +5504,148 @@ function renderKoorAttendance(){
     container.innerHTML=attendanceTable(attendance,true);
 }
 
+/* =========================================================
+KOOR KP: STATUS ABSENSI PER SESI + SUBMIT KE HRD
+========================================================= */
+
+function formatDateTimeWIB(iso){
+    try{
+        return new Intl.DateTimeFormat("id-ID",{
+            timeZone:"Asia/Jakarta", day:"numeric", month:"short", year:"numeric",
+            hour:"2-digit", minute:"2-digit", hourCycle:"h23"
+        }).format(new Date(iso));
+    }catch(e){ return "-"; }
+}
+
+function koorOwnSessions(){
+    return load(DB.sessions)
+        .filter(s=>s.creatorId===currentUser.id && s.activity==="Ngoprek" && s.division===currentUser.division)
+        .sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+function populateKoorSessionPicker(){
+    if(currentUser?.role!=="KOOR KP") return;
+    const select=document.getElementById("koorSessionPicker");
+    if(!select) return;
+    const sessions=koorOwnSessions();
+    const previous=select.value;
+    select.innerHTML=`<option value="">Pilih sesi...</option>` + sessions.map(s=>
+        `<option value="${escapeHTML(s.id)}">${escapeHTML(s.date)} (${escapeHTML(s.start)}-${escapeHTML(s.end)}) • ${s.attendanceSubmitted ? "Disubmit" : "Draft"}</option>`
+    ).join("");
+    if(sessions.some(s=>s.id===previous)) select.value=previous;
+    else if(currentQR.koor && sessions.some(s=>s.id===currentQR.koor.id)) select.value=currentQR.koor.id;
+    renderKoorSessionRoster();
+}
+
+function renderKoorSessionRoster(){
+    if(currentUser?.role!=="KOOR KP") return;
+    const bar=document.getElementById("koorSessionSubmitBar");
+    const container=document.getElementById("koorSessionAttendanceTable");
+    if(!bar || !container) return;
+
+    const sessionId=document.getElementById("koorSessionPicker")?.value;
+    if(!sessionId){
+        bar.innerHTML="";
+        container.innerHTML=emptyHTML("fa-user-clock","Pilih sesi Ngoprek untuk melihat dan mengubah status absensi staf.");
+        return;
+    }
+    const session=koorOwnSessions().find(s=>s.id===sessionId);
+    if(!session){
+        bar.innerHTML="";
+        container.innerHTML=emptyHTML("fa-triangle-exclamation","Sesi tidak ditemukan.");
+        return;
+    }
+
+    const locked=session.attendanceSubmitted===true;
+    bar.innerHTML = locked ? `
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:12px 14px;border-radius:10px;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:13px;">
+            <i class="fa-solid fa-lock"></i>
+            <span>Sudah disubmit ke HRD${session.submittedAt ? " pada "+escapeHTML(formatDateTimeWIB(session.submittedAt)) : ""}.
+            Status absensi tidak bisa diubah lagi oleh Koor KP, hanya HRD.</span>
+        </div>` : `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:12px 14px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa;">
+            <span style="font-size:13px;color:#9a3412;"><i class="fa-solid fa-pen-ruler"></i> Draft. Belum terlihat oleh HRD.</span>
+            <button id="koorSubmitBtn" class="btn btn-primary" onclick="submitKoorSessionAttendance()">
+                <i class="fa-solid fa-paper-plane"></i> Submit ke HRD
+            </button>
+        </div>`;
+
+    const staff=load(DB.users).filter(u=>u.role==="STAF" && u.division===session.division)
+        .sort((a,b)=> String(a.name).localeCompare(String(b.name)));
+    if(!staff.length){
+        container.innerHTML=emptyHTML("fa-users-slash","Belum ada staf di divisi ini.");
+        return;
+    }
+
+    const attendance=load(DB.attendance).filter(a=>a.sessionId===session.id);
+    const ended=isSessionEnded(session);
+    const tercatat=staff.filter(u=>attendance.some(a=>a.userId===u.id)).length;
+
+    container.innerHTML=`
+        <p style="font-size:12px;color:#777;margin-bottom:10px;">${tercatat} dari ${staff.length} staf sudah tercatat pada sesi ini.</p>
+        <div class="table-wrapper">
+            <table>
+                <thead><tr><th>Nama</th><th>Username/NIM</th><th>Jam Absen</th><th>Status</th><th>Aksi</th></tr></thead>
+                <tbody>
+                    ${staff.map(u=>{
+                        const record=attendance.find(a=>a.userId===u.id);
+                        const status=record ? record.status : (ended ? "Alpha" : "Belum absen");
+                        return `
+                        <tr>
+                            <td>${escapeHTML(u.name)}</td>
+                            <td>${escapeHTML(u.username)}</td>
+                            <td>${record ? formatTime(record.checkIn) : "-"}</td>
+                            <td>${statusBadge(status)}</td>
+                            <td>${locked
+                                ? `<span class="badge badge-inactive"><i class="fa-solid fa-lock"></i> Terkunci</span>`
+                                : `<button class="btn btn-outline" style="padding:7px 9px;" onclick="openSessionAttendanceEdit('${jsId(session.id)}','${jsId(u.id)}')"><i class="fa-solid fa-pen"></i></button>`}</td>
+                        </tr>`;
+                    }).join("")}
+                </tbody>
+            </table>
+        </div>`;
+}
+
+async function submitKoorSessionAttendance(){
+    if(currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
+    const sessionId=document.getElementById("koorSessionPicker")?.value;
+    const session=koorOwnSessions().find(s=>s.id===sessionId);
+    if(!session){ toast("Pilih sesi terlebih dahulu.","error"); return; }
+    if(session.attendanceSubmitted){ toast("Absensi sesi ini sudah disubmit.","error"); return; }
+
+    if(!confirm(
+        `Submit absensi Ngoprek ${session.date} (${session.start}-${session.end}) ke HRD?\n\n`+
+        `Setelah disubmit:\n- Anda tidak bisa mengubah status absensi sesi ini lagi\n`+
+        `- QR sesi ini otomatis dinonaktifkan\n- Hanya HRD yang bisa mengubahnya`
+    )) return;
+
+    const btn=document.getElementById("koorSubmitBtn");
+    if(btn) btn.disabled=true;
+    try{
+        let result;
+        if(typeof cloudSyncEnabled!=="undefined" && cloudSyncEnabled){
+            // Pastikan perubahan terakhir sudah sampai ke server SEBELUM sesi dikunci,
+            // kalau tidak, edit yang baru dilakukan bisa ditolak karena sesi sudah terkunci.
+            if(typeof flushCloudQueue==="function") await flushCloudQueue();
+            await cloudPost("saveAttendance", load(DB.attendance), 1);
+            result=await cloudPost("submitSessionAttendance",{ sessionId:session.id },1);
+        }else{
+            result={ session:{ active:false, attendanceSubmitted:true, submittedAt:new Date().toISOString(),
+                               submittedBy:currentUser.id, submittedByName:currentUser.name } };
+        }
+        const sessions=load(DB.sessions);
+        const target=sessions.find(s=>s.id===session.id);
+        if(target && result.session) Object.assign(target,result.session);
+        _localSave(DB.sessions,sessions);
+        if(currentQR.koor && currentQR.koor.id===session.id) currentQR.koor={ ...currentQR.koor, ...result.session };
+        renderAll();
+        toast("Absensi berhasil disubmit ke HRD.","success");
+    }catch(err){
+        toast("Gagal submit absensi: "+friendlyCloudError(err),"error");
+        if(btn) btn.disabled=false;
+    }
+}
+
 function clearKoorAttendanceFilter(){
     const d=document.getElementById("koorFilterDate");
     const s=document.getElementById("koorFilterSearch");
@@ -5388,6 +5671,11 @@ function openEditAttendance(id){
         toast("Koor KP hanya dapat mengubah absensi Ngoprek yang dibuatnya.", "error"); return;
     }
 
+    const lockSess=load(DB.sessions).find(x=>x.id===record.sessionId);
+    if(lockSess && !canEditSessionAttendance(lockSess)){
+        toast(lockedEditMessage(), "error"); return;
+    }
+
     document.getElementById("editAttendanceId").value=id;
     document.getElementById("editAttendanceSessionId").value="";
     document.getElementById("editAttendanceUserId").value="";
@@ -5408,6 +5696,11 @@ function saveAttendanceEdit(){
     const userId=document.getElementById("editAttendanceUserId")?.value;
     const attendance=load(DB.attendance);
     let record = id ? attendance.find(a=>a.id===id) : null;
+
+    const lockSess=load(DB.sessions).find(x=>x.id===(record ? record.sessionId : sessionId));
+    if(lockSess && !canEditSessionAttendance(lockSess)){
+        toast(lockedEditMessage(), "error"); closeModal("editAttendanceModal"); return;
+    }
 
     if(record){
         if(currentUser.role==="KOOR KP" && (record.creatorId!==currentUser.id || record.activity!=="Ngoprek")){
@@ -5462,6 +5755,11 @@ async function deleteAttendance(id){
     }
     if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
         toast("Akses ditolak.","error"); return;
+    }
+
+    const lockSess=load(DB.sessions).find(x=>x.id===record.sessionId);
+    if(lockSess && !canEditSessionAttendance(lockSess)){
+        toast(lockedEditMessage(), "error"); return;
     }
 
     if(!confirm(`Hapus absensi ${record.userName} pada ${record.date}?`)) return;
@@ -5864,6 +6162,11 @@ function computeStaffRecap(){
     let staff = load(DB.users).filter(u=>u.role==="STAF");
     let sessions = load(DB.sessions);
     let attendance = load(DB.attendance);
+    if(!isKoor){
+        // HRD baru melihat Ngoprek Koor KP setelah di-submit.
+        sessions = hrdVisibleSessions();
+        attendance = hrdVisibleAttendance();
+    }
 
     if(isKoor){
         staff = staff.filter(u=>u.division===currentUser.division);
@@ -6297,7 +6600,7 @@ function renderPermitApproval(role){
                             <td>${permitProofCell(p)}</td>
                             <td>${permitStatusBadge(p.status)}</td>
                             <td>
-                                ${p.status==="Menunggu" ? `
+                                ${p.status==="Menunggu" && canReviewPermit(p) ? `
                                     <div style="display:flex;gap:6px;">
                                         <button class="btn btn-primary" style="padding:7px 9px;" onclick="approvePermit('${jsId(p.id)}')" title="Setujui">
                                             <i class="fa-solid fa-check"></i>
@@ -6306,7 +6609,9 @@ function renderPermitApproval(role){
                                             <i class="fa-solid fa-xmark"></i>
                                         </button>
                                     </div>
-                                ` : `<span style="font-size:11px;color:#777;">${p.reviewedByName ? "oleh "+escapeHTML(p.reviewedByName) : "-"}</span>`}
+                                ` : (p.status==="Menunggu"
+                                    ? `<span style="font-size:11px;color:#777;"><i class="fa-solid fa-lock"></i> ${currentUser.role==="HRD" ? "Menunggu submit Koor KP" : "Sudah disubmit, ditangani HRD"}</span>`
+                                    : `<span style="font-size:11px;color:#777;">${p.reviewedByName ? "oleh "+escapeHTML(p.reviewedByName) : "-"}</span>`)}
                             </td>
                         </tr>
                     `).join("")}
@@ -6317,8 +6622,12 @@ function renderPermitApproval(role){
 }
 
 function canReviewPermit(permit){
-    if(currentUser.role==="HRD") return true;
-    if(currentUser.role==="KOOR KP") return permit.sessionActivity==="Ngoprek" && permit.sessionCreatorId===currentUser.id;
+    const sess=load(DB.sessions).find(x=>x.id===permit.sessionId);
+    if(currentUser.role==="HRD") return !isDraftKoorSession(sess);
+    if(currentUser.role==="KOOR KP"){
+        return permit.sessionActivity==="Ngoprek" && permit.sessionCreatorId===currentUser.id
+            && !(sess && sess.attendanceSubmitted===true);
+    }
     return false;
 }
 
@@ -6483,7 +6792,7 @@ function exportKoorPDF(){
 
 function exportExcel(){
     if(currentUser.role!=="HRD"){ toast("Hanya HRD yang dapat export data.", "error"); return; }
-    let data=load(DB.attendance);
+    let data=hrdVisibleAttendance();
     const date=document.getElementById("filterDate").value;
     const activity=document.getElementById("filterActivity").value;
     const division=document.getElementById("filterDivision").value;
@@ -6514,7 +6823,7 @@ EXPORT PDF
 
 function exportPDF(){
     if(currentUser.role!=="HRD"){ toast("Hanya HRD yang dapat export PDF.", "error"); return; }
-    let data=load(DB.attendance);
+    let data=hrdVisibleAttendance();
     const date=document.getElementById("filterDate").value;
     const activity=document.getElementById("filterActivity").value;
     const division=document.getElementById("filterDivision").value;
@@ -6624,7 +6933,7 @@ function renderAll(){
         if(document.getElementById("page-staff-recap")?.classList.contains("active")) renderStaffRecap();
     }
     if(currentUser.role==="KOOR KP"){
-        renderKoorDashboard(); renderKoorAttendance(); renderQRSessionList("koor"); renderUsers();
+        renderKoorDashboard(); renderKoorAttendance(); populateKoorSessionPicker(); renderQRSessionList("koor"); renderUsers();
         if(document.getElementById("page-staff-recap")?.classList.contains("active")) renderStaffRecap();
     }
 }
