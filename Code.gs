@@ -28,7 +28,8 @@ const FALLBACK_FOLDER_NAMES = {
   presensi: "NEV Absenku - Foto Presensi"
 };
 
-const CODE_VERSION = "secure-v5.2-submit";
+const CODE_VERSION = "secure-v5.3-link";
+const EARLY_OPEN_MIN = 15; // staf boleh mulai absen 15 menit sebelum jam mulai
 
 const SHEET_USERS = "Users";
 const SHEET_SESSIONS = "Sessions";
@@ -1019,7 +1020,7 @@ function addAttendance_(actor,data){
   const limitedByExpiry=(expireAt!==null && expireAt<endMin);
   // Jika masa berlaku QR diatur lebih singkat dari durasi kegiatan, batasnya ketat (tanpa toleransi).
   const deadlineMin=limitedByExpiry ? expireAt : endMin+CHECKIN_GRACE_MIN;
-  if(nowMin<startMin) throw new Error("QR belum aktif. Absensi dibuka pukul "+session.start+".");
+  if(nowMin<startMin-EARLY_OPEN_MIN) throw new Error("QR belum aktif. Absensi dibuka pukul "+minutesToHHMM_(Math.max(0,startMin-EARLY_OPEN_MIN))+".");
   if(nowMin>deadlineMin){
     if(limitedByExpiry) throw new Error("QR sudah kadaluwarsa (batas pukul "+minutesToHHMM_(expireAt)+").");
     throw new Error("Absensi hanya dapat dilakukan pukul "+session.start+" - "+session.end+".");
@@ -1056,6 +1057,25 @@ function addAttendance_(actor,data){
     appendObject_(SHEET_ATTENDANCE,record);
     return {ok:true,record:record};
   });
+}
+
+/* Staf memindai QR berisi token pendek: server mengembalikan data kegiatan + status aktif dalam satu request. */
+function resolveToken_(actor,data){
+  if(actor.role!=="STAF") throw new Error("Hanya STAF yang dapat melakukan absensi.");
+  const token=String(data && data.token || "");
+  if(!TOKEN_RE.test(token)) throw new Error("Token QR tidak valid.");
+  const s=sheetToObjects_(SHEET_SESSIONS).find(x=>String(x.token)===token);
+  if(!s) throw new Error("Token QR tidak valid atau kegiatan sudah dihapus.");
+  if(s.division && s.division!=="-" && s.division!==actor.division){
+    throw new Error("Kegiatan ini untuk divisi "+s.division+".");
+  }
+  return {ok:true, session:{
+    id:s.id, activity:s.activity, division:s.division, date:s.date, start:s.start, end:s.end,
+    location:s.location, notes:s.notes, creatorId:s.creatorId, creatorName:s.creatorName, creatorRole:s.creatorRole,
+    geoEnabled:s.geoEnabled===true, geoLat:s.geoLat, geoLng:s.geoLng, geoRadius:s.geoRadius,
+    expireMinutes:s.expireMinutes, createdAt:s.createdAt,
+    active:s.active===true, attendanceSubmitted:s.attendanceSubmitted===true
+  }};
 }
 
 /* Staf mengecek status QR sebelum lanjut ke lokasi & selfie. Hanya mengembalikan aktif/tidak. */
@@ -1277,6 +1297,9 @@ function doPost(e){
 
       case "checkSession":
         return jsonResponse_(checkSession_(actor,data));
+
+      case "resolveToken":
+        return jsonResponse_(resolveToken_(actor,data));
 
       case "setSessionActive":
         return jsonResponse_(setSessionActive_(actor,data));

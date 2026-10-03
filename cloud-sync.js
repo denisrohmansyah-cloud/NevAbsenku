@@ -356,6 +356,7 @@ window.login = async function(event){
                 else if(!ok) toast("Login berhasil, sinkron data tertunda. Ketuk status Cloud.","error");
             });
         }
+        if(typeof consumePendingAttendance==="function") consumePendingAttendance();
     }catch(err){
         console.error("Login error:",err);
         toast("Login gagal: "+friendlyCloudError(err),"error");
@@ -584,6 +585,7 @@ async function bootWithCloud(){
         showCloudLoader(false);
     }
     if(currentUser && typeof renderAll==="function") renderAll();
+    if(currentUser && typeof consumePendingAttendance==="function") consumePendingAttendance();
     updateCloudBadge();
     startCloudPolling();
 }

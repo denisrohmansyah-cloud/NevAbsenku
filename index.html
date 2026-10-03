@@ -4347,7 +4347,7 @@ function generateQR(event,creatorRole){
         active:true, createdAt: new Date().toISOString(),
         geoEnabled, geoLat, geoLng, geoRadius, expireMinutes
     };
-    session.token = encodeSessionToken(session);
+    session.token = createShortToken();
 
     const sessions=load(DB.sessions);
     sessions.push(session);
@@ -4378,6 +4378,17 @@ function createUniqueToken(activity,division){
     const div=(division || "ALL").replaceAll(" ","").substring(0,4).toUpperCase();
     const random=Math.random().toString(36).substring(2,8).toUpperCase();
     return `${prefix}-${date}-${act}-${div}-${random}`;
+}
+
+/* Token pendek (10 karakter acak) -> QR berisi tautan pendek, jauh lebih mudah & cepat dipindai.
+   Data kegiatan diambil dari server lewat resolveToken saat staf memindai. */
+function createShortToken(){
+    const abc="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const arr=new Uint8Array(10);
+    (window.crypto||window.msCrypto).getRandomValues(arr);
+    let out="";
+    arr.forEach(b=>{ out+=abc[b%abc.length]; });
+    return "NEV-ABS-"+out;
 }
 
 function encodeSessionToken(session){
@@ -4429,10 +4440,10 @@ function renderGeneratedQR(type,session){
     box.appendChild(qr);
 
     new QRCode(qr,{
-        text:session.token,
-        width:210, height:210,
+        text:qrTextForSession(session),
+        width:240, height:240,
         colorDark:"#000000", colorLight:"#ffffff",
-        correctLevel:QRCode.CorrectLevel.M
+        correctLevel:QRCode.CorrectLevel.L
     });
 
     details.innerHTML=`
@@ -4441,6 +4452,7 @@ function renderGeneratedQR(type,session){
             <div class="qr-info-row"><span>Divisi</span><span>${escapeHTML(session.division)}</span></div>
             <div class="qr-info-row"><span>Tanggal</span><span>${escapeHTML(session.date)}</span></div>
             <div class="qr-info-row"><span>Waktu</span><span>${escapeHTML(session.start)} - ${escapeHTML(session.end)}</span></div>
+            <div class="qr-info-row"><span>Scan dibuka</span><span>${escapeHTML(minutesToTime(Math.max(0,timeToMinutes(session.start)-EARLY_OPEN_MIN)))}</span></div>
             <div class="qr-info-row"><span>QR berlaku s/d</span><span>${escapeHTML(getSessionDeadline(session))}</span></div>
             <div class="qr-info-row"><span>Status</span><span>${session.active ? "Aktif" : "Nonaktif"}</span></div>
             ${session.attendanceSubmitted ? `<div class="qr-info-row"><span>Absensi</span><span>Sudah disubmit ke HRD</span></div>` : ""}
@@ -4517,7 +4529,7 @@ async function processAttendanceCore(token){
         toast("Hanya STAF yang dapat melakukan absensi.", "error"); return false;
     }
 
-    token=(token || "").replace(/\s+/g,"").trim();
+    token=extractToken((token || "").replace(/\s+/g,"").trim());
     if(!token){
         toast("Token QR belum diisi.", "error"); return false;
     }
@@ -4525,7 +4537,8 @@ async function processAttendanceCore(token){
     const sessions = load(DB.sessions);
     const decoded = decodeSessionToken(token);
     const byToken = sessions.find(s => String(s.token || "").trim() === token);
-    const local = byToken || (decoded && sessions.find(s => s.id === decoded.id)) || null;
+    let local = byToken || (decoded && sessions.find(s => s.id === decoded.id)) || null;
+    let resolvedFresh = false;
 
     let session = null;
     if(decoded){
@@ -4539,6 +4552,28 @@ async function processAttendanceCore(token){
         };
     }else if(byToken){
         session = byToken;
+    }
+
+    // Token pendek (QR berupa tautan): data kegiatan + status aktif diambil dari server dalam satu request.
+    if(!session && !decoded && /^NEV-ABS-[A-Za-z0-9_-]{4,40}$/.test(token) && typeof cloudSyncEnabled!=="undefined" && cloudSyncEnabled){
+        updateScannerStatus("Memeriksa QR...", "normal");
+        try{
+            const r = await cloudPost("resolveToken", { token }, 1);
+            if(r && r.session){
+                session = { ...r.session, token };
+                resolvedFresh = true;
+                local = sessions.find(s => s.id === session.id) || null;
+                if(local){
+                    local.active = session.active; local.attendanceSubmitted = session.attendanceSubmitted;
+                    _localSave(DB.sessions, sessions);
+                }
+            }
+        }catch(err){
+            if(err && err.authExpired){ scanBlocked("Sesi login habis. Silakan login ulang."); return false; }
+            const reason = typeof shortAttendError==="function" ? shortAttendError(err) : String((err&&err.message)||"");
+            scanBlocked(err && err.fatal ? ("QR ditolak: "+reason) : "Koneksi lambat. Coba lagi.");
+            return false;
+        }
     }
 
     if(!session){
@@ -4590,9 +4625,10 @@ const currentTime = `${wib.hour}:${wib.minute}`;
 
     const deadline = getSessionDeadline(session);
 
-    if(currentTime < session.start){
-        toast(`QR belum aktif. Absensi dibuka pukul ${session.start}.`, "error");
-        updateScannerStatus(`QR ditemukan, tetapi absensi baru dibuka pukul ${session.start}.`, "error");
+    const openAt = minutesToTime(Math.max(0, timeToMinutes(session.start) - EARLY_OPEN_MIN));
+    if(timeToMinutes(currentTime) < timeToMinutes(session.start) - EARLY_OPEN_MIN){
+        toast(`QR belum aktif. Absensi dibuka pukul ${openAt}.`, "error");
+        updateScannerStatus(`QR ditemukan, tetapi absensi baru dibuka pukul ${openAt} (${EARLY_OPEN_MIN} menit sebelum mulai).`, "error");
         return;
     }
 
@@ -4618,7 +4654,7 @@ const currentTime = `${wib.hour}:${wib.minute}`;
 
     // Cek status terbaru ke server: QR bisa saja baru dinonaktifkan dan belum sampai ke perangkat ini
     // (sinkronisasi berkala 30 detik). Server tetap memvalidasi ulang saat absensi dikirim.
-    if(typeof cloudSyncEnabled!=="undefined" && cloudSyncEnabled){
+    if(!resolvedFresh && typeof cloudSyncEnabled!=="undefined" && cloudSyncEnabled){
         updateScannerStatus("Memeriksa status QR...", "normal");
         try{
             const check = await cloudPost("checkSession", { sessionId: session.id, token }, 0);
@@ -4712,8 +4748,17 @@ function startScanner(){
         return;
     }
 
-    html5QrCode = new Html5Qrcode("reader");
-    html5QrCode.start({facingMode:"environment"}, {fps:10, qrbox:{width:250, height:250}},
+    try{
+        // Hanya baca QR + pakai BarcodeDetector bawaan browser bila ada (jauh lebih cepat).
+        html5QrCode = new Html5Qrcode("reader", {
+            formatsToSupport:[Html5QrcodeSupportedFormats.QR_CODE],
+            experimentalFeatures:{useBarCodeDetectorIfSupported:true}
+        });
+    }catch(e){ html5QrCode = new Html5Qrcode("reader"); }
+    html5QrCode.start({facingMode:"environment"}, {
+            fps:15, disableFlip:true,
+            qrbox:(w,h)=>{ const s=Math.floor(Math.min(w,h)*0.72); return {width:s,height:s}; }
+        },
         decodedText=>{ processAttendance(decodedText, true); },
         errorMessage=>{}
     ).then(()=>{
@@ -6960,11 +7005,75 @@ function restoreLogin(){
         if(currentUser.role==="HRD") showPage("hrd-dashboard");
         if(currentUser.role==="KOOR KP") showPage("koor-dashboard");
         renderAll();
+        if(typeof consumePendingAttendance==="function") consumePendingAttendance();
     }catch(e){
         localStorage.removeItem("nev_current_user");
     }
 }
 
+</script>
+
+<!-- Tautan QR (Google Lens / kamera bawaan), penangkap ?q=, dan jendela scan 15 menit sebelum mulai -->
+<script>
+/* Isi dengan alamat web absensi yang diakses staf (contoh: "https://absen.example.com/").
+   Kosongkan untuk memakai alamat halaman yang sedang dibuka. */
+const APP_PUBLIC_URL = "";
+const EARLY_OPEN_MIN = 15;
+const PENDING_Q_KEY = "nev_pending_q";
+
+function qrTextForSession(session){
+    const token = String(session.token || "");
+    if(location.protocol==="file:" && !APP_PUBLIC_URL) return token; // tidak ada alamat web: tetap token mentah
+    const base = (APP_PUBLIC_URL || (location.origin + location.pathname)).split("?")[0].split("#")[0];
+    return base + "?q=" + encodeURIComponent(token.replace(/^NEV-ABS-/,""));
+}
+
+/* Menerima token mentah, atau tautan ...?q=KODE hasil scan -> selalu mengembalikan token NEV-ABS-... */
+function extractToken(text){
+    const t = String(text || "").trim();
+    if(/^https?:\/\//i.test(t)){
+        try{
+            const q = new URL(t).searchParams.get("q");
+            if(q) return /^NEV-ABS-/.test(q) ? q : "NEV-ABS-" + q;
+        }catch(e){}
+    }
+    return t;
+}
+
+(function capturePendingQ(){
+    try{
+        const q = new URLSearchParams(location.search).get("q");
+        if(!q) return;
+        if(/^[A-Za-z0-9_-]{4,4000}$/.test(q)){
+            localStorage.setItem(PENDING_Q_KEY, JSON.stringify({ token: /^NEV-ABS-/.test(q) ? q : "NEV-ABS-"+q, at: Date.now() }));
+        }
+        history.replaceState(null, "", location.pathname + location.hash); // bersihkan alamat
+        const box = document.querySelector("#loginScreen .login-box");
+        if(box && !document.getElementById("pendingQNotice")){
+            const n = document.createElement("div");
+            n.id = "pendingQNotice";
+            n.style.cssText = "background:#eff6ff;color:#1d4ed8;border-radius:10px;padding:10px 12px;font-size:12px;margin:10px 0;text-align:center;";
+            n.textContent = "QR absensi terdeteksi. Login dulu, absensi akan dilanjutkan otomatis.";
+            const brand = box.querySelector(".login-brand");
+            (brand && brand.nextSibling) ? box.insertBefore(n, brand.nextSibling) : box.appendChild(n);
+        }
+    }catch(e){}
+})();
+
+/* Dipanggil setelah login / pemulihan sesi: langsung buka halaman scan dan proses QR yang tertunda. */
+function consumePendingAttendance(){
+    let raw = null;
+    try{ raw = localStorage.getItem(PENDING_Q_KEY); }catch(e){}
+    if(!raw || typeof currentUser==="undefined" || !currentUser) return;
+    try{ localStorage.removeItem(PENDING_Q_KEY); }catch(e){}
+    let obj = null;
+    try{ obj = JSON.parse(raw); }catch(e){}
+    if(!obj || !obj.token || Date.now() - Number(obj.at||0) > 30*60*1000) return;
+    const n = document.getElementById("pendingQNotice"); if(n) n.remove();
+    if(currentUser.role !== "STAF"){ toast("Tautan absensi hanya untuk akun STAF.", "error"); return; }
+    showPage("staf-scan");
+    setTimeout(()=>processAttendance(obj.token, false), 150);
+}
 </script>
 
 <!-- File tambahan: fitur lokasi (geofencing) & selfie capture -->
