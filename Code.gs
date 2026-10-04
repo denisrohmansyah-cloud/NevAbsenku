@@ -28,7 +28,7 @@ const FALLBACK_FOLDER_NAMES = {
   presensi: "NEV Absenku - Foto Presensi"
 };
 
-const CODE_VERSION = "secure-v5.4-private";
+const CODE_VERSION = "secure-v5.3-link";
 const EARLY_OPEN_MIN = 15; // staf boleh mulai absen 15 menit sebelum jam mulai
 
 const SHEET_USERS = "Users";
@@ -573,7 +573,7 @@ function attendanceFor_(user){
   if(user.role==="KOOR KP"){
     return all.filter(a=>a.creatorId===user.id && a.activity==="Ngoprek" && a.division===user.division);
   }
-  return all.filter(a=>a.userId===user.id).map(a=>Object.assign({},a,{token:null}));
+  return all.filter(a=>a.userId===user.id);
 }
 
 function permitsFor_(user){
@@ -618,27 +618,23 @@ function savePhotoToDrive_(base64DataUrl,fileNameHint,kind){
   const safeName=String(fileNameHint||"photo").replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,80);
   const blob=Utilities.newBlob(Utilities.base64Decode(match[2]),mime,safeName+"."+ext);
   const file=getPhotoFolder_(kind).createFile(blob);
-  
-  // ================= PERBAIKAN KEAMANAN =================
-  // Semua foto (selfie, bukti izin, presensi) bersifat SENSITIF.
-  // JANGAN pernah membagikan link publik (ANYONE_WITH_LINK).
-  // Foto diambil melalui action "getPhoto" yang memvalidasi role & kepemilikan.
-  // =======================================================
-  
+  // Bukti izin/sakit bersifat sensitif: TIDAK dibuka lewat link. Ditampilkan lewat action getPhoto (dicek per role).
+  // Selfie absensi tetap berbagi lewat link agar thumbnail tampil seperti sebelumnya.
+  if(kind!=="permit"){
+    try{file.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW);}catch(err){}
+  }
   return "https://drive.google.com/file/d/"+file.getId()+"/view";
 }
 
-/* Jalankan manual sekali: cabut akses link dari semua foto (izin, sakit, selfie) yang sudah ada. */
-function privatkanSemuaFoto(){
-  ["permit", "selfie"].forEach(kind=>{
-    const files=getPhotoFolder_(kind).getFiles();
-    let n=0;
-    while(files.hasNext()){
-      const f=files.next();
-      try{ f.setSharing(DriveApp.Access.PRIVATE,DriveApp.Permission.NONE); n++; }catch(err){ Logger.log("Gagal: "+f.getName()+" "+err); }
-    }
-    Logger.log("Folder "+kind+" dibuat privat: "+n+" file.");
-  });
+/* Jalankan manual sekali: cabut akses link dari foto bukti izin/sakit yang sudah ada. */
+function privatkanFotoIzin(){
+  const files=getPhotoFolder_("permit").getFiles();
+  let n=0;
+  while(files.hasNext()){
+    const f=files.next();
+    try{ f.setSharing(DriveApp.Access.PRIVATE,DriveApp.Permission.NONE); n++; }catch(err){ Logger.log("Gagal: "+f.getName()+" "+err); }
+  }
+  Logger.log("Foto bukti izin dibuat privat: "+n);
 }
 
 /* Proxy foto privat: hanya untuk pihak yang berhak melihat record terkait. */
@@ -710,13 +706,6 @@ function doGet(e){
   }
 }
 
-/* Koordinat kantor hanya untuk HRD. Staf/Koor cukup tahu geofence aktif & radius; cek lokasi dilakukan server (checkLocation). */
-function settingsFor_(user){
-  const st=settingsToObject_();
-  if(user.role==="HRD") return st;
-  return {officeLat:null, officeLng:null, radius:st.radius, geofenceEnabled:st.geofenceEnabled};
-}
-
 function getAllFor_(user){
   return {
     ok:true,
@@ -725,7 +714,7 @@ function getAllFor_(user){
     users:usersFor_(user),
     sessions:sessionsFor_(user),
     attendance:attendanceFor_(user),
-    settings:settingsFor_(user),
+    settings:settingsToObject_(),
     permits:permitsFor_(user)
   };
 }
@@ -1043,7 +1032,7 @@ function addAttendance_(actor,data){
   if(target){
     if(lat===null || lng===null) throw new Error("Lokasi perangkat tidak terbaca. Aktifkan GPS lalu coba lagi.");
     const dist=distanceMeters_(lat,lng,target.lat,target.lng);
-    if(dist>target.radius) throw new Error("Anda berada di luar radius "+target.label+" (batas "+target.radius+" m).");
+    if(dist>target.radius) throw new Error("Anda berada di luar radius "+target.label+" ("+Math.round(dist)+" m dari titik, batas "+target.radius+" m).");
   }
 
   let photoUrl=null;
@@ -1054,7 +1043,7 @@ function addAttendance_(actor,data){
   return withLock_(function(){
     const dup=sheetToObjects_(SHEET_ATTENDANCE).filter(validAttendance_)
       .find(r=>r.sessionId===session.id && r.userId===actor.id);
-    if(dup) return {ok:true,record:Object.assign({},dup,{token:null}),duplicate:true};
+    if(dup) return {ok:true,record:dup,duplicate:true};
 
     // Semua field penting diisi dari server/sesi, bukan dari klien.
     const record={
@@ -1066,7 +1055,7 @@ function addAttendance_(actor,data){
       lat:lat, lng:lng, photo:photoUrl, permitId:null, approvedFromPermit:false
     };
     appendObject_(SHEET_ATTENDANCE,record);
-    return {ok:true,record:Object.assign({},record,{token:null})};
+    return {ok:true,record:record};
   });
 }
 
@@ -1083,25 +1072,10 @@ function resolveToken_(actor,data){
   return {ok:true, session:{
     id:s.id, activity:s.activity, division:s.division, date:s.date, start:s.start, end:s.end,
     location:s.location, notes:s.notes, creatorId:s.creatorId, creatorName:s.creatorName, creatorRole:s.creatorRole,
-    geoEnabled:s.geoEnabled===true, geoLat:null, geoLng:null, geoRadius:s.geoRadius,
+    geoEnabled:s.geoEnabled===true, geoLat:s.geoLat, geoLng:s.geoLng, geoRadius:s.geoRadius,
     expireMinutes:s.expireMinutes, createdAt:s.createdAt,
     active:s.active===true, attendanceSubmitted:s.attendanceSubmitted===true
   }};
-}
-
-/* Cek lokasi di server: koordinat titik absensi tidak pernah dikirim ke perangkat staf. Jarak persis juga tidak dikembalikan. */
-function checkLocation_(actor,data){
-  if(actor.role!=="STAF") throw new Error("Hanya STAF yang dapat melakukan absensi.");
-  const id=String(data && data.sessionId || "");
-  if(!idOk_(id)) throw new Error("Data tidak valid.");
-  const session=findSession_(id);
-  if(!session) throw new Error("Kegiatan tidak ditemukan.");
-  const target=targetGeo_(session);
-  if(!target) return {ok:true, enforced:false, within:true};
-  const lat=numOrNull_(data.lat,-90,90), lng=numOrNull_(data.lng,-180,180);
-  if(lat===null || lng===null) return {ok:true, enforced:true, within:false, radius:target.radius, noLocation:true};
-  const dist=distanceMeters_(lat,lng,target.lat,target.lng);
-  return {ok:true, enforced:true, within:dist<=target.radius, radius:target.radius};
 }
 
 /* Staf mengecek status QR sebelum lanjut ke lokasi & selfie. Hanya mengembalikan aktif/tidak. */
@@ -1323,9 +1297,6 @@ function doPost(e){
 
       case "checkSession":
         return jsonResponse_(checkSession_(actor,data));
-
-      case "checkLocation":
-        return jsonResponse_(checkLocation_(actor,data));
 
       case "resolveToken":
         return jsonResponse_(resolveToken_(actor,data));

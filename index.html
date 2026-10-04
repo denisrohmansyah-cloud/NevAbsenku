@@ -5295,16 +5295,11 @@ function normalizePhotoUrl(url, size){
   return "";
 }
 
-/* =========================================================
-PERBAIKAN KEAMANAN: Foto selfie & bukti izin bersifat privat.
-Tidak ada link publik. Diambil lewat server (getPhoto).
-========================================================= */
+/* Foto bukti izin/sakit bersifat privat: tidak ada link publik, diambil lewat server. */
 function isPrivatePhoto(url){
   if(!url) return false;
   const permits = load(DB.permits) || [];
-  const attendance = load(DB.attendance) || [];
-  // Cek apakah URL ini adalah foto dari absensi (selfie) atau pengajuan izin
-  return permits.some(p => p.photo === url) || attendance.some(a => a.photo === url);
+  return permits.some(p => p.photo === url);
 }
 
 /* Tanggal hari ini menurut WIB (format YYYY-MM-DD), bukan UTC. */

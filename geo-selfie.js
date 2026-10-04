@@ -305,31 +305,6 @@ function checkGeofence(session){
         const target = sessionGeo || officeGeo;
         const source = sessionGeo ? "session" : "office";
 
-        // Perangkat STAF tidak lagi menerima koordinat titik absensi: pengecekan radius dilakukan server.
-        const needServer = !target && typeof currentUser!=="undefined" && currentUser && currentUser.role==="STAF"
-            && typeof cloudSyncEnabled!=="undefined" && cloudSyncEnabled
-            && !!((session && session.geoEnabled) || settings.geofenceEnabled);
-        if(needServer){
-            if(!navigator.geolocation){
-                resolve({ enforced:true, ok:false, location:null, distance:null, radius:settings.radius, source, error:"unsupported" });
-                return;
-            }
-            navigator.geolocation.getCurrentPosition(
-                async pos=>{
-                    const location = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                    try{
-                        const r = await cloudPost("checkLocation", { sessionId: session.id, lat: location.lat, lng: location.lng }, 1);
-                        resolve({ enforced: r.enforced!==false, ok: r.within===true, distance:null, radius: r.radius || settings.radius, location, source: (session && session.geoEnabled) ? "session" : "office", serverChecked:true });
-                    }catch(e){
-                        resolve({ enforced:true, ok:false, location, distance:null, radius:settings.radius, source, error:e, serverChecked:true });
-                    }
-                },
-                err=>resolve({ enforced:true, ok:false, location:null, distance:null, radius:settings.radius, source, error:err }),
-                { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
-            );
-            return;
-        }
-
         if(!navigator.geolocation){
             resolve({ enforced: !!target, ok:false, location:null, distance:null, radius: target?target.radius:settings.radius, source, error:"unsupported" });
             return;
@@ -521,14 +496,10 @@ function beginAttendanceCapture(session, token){
         if(result.enforced){
             pendingAttendance.locationOk = result.ok;
             if(result.ok){
-                statusEl.textContent = result.distance!=null
-                    ? `Lokasi valid (±${Math.round(result.distance)} m dari titik ${originLabel}).`
-                    : `Lokasi valid (di dalam radius ${originLabel}).`;
+                statusEl.textContent = `Lokasi valid (±${Math.round(result.distance)} m dari titik ${originLabel}).`;
                 statusEl.style.background = "#dcfce7"; statusEl.style.color = "#15803d";
-            }else if(result.distance!=null || (result.serverChecked && result.location)){
-                statusEl.textContent = result.distance!=null
-                    ? `Anda berada di luar radius ${originLabel} (±${Math.round(result.distance)} m, radius diizinkan ${result.radius} m). Absensi tidak dapat dikirim.`
-                    : `Anda berada di luar radius ${originLabel} (radius diizinkan ${result.radius} m). Absensi tidak dapat dikirim.`;
+            }else if(result.distance!=null){
+                statusEl.textContent = `Anda berada di luar radius ${originLabel} (±${Math.round(result.distance)} m, radius diizinkan ${result.radius} m). Absensi tidak dapat dikirim.`;
                 statusEl.style.background = "#fee2e2"; statusEl.style.color = "#b91c1c";
             }else{
                 statusEl.textContent = "Tidak dapat memastikan lokasi Anda. Aktifkan GPS/izin lokasi lalu coba lagi.";
