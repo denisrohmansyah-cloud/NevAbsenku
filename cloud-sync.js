@@ -615,24 +615,51 @@ async function fetchPrivatePhoto(url){
     return json.dataUrl;
 }
 
+// Ambil beberapa foto sekaligus (1 request). Server lama tanpa getPhotos -> kembali ke satu-satu.
+async function fetchPrivatePhotos(urls){
+    const ids = [...new Set(urls.map(privateFileId).filter(Boolean))].filter(id => !privatePhotoCache.has(id));
+    if(!ids.length) return;
+    try{
+        const json = await cloudPost("getPhotos", { fileIds:ids }, 1);
+        Object.keys(json.photos || {}).forEach(id => {
+            const p = json.photos[id];
+            if(p && p.dataUrl) privatePhotoCache.set(id, p.dataUrl);
+        });
+    }catch(err){
+        if(err && /action tidak dikenali/i.test(String(err.message||""))){
+            for(const id of ids){
+                try{ await fetchPrivatePhoto("https://drive.google.com/file/d/"+id+"/view"); }catch(e){}
+            }
+        }else{ throw err; }
+    }
+}
+
+// Hanya memuat foto yang sedang terlihat (atau hampir terlihat), maksimal 8 per request.
 let privatePhotoBusy = false;
 async function hydratePrivatePhotos(){
     if(privatePhotoBusy) return;
     privatePhotoBusy = true;
     try{
-        let el;
-        while((el = document.querySelector("img[data-private-photo]:not([data-private-state])"))){
-            el.setAttribute("data-private-state","loading");
-            try{
-                el.src = await fetchPrivatePhoto(el.getAttribute("data-private-photo"));
-                el.setAttribute("data-private-state","done");
-            }catch(err){
-                el.setAttribute("data-private-state","error");
-                el.alt = "Foto tidak tersedia";
-            }
+        for(let guard=0; guard<40; guard++){
+            const vh = window.innerHeight + 300;
+            const pending = [...document.querySelectorAll("img[data-private-photo]:not([data-private-state])")].filter(el=>{
+                const r = el.getBoundingClientRect();
+                return (r.width || r.height) && r.bottom > -300 && r.top < vh;
+            }).slice(0,8);
+            if(!pending.length) break;
+            pending.forEach(el=>el.setAttribute("data-private-state","loading"));
+            try{ await fetchPrivatePhotos(pending.map(el=>el.getAttribute("data-private-photo"))); }catch(err){}
+            pending.forEach(el=>{
+                const data = privatePhotoCache.get(privateFileId(el.getAttribute("data-private-photo")));
+                if(data){ el.src = data; el.setAttribute("data-private-state","done"); }
+                else{ el.setAttribute("data-private-state","error"); el.alt = "Foto tidak tersedia"; }
+            });
         }
     }finally{ privatePhotoBusy = false; }
 }
+
+window.addEventListener("scroll", ()=>{ clearTimeout(window.__phScroll); window.__phScroll = setTimeout(hydratePrivatePhotos, 150); }, true);
+setInterval(()=>{ if(document.querySelector("img[data-private-photo]:not([data-private-state])")) hydratePrivatePhotos(); }, 1500);
 
 new MutationObserver(()=>{ clearTimeout(window.__phTimer); window.__phTimer = setTimeout(hydratePrivatePhotos, 60); })
     .observe(document.documentElement, { childList:true, subtree:true });
