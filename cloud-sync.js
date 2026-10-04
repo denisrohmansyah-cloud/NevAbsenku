@@ -411,7 +411,7 @@ function shortAttendError(err){
     const msg = String((err && err.message) || err || "");
     const rules = [
         [/sudah melakukan absensi/i, "Sudah absen di kegiatan ini."],
-        [/luar radius/i, () => { const m = msg.match(/\((\d+)\s*m dari titik, batas (\d+)/i); return m ? `Di luar radius (${m[1]} m, batas ${m[2]} m).` : "Di luar radius lokasi."; }],
+        [/luar radius/i, () => { const m = msg.match(/batas (\d+)\s*m/i); return m ? `Di luar radius (batas ${m[1]} m).` : "Di luar radius lokasi."; }],
         [/lokasi perangkat tidak terbaca/i, "Lokasi tidak terbaca. Aktifkan GPS."],
         [/belum aktif/i, "QR belum aktif."],
         [/kadaluwarsa|melewati tanggal|hanya dapat dilakukan pukul/i, "Waktu absensi sudah lewat."],
