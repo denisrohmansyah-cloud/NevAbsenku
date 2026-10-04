@@ -28,7 +28,7 @@ const FALLBACK_FOLDER_NAMES = {
   presensi: "NEV Absenku - Foto Presensi"
 };
 
-const CODE_VERSION = "secure-v5.5-private-photos";
+const CODE_VERSION = "secure-v5.4-private";
 const EARLY_OPEN_MIN = 15; // staf boleh mulai absen 15 menit sebelum jam mulai
 
 const SHEET_USERS = "Users";
@@ -618,40 +618,27 @@ function savePhotoToDrive_(base64DataUrl,fileNameHint,kind){
   const safeName=String(fileNameHint||"photo").replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,80);
   const blob=Utilities.newBlob(Utilities.base64Decode(match[2]),mime,safeName+"."+ext);
   const file=getPhotoFolder_(kind).createFile(blob);
-  // Semua foto (selfie absensi & bukti izin/sakit) bersifat privat: TIDAK dibuka lewat link.
-  // Ditampilkan lewat action getPhoto/getPhotos yang memeriksa hak akses per role.
-  try{file.setSharing(DriveApp.Access.PRIVATE,DriveApp.Permission.NONE);}catch(err){}
+  
+  // ================= PERBAIKAN KEAMANAN =================
+  // Semua foto (selfie, bukti izin, presensi) bersifat SENSITIF.
+  // JANGAN pernah membagikan link publik (ANYONE_WITH_LINK).
+  // Foto diambil melalui action "getPhoto" yang memvalidasi role & kepemilikan.
+  // =======================================================
+  
   return "https://drive.google.com/file/d/"+file.getId()+"/view";
 }
 
-/* Jalankan manual sekali (boleh berulang jika belum selesai): cabut akses link dari SEMUA foto
-   (selfie absensi + bukti izin/sakit) yang sudah ada. Berhenti otomatis sebelum batas waktu Apps Script. */
+/* Jalankan manual sekali: cabut akses link dari semua foto (izin, sakit, selfie) yang sudah ada. */
 function privatkanSemuaFoto(){
-  const start=Date.now();
-  let total=0, done=false;
-  ["selfie","permit"].forEach(function(kind){
-    if(Date.now()-start>270000) return;
+  ["permit", "selfie"].forEach(kind=>{
     const files=getPhotoFolder_(kind).getFiles();
+    let n=0;
     while(files.hasNext()){
-      if(Date.now()-start>270000){ Logger.log("Waktu hampir habis. Jalankan lagi untuk melanjutkan."); return; }
       const f=files.next();
-      try{
-        if(f.getSharingAccess()!==DriveApp.Access.PRIVATE){ f.setSharing(DriveApp.Access.PRIVATE,DriveApp.Permission.NONE); total++; }
-      }catch(err){ Logger.log("Gagal: "+f.getName()+" "+err); }
+      try{ f.setSharing(DriveApp.Access.PRIVATE,DriveApp.Permission.NONE); n++; }catch(err){ Logger.log("Gagal: "+f.getName()+" "+err); }
     }
+    Logger.log("Folder "+kind+" dibuat privat: "+n+" file.");
   });
-  Logger.log("Foto yang dibuat privat pada run ini: "+total);
-}
-
-/* Jalankan manual sekali: cabut akses link dari foto bukti izin/sakit yang sudah ada. */
-function privatkanFotoIzin(){
-  const files=getPhotoFolder_("permit").getFiles();
-  let n=0;
-  while(files.hasNext()){
-    const f=files.next();
-    try{ f.setSharing(DriveApp.Access.PRIVATE,DriveApp.Permission.NONE); n++; }catch(err){ Logger.log("Gagal: "+f.getName()+" "+err); }
-  }
-  Logger.log("Foto bukti izin dibuat privat: "+n);
 }
 
 /* Proxy foto privat: hanya untuk pihak yang berhak melihat record terkait. */
@@ -678,39 +665,6 @@ function getPhoto_(actor,data){
   const bytes=blob.getBytes();
   if(bytes.length>4*1024*1024) throw new Error("Foto terlalu besar untuk ditampilkan.");
   return {ok:true,dataUrl:"data:"+blob.getContentType()+";base64,"+Utilities.base64Encode(bytes)};
-}
-
-/* Versi batch getPhoto: satu request untuk beberapa foto (jauh lebih cepat untuk tabel HRD). */
-function getPhotos_(actor,data){
-  const ids=(Array.isArray(data && data.fileIds) ? data.fileIds : []).slice(0,8);
-  if(!ids.length) throw new Error("Daftar foto kosong.");
-  const permits=sheetToObjects_(SHEET_PERMITS).filter(validPermit_);
-  const atts=sheetToObjects_(SHEET_ATTENDANCE).filter(validAttendance_);
-  const photos={};
-  ids.forEach(function(raw){
-    const id=String(raw||"");
-    if(!/^[A-Za-z0-9_-]{10,100}$/.test(id)){ photos[id]={error:"invalid"}; return; }
-    const url="https://drive.google.com/file/d/"+id+"/view";
-    const permit=permits.find(function(p){return p.photo===url;});
-    const att=permit?null:atts.find(function(a){return a.photo===url;});
-    if(!permit && !att){ photos[id]={error:"notfound"}; return; }
-    let allowed=false;
-    if(actor.role==="HRD") allowed=true;
-    else if(actor.role==="KOOR KP"){
-      allowed=permit ? permit.sessionCreatorId===actor.id
-                     : (att.creatorId===actor.id && att.activity==="Ngoprek" && att.division===actor.division);
-    }else{
-      allowed=(permit||att).userId===actor.id;
-    }
-    if(!allowed){ photos[id]={error:"denied"}; return; }
-    try{
-      const blob=DriveApp.getFileById(id).getBlob();
-      const bytes=blob.getBytes();
-      if(bytes.length>4*1024*1024){ photos[id]={error:"toolarge"}; return; }
-      photos[id]={dataUrl:"data:"+blob.getContentType()+";base64,"+Utilities.base64Encode(bytes)};
-    }catch(err){ photos[id]={error:"unavailable"}; }
-  });
-  return {ok:true,photos:photos};
 }
 
 function withLock_(fn){
@@ -1311,9 +1265,6 @@ function doPost(e){
     switch(action){
       case "getAll":
         return jsonResponse_(getAllFor_(actor));
-
-      case "getPhotos":
-        return jsonResponse_(getPhotos_(actor,data));
 
       case "getPhoto":
         return jsonResponse_(getPhoto_(actor,data));
