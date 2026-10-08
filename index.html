@@ -1837,14 +1837,28 @@ APP
 
                                 <label>Foto Bukti *</label>
 
-                                <input
-                                    id="permitPhotoInput"
-                                    class="form-control"
-                                    type="file"
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                    <button type="button" class="btn btn-outline"
+                                        onclick="document.getElementById('permitPhotoCamera').click()">
+                                        <i class="fa-solid fa-camera"></i> Ambil Foto
+                                    </button>
+                                    <button type="button" class="btn btn-outline"
+                                        onclick="document.getElementById('permitPhotoInput').click()">
+                                        <i class="fa-solid fa-image"></i> Pilih dari Galeri / File
+                                    </button>
+                                </div>
+
+                                <!-- Dua input terpisah: yang satu membuka kamera, yang lain membuka galeri/file (tanpa kamera). -->
+                                <input id="permitPhotoCamera" class="hidden" type="file"
+                                    accept="image/*" capture="environment"
+                                    onchange="handlePermitPhotoInput(this)">
+                                <input id="permitPhotoInput" class="hidden" type="file"
                                     accept="image/*"
-                                    capture="environment"
-                                    onchange="handlePermitPhotoInput(this)"
-                                    required>
+                                    onchange="handlePermitPhotoInput(this)">
+
+                                <p id="permitPhotoName" style="font-size:11px;color:#777;margin-top:6px;">
+                                    Belum ada foto dipilih.
+                                </p>
 
                                 <img
                                     id="permitPhotoPreview"
@@ -2054,7 +2068,23 @@ APP
                                             Kepanitiaan
                                         </option>
 
+                                        <option value="__custom__">
+                                            Lainnya (atur sendiri)...
+                                        </option>
+
                                     </select>
+
+                                    <input
+                                        id="hrdActivityCustom"
+                                        type="text"
+                                        maxlength="40"
+                                        list="hrdActivityList"
+                                        class="form-control hidden"
+                                        style="margin-top:8px;"
+                                        placeholder="Nama kegiatan, contoh: Workshop"
+                                        autocomplete="off">
+
+                                    <datalist id="hrdActivityList"></datalist>
 
                                 </div>
 
@@ -2157,11 +2187,8 @@ APP
                                     class="form-control"
                                     onchange="toggleExpireCustom('hrd')">
                                     <option value="">Sampai jam selesai kegiatan</option>
-                                    <option value="5">5 menit setelah jam mulai</option>
-                                    <option value="10">10 menit setelah jam mulai</option>
                                     <option value="15">15 menit setelah jam mulai</option>
                                     <option value="30">30 menit setelah jam mulai</option>
-                                    <option value="60">60 menit setelah jam mulai</option>
                                     <option value="custom">Atur sendiri (menit)...</option>
                                 </select>
 
@@ -2636,11 +2663,8 @@ APP
                                     class="form-control"
                                     onchange="toggleExpireCustom('koor')">
                                     <option value="">Sampai jam selesai kegiatan</option>
-                                    <option value="5">5 menit setelah jam mulai</option>
-                                    <option value="10">10 menit setelah jam mulai</option>
                                     <option value="15">15 menit setelah jam mulai</option>
                                     <option value="30">30 menit setelah jam mulai</option>
-                                    <option value="60">60 menit setelah jam mulai</option>
                                     <option value="custom">Atur sendiri (menit)...</option>
                                 </select>
 
@@ -4285,6 +4309,11 @@ function generateQR(event,creatorRole){
 
     if(creatorRole==="HRD"){
         activity=document.getElementById("hrdActivity").value;
+        if(activity===CUSTOM_ACTIVITY_VALUE){
+            const custom=readCustomActivity();
+            if(!custom.ok) return;
+            activity=custom.value;
+        }
         division=document.getElementById("hrdDivision").value;
         date=document.getElementById("hrdDate").value;
         start=document.getElementById("hrdStart").value;
@@ -6499,16 +6528,36 @@ function compressImageFile(file, maxDim, quality){
 
 async function handlePermitPhotoInput(input){
     const file = input.files && input.files[0];
-    if(!file) return;
+    if(!file) return;   // pemilih ditutup tanpa memilih: foto sebelumnya tetap dipakai
+
+    if(file.type && !file.type.startsWith("image/")){
+        input.value = "";
+        toast("File harus berupa gambar (JPG/PNG).", "error");
+        return;
+    }
+    if(file.size > 20*1024*1024){
+        input.value = "";
+        toast("Ukuran file terlalu besar (maksimal 20 MB).", "error");
+        return;
+    }
 
     try{
         pendingPermitPhoto = await compressImageFile(file, 1280, 0.75);
         const preview = document.getElementById("permitPhotoPreview");
         preview.src = pendingPermitPhoto;
         preview.classList.remove("hidden");
+        const nameEl = document.getElementById("permitPhotoName");
+        if(nameEl) nameEl.textContent = "Foto dipilih: " + (file.name || "foto");
+        // Kosongkan input lainnya supaya hanya ada satu sumber foto.
+        ["permitPhotoCamera","permitPhotoInput"].forEach(id=>{
+            const el = document.getElementById(id);
+            if(el && el !== input) el.value = "";
+        });
     }catch(err){
         pendingPermitPhoto = null;
         input.value = "";
+        const nameEl = document.getElementById("permitPhotoName");
+        if(nameEl) nameEl.textContent = "Belum ada foto dipilih.";
         toast(err.message || "Gagal memproses foto.", "error");
     }
 }
@@ -6518,6 +6567,8 @@ function resetPermitForm(){
     if(form) form.reset();
     const preview = document.getElementById("permitPhotoPreview");
     if(preview){ preview.classList.add("hidden"); preview.src=""; }
+    const nameEl = document.getElementById("permitPhotoName");
+    if(nameEl) nameEl.textContent = "Belum ada foto dipilih.";
     pendingPermitPhoto = null;
     populatePermitSessionOptions();
 }
@@ -6939,8 +6990,77 @@ function closeModal(id){
     document.getElementById(id).classList.remove("show");
 }
 
+/* Kegiatan bawaan + kegiatan buatan sendiri oleh HRD ("Lainnya") */
+const CUSTOM_ACTIVITY_VALUE = "__custom__";
+const STANDARD_ACTIVITIES = ["Rapat Rutin","Ngoprek","Kepanitiaan"];
+const ACTIVITY_NAME_RE = /^[A-Za-z0-9 _.-]{1,40}$/;   // sama dengan LABEL_RE di Code.gs
+
+function knownCustomActivities(){
+    const set = new Set();
+    (load(DB.sessions)||[]).forEach(s=>{
+        if(s && s.activity && !STANDARD_ACTIVITIES.includes(s.activity)) set.add(s.activity);
+    });
+    return Array.from(set).sort((a,b)=>a.localeCompare(b));
+}
+
+/* Menambahkan kegiatan buatan sendiri ke dropdown filter (Rekap Absensi, Rekap per Staf)
+   dan ke daftar saran pada input "atur sendiri". */
+function refreshActivityFilters(){
+    const extra = knownCustomActivities();
+    ["filterActivity","recapActivity"].forEach(id=>{
+        const sel = document.getElementById(id);
+        if(!sel) return;
+        const cur = sel.value;
+        Array.from(sel.options).forEach(o=>{ if(o.dataset.dynamic==="1") o.remove(); });
+        extra.forEach(name=>{
+            const o = document.createElement("option");
+            o.value = name; o.textContent = name; o.dataset.dynamic = "1";
+            sel.appendChild(o);
+        });
+        sel.value = cur;
+    });
+    const dl = document.getElementById("hrdActivityList");
+    if(dl){
+        dl.innerHTML = "";
+        extra.forEach(name=>{
+            const o = document.createElement("option");
+            o.value = name;
+            dl.appendChild(o);
+        });
+    }
+}
+
+function readCustomActivity(){
+    const input = document.getElementById("hrdActivityCustom");
+    const v = (input ? input.value : "").replace(/\s+/g," ").trim();
+    if(!v){
+        toast("Isi nama kegiatan terlebih dahulu.","error");
+        if(input) input.focus();
+        return { ok:false };
+    }
+    if(!ACTIVITY_NAME_RE.test(v)){
+        toast("Nama kegiatan hanya boleh huruf, angka, spasi, titik, garis bawah, dan strip (maks. 40 karakter).","error");
+        if(input) input.focus();
+        return { ok:false };
+    }
+    const std = STANDARD_ACTIVITIES.find(x=>x.toLowerCase()===v.toLowerCase());
+    if(std){
+        toast(`Kegiatan "${std}" sudah ada di daftar. Pilih langsung dari daftar kegiatan.`,"error");
+        return { ok:false };
+    }
+    // Samakan penulisan dengan kegiatan buatan sendiri yang sudah pernah dipakai (hindari "workshop" vs "Workshop").
+    const existing = knownCustomActivities().find(x=>x.toLowerCase()===v.toLowerCase());
+    return { ok:true, value: existing || v };
+}
+
 function toggleDivision(type){
     const activity=document.getElementById("hrdActivity").value;
+    const customInput=document.getElementById("hrdActivityCustom");
+    if(customInput){
+        const isCustom = activity===CUSTOM_ACTIVITY_VALUE;
+        customInput.classList.toggle("hidden", !isCustom);
+        if(isCustom) setTimeout(()=>customInput.focus(),0); else customInput.value="";
+    }
     const group=document.getElementById("hrdDivisionGroup");
     if(activity==="Ngoprek"){
         group.classList.remove("hidden");
@@ -6970,6 +7090,7 @@ function updateCurrentDate(){
 }
 function renderAll(){
     if(!currentUser)return;
+    refreshActivityFilters();
     if(currentUser.role==="STAF"){
         renderStafDashboard(); renderStafHistory(); renderCalendar();
     }
