@@ -31,6 +31,7 @@ href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
 
 <!-- File tambahan: lokasi (geofencing) & selfie -->
 <link rel="stylesheet" href="geo-selfie.css">
+<link rel="stylesheet" href="sp-warning.css">
 
 <style>
 :root{
@@ -3146,6 +3147,70 @@ APP
             </section>
 
 
+
+            <!-- =================================================
+            SURAT PERINGATAN (SP) — HRD menerbitkan, STAF/KOOR KP menerima
+            ================================================= -->
+
+            <section id="page-hrd-warning" class="page">
+                <div class="section-card">
+                    <div class="section-header">
+                        <div>
+                            <h3><i class="fa-solid fa-triangle-exclamation"></i> Surat Peringatan (SP)</h3>
+                            <p>Terbitkan SP kepada staf atau Koor KP. Penerima akan melihatnya di menu "Surat Peringatan".</p>
+                        </div>
+                        <button class="btn btn-primary" onclick="openWarningForm()">
+                            <i class="fa-solid fa-plus"></i> Terbitkan SP
+                        </button>
+                    </div>
+
+                    <div class="filter-grid">
+                        <div>
+                            <label style="font-size:10px;font-weight:700;">Cari Nama / NIM / No. SP</label>
+                            <input id="spFilterSearch" class="form-control" placeholder="Ketik untuk mencari..." oninput="renderHrdWarnings()">
+                        </div>
+                        <div>
+                            <label style="font-size:10px;font-weight:700;">Tingkat</label>
+                            <select id="spFilterLevel" class="form-control" onchange="renderHrdWarnings()">
+                                <option value="">Semua</option>
+                                <option>SP1</option><option>SP2</option><option>SP3</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:10px;font-weight:700;">Penerima</label>
+                            <select id="spFilterRole" class="form-control" onchange="renderHrdWarnings()">
+                                <option value="">Semua</option>
+                                <option value="STAF">Staf</option>
+                                <option value="KOOR KP">Koor KP</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:10px;font-weight:700;">Status</label>
+                            <select id="spFilterStatus" class="form-control" onchange="renderHrdWarnings()">
+                                <option value="">Semua</option>
+                                <option value="aktif">Masih berlaku</option>
+                                <option value="kedaluwarsa">Kedaluwarsa</option>
+                                <option value="belum">Belum dibaca</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="hrdWarningTable"></div>
+                </div>
+            </section>
+
+            <section id="page-my-warning" class="page">
+                <div class="section-card">
+                    <div class="section-header">
+                        <div>
+                            <h3><i class="fa-solid fa-envelope-open-text"></i> Surat Peringatan</h3>
+                            <p>Surat peringatan yang diterbitkan HRD untuk Anda.</p>
+                        </div>
+                    </div>
+                    <div id="myWarningList"></div>
+                </div>
+            </section>
+
             <!-- =================================================
             MANAJEMEN AKUN (HRD & KOOR KP)
             ================================================= -->
@@ -3691,6 +3756,64 @@ RINCIAN REKAP STAF MODAL
     </div>
 </div>
 
+
+<!-- =========================================================
+SURAT PERINGATAN: FORM TERBIT + DETAIL
+========================================================= -->
+
+<div id="warningFormModal" class="modal">
+    <div class="modal-box" style="max-width:560px;">
+        <div class="modal-header">
+            <h3>Terbitkan Surat Peringatan</h3>
+            <button class="modal-close" onclick="closeModal('warningFormModal')"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Penerima</label>
+                <select id="spTarget" class="form-control" onchange="onWarningTargetChange()"></select>
+            </div>
+            <div id="spHint" class="sp-hint"></div>
+            <div class="form-group">
+                <label>Tingkat SP</label>
+                <select id="spLevel" class="form-control">
+                    <option value="SP1">SP1 - Peringatan pertama</option>
+                    <option value="SP2">SP2 - Peringatan kedua</option>
+                    <option value="SP3">SP3 - Peringatan ketiga (terakhir)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Alasan / pelanggaran</label>
+                <textarea id="spReason" class="form-control" rows="4" maxlength="1000" placeholder="Contoh: Tidak hadir (Alpha) pada rapat rutin 3 kali berturut-turut tanpa keterangan."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Ketentuan / tindak lanjut <span style="font-weight:400;color:#888;">(opsional)</span></label>
+                <textarea id="spAction" class="form-control" rows="3" maxlength="500" placeholder="Contoh: Wajib hadir pada seluruh kegiatan 1 bulan ke depan."></textarea>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <label>Berlaku hingga <span style="font-weight:400;color:#888;">(opsional)</span></label>
+                <input id="spValidUntil" type="date" class="form-control">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal('warningFormModal')">Batal</button>
+            <button id="spSubmitBtn" class="btn btn-primary" onclick="submitWarning()">
+                <i class="fa-solid fa-paper-plane"></i> Terbitkan
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="warningDetailModal" class="modal">
+    <div class="modal-box" style="max-width:600px;">
+        <div class="modal-header">
+            <h3 id="warningDetailTitle">Surat Peringatan</h3>
+            <button class="modal-close" onclick="closeModal('warningDetailModal')"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal-body" id="warningDetailBody"></div>
+        <div class="modal-footer" id="warningDetailFooter"></div>
+    </div>
+</div>
+
 <!-- =========================================================
 EDIT ATTENDANCE MODAL
 ========================================================= -->
@@ -3863,7 +3986,8 @@ const DB = {
     sessions:"nev_sessions",
     attendance:"nev_attendance",
     settings:"nev_settings",
-    permits:"nev_permits"
+    permits:"nev_permits",
+    warnings:"nev_warnings"
 };
 
 function load(key, fallback=[]){
@@ -4115,6 +4239,7 @@ function buildSidebar(){
         html+=menuItem("staf-history", "fa-clock-rotate-left", "Riwayat Absensi");
         html+=menuItem("staf-permit", "fa-file-medical", "Izin/Sakit");
         html+=menuItem("staf-activities", "fa-list-check", "Kegiatan");
+        html+=menuItem("my-warning", "fa-envelope-open-text", "Surat Peringatan");
     }
 
     if(currentUser.role==="HRD"){
@@ -4124,6 +4249,7 @@ function buildSidebar(){
         html+=menuItem("hrd-report", "fa-table-list", "Rekap Absensi");
         html+=menuItem("staff-recap", "fa-user-check", "Rekap per Staf");
         html+=menuItem("hrd-permit", "fa-file-medical", "Persetujuan Izin/Sakit");
+        html+=menuItem("hrd-warning", "fa-triangle-exclamation", "Surat Peringatan (SP)");
         html+=menuItem("hrd-location", "fa-location-dot", "Lokasi & Radius");
         html+=menuItem("users", "fa-users-gear", "Manajemen Akun");
     }
@@ -4136,12 +4262,14 @@ function buildSidebar(){
         html+=menuItem("staff-recap", "fa-user-check", "Rekap per Staf");
         html+=menuItem("koor-permit", "fa-file-medical", "Persetujuan Izin/Sakit");
         html+=menuItem("users", "fa-users-gear", "Manajemen Akun");
+        html+=menuItem("my-warning", "fa-envelope-open-text", "Surat Peringatan");
     }
 
     html+=menuTitle("AKUN");
     html+=menuItem("settings", "fa-user-gear", "Pengaturan");
 
     menu.innerHTML=html;
+    if(typeof updateWarningBadge==="function") updateWarningBadge();
 }
 
 function menuTitle(title){
@@ -4161,9 +4289,9 @@ function showPage(page){
     if(!currentUser) return;
 
     const allowed = {
-        "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "staf-activities", "settings"],
-        "HRD":["hrd-dashboard", "hrd-qr", "hrd-report", "staff-recap", "hrd-permit", "hrd-location", "users", "settings"],
-        "KOOR KP":["koor-dashboard", "koor-qr", "koor-attendance", "staff-recap", "koor-permit", "users", "settings"]
+        "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "staf-activities", "my-warning", "settings"],
+        "HRD":["hrd-dashboard", "hrd-qr", "hrd-report", "staff-recap", "hrd-permit", "hrd-warning", "hrd-location", "users", "settings"],
+        "KOOR KP":["koor-dashboard", "koor-qr", "koor-attendance", "staff-recap", "koor-permit", "users", "my-warning", "settings"]
     };
 
     if(!allowed[currentUser.role].includes(page)){
@@ -4192,6 +4320,8 @@ function showPage(page){
         "hrd-report":"Rekap Absensi",
         "staff-recap":"Rekap per Staf",
         "hrd-permit":"Persetujuan Izin/Sakit",
+        "hrd-warning":"Surat Peringatan (SP)",
+        "my-warning":"Surat Peringatan",
         "hrd-location":"Lokasi & Radius Kantor",
         "users":"Manajemen Akun",
         "koor-dashboard":"Dashboard Koor KP",
@@ -4214,6 +4344,8 @@ function showPage(page){
     if(page==="hrd-report") renderHRDReport();
     if(page==="staff-recap") initStaffRecapPage();
     if(page==="hrd-permit") renderPermitApproval("hrd");
+    if(page==="hrd-warning" && typeof renderHrdWarnings==="function") renderHrdWarnings();
+    if(page==="my-warning" && typeof renderMyWarnings==="function") renderMyWarnings();
     if(page==="hrd-location") setTimeout(initOfficeMap, 50);
     if(page==="users") renderUsers();
     if(page==="koor-dashboard") renderKoorDashboard();
@@ -4508,6 +4640,57 @@ function hrdVisibleSessions(){ return load(DB.sessions).filter(s=>!isDraftKoorSe
 function hrdVisibleAttendance(){
     const draft=new Set(load(DB.sessions).filter(isDraftKoorSession).map(s=>s.id));
     return load(DB.attendance).filter(a=>!draft.has(a.sessionId));
+}
+
+/* Alpha otomatis untuk Rekap Absensi HRD.
+   Staf yang tidak punya catatan absensi pada sesi yang QR-nya sudah DINONAKTIFKAN
+   ditampilkan sebagai baris "Alpha" (baris virtual, belum tersimpan di Sheets).
+   Selama QR masih aktif, belum ada Alpha yang ditampilkan karena staf masih bisa absen.
+   Baris virtual otomatis hilang bila staf nanti punya catatan (hadir, izin disetujui,
+   atau status diubah manual lewat tombol edit). */
+function isDeactivatedSession(s){
+    return !!(s && s.active===false && s.date && s.date<=getTodayWIB());
+}
+function hrdReportRows(){
+    const sessions=hrdVisibleSessions();
+    const attendance=hrdVisibleAttendance();
+    const staff=load(DB.users).filter(u=>u.role==="STAF");
+    const recorded=new Set(attendance.map(a=>a.sessionId+"|"+a.userId));
+    const rows=attendance.slice();
+    sessions.forEach(s=>{
+        if(!isDeactivatedSession(s)) return;
+        const general=!s.division || s.division==="-";
+        staff.forEach(u=>{
+            if(!general && s.division!==u.division) return;
+            if(recorded.has(s.id+"|"+u.id)) return;
+            rows.push({
+                id:"ALPHA-"+s.id+"-"+u.id, virtual:true,
+                sessionId:s.id, userId:u.id, userName:u.name, username:u.username,
+                activity:s.activity, division:s.division||"-", date:s.date,
+                checkIn:null, status:"Alpha", photo:null,
+                creatorId:s.creatorId, creatorRole:s.creatorRole
+            });
+        });
+    });
+    return rows;
+}
+/* Data rekap HRD setelah filter. Dipakai tabel, Excel, dan PDF supaya hasilnya selalu sama. */
+function hrdReportData(){
+    let data=hrdReportRows();
+    const date=document.getElementById("filterDate")?.value;
+    const activity=document.getElementById("filterActivity")?.value;
+    const division=document.getElementById("filterDivision")?.value;
+    const status=document.getElementById("filterStatus")?.value;
+    const search=(document.getElementById("filterSearch")?.value || "").trim().toLowerCase();
+    if(date) data=data.filter(a=>a.date===date);
+    if(activity) data=data.filter(a=>a.activity===activity);
+    if(division) data=data.filter(a=>a.division===division);
+    if(status) data=data.filter(a=>a.status===status);
+    if(search) data=data.filter(a=>
+        String(a.userName||"").toLowerCase().includes(search) ||
+        String(a.username||"").toLowerCase().includes(search)
+    );
+    return data.sort((a,b)=> String(b.date).localeCompare(String(a.date)));
 }
 
 /* Siapa yang boleh mengubah absensi satu sesi:
@@ -5273,22 +5456,26 @@ function attendanceTable(data,canEdit){
                 </thead>
                 <tbody>
                     ${data.map(a=>`
-                        <tr>
+                        <tr${a.virtual ? ' style="background:#fff7f7;"' : ''}>
                             <td>${escapeHTML(a.userName)}</td>
                             <td>${escapeHTML(a.activity)}</td>
                             <td>${escapeHTML(a.division)}</td>
                             <td>${escapeHTML(a.date)}</td>
-                            <td>${formatTime(a.checkIn)}</td>
+                            <td>${a.checkIn ? formatTime(a.checkIn) : "-"}</td>
                             <td>${statusBadge(a.status)}</td>
-                            <td>${attendanceProofCell(a)}</td>
-                            ${canEdit ? (rowEditable(a) ? `<td style="display:flex;gap:5px;">
+                            <td>${a.virtual ? `<span style="color:#aaa;font-size:11px;">Tidak absen</span>` : attendanceProofCell(a)}</td>
+                            ${canEdit ? (rowEditable(a) ? (a.virtual ? `<td>
+                                <button class="btn btn-outline" style="padding:7px 9px;" title="Ubah status (hadir/izin/sakit/dispen)" onclick="openSessionAttendanceEdit('${jsId(a.sessionId)}','${jsId(a.userId)}')">
+                                    <i class="fa-solid fa-pen"></i>
+                                </button>
+                            </td>` : `<td style="display:flex;gap:5px;">
                                 <button class="btn btn-outline" style="padding:7px 9px;" onclick="openEditAttendance('${jsId(a.id)}')">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
                                 <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteAttendance('${jsId(a.id)}')">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
-                            </td>` : `<td>${lockBadge}</td>`) : ""}
+                            </td>`) : `<td>${lockBadge}</td>`) : ""}
                         </tr>
                     `).join("")}
                 </tbody>
@@ -5469,27 +5656,14 @@ HRD REPORT & DASHBOARD
 
 function renderHRDReport(){
     if(currentUser?.role!=="HRD")return;
-    let data=hrdVisibleAttendance();
-    const date=document.getElementById("filterDate").value;
-    const activity=document.getElementById("filterActivity").value;
-    const division=document.getElementById("filterDivision").value;
-    const status=document.getElementById("filterStatus").value;
-    const search=(document.getElementById("filterSearch")?.value || "").trim().toLowerCase();
-
-    if(date) data=data.filter(a=>a.date===date);
-    if(activity) data=data.filter(a=>a.activity===activity);
-    if(division) data=data.filter(a=>a.division===division);
-    if(status) data=data.filter(a=>a.status===status);
-    if(search) data=data.filter(a=>
-        String(a.userName||"").toLowerCase().includes(search) ||
-        String(a.username||"").toLowerCase().includes(search)
-    );
-
+    const data=hrdReportData();
     const container=document.getElementById("hrdReportTable");
     if(!data.length){
         container.innerHTML=emptyHTML("fa-table-list", "Tidak ada data sesuai filter."); return;
     }
-    container.innerHTML=attendanceTable(data,true);
+    const alphaAuto=data.filter(a=>a.virtual).length;
+    const note=alphaAuto ? `<p style="font-size:12px;color:#b91c1c;margin-bottom:10px;"><i class="fa-solid fa-circle-info"></i> ${alphaAuto} baris Alpha otomatis (staf tidak absen pada QR yang sudah dinonaktifkan). Gunakan tombol edit bila staf ternyata hadir/izin.</p>` : "";
+    container.innerHTML=note+attendanceTable(data,true);
 }
 
 function renderHRDDashboard(){
@@ -6186,7 +6360,7 @@ function isSessionEnded(session){
 function implicitAlphaCount(staffList, sessions, attendance){
     let n = 0;
     sessions.forEach(s=>{
-        if(!isSessionEnded(s)) return;
+        if(!isSessionEnded(s) && !isDeactivatedSession(s)) return;
         const general = !s.division || s.division==="-";
         staffList.forEach(u=>{
             if(!general && s.division!==u.division) return;
@@ -6267,7 +6441,7 @@ function computeStaffRecap(){
             if(rec){ entries.push({ date:s.date, activity:s.activity, status:rec.status, checkIn:rec.checkIn }); return; }
             // Alpha hanya dihitung untuk sesi yang berlaku bagi divisi staf saat ini.
             if(!general && s.division!==u.division) return;
-            if(isSessionEnded(s)) entries.push({ date:s.date, activity:s.activity, status:"Alpha", checkIn:null });
+            if(isSessionEnded(s) || isDeactivatedSession(s)) entries.push({ date:s.date, activity:s.activity, status:"Alpha", checkIn:null });
         });
 
         // Catatan absensi yang sesinya sudah tidak ada tetap dihitung.
@@ -6888,21 +7062,13 @@ function exportKoorPDF(){
 
 function exportExcel(){
     if(currentUser.role!=="HRD"){ toast("Hanya HRD yang dapat export data.", "error"); return; }
-    let data=hrdVisibleAttendance();
-    const date=document.getElementById("filterDate").value;
-    const activity=document.getElementById("filterActivity").value;
-    const division=document.getElementById("filterDivision").value;
-    const status=document.getElementById("filterStatus").value;
-
-    if(date) data=data.filter(a=>a.date===date);
-    if(activity) data=data.filter(a=>a.activity===activity);
-    if(division) data=data.filter(a=>a.division===division);
-    if(status) data=data.filter(a=>a.status===status);
+    const data=hrdReportData();
 
     const rows=data.map(a=>({
         "Nama":a.userName, "Username/NIM":a.username, "Kegiatan":a.activity,
-        "Divisi":a.division, "Tanggal":a.date, "Jam":formatTime(a.checkIn),
-        "Status":a.status, "Pembuat QR":a.creatorName, "Role Pembuat":a.creatorRole
+        "Divisi":a.division, "Tanggal":a.date, "Jam":a.checkIn ? formatTime(a.checkIn) : "-",
+        "Status":a.status, "Keterangan":a.virtual ? "Alpha otomatis (tidak absen, QR dinonaktifkan)" : "",
+        "Pembuat QR":a.creatorName, "Role Pembuat":a.creatorRole
     }));
 
     const worksheet=XLSX.utils.json_to_sheet(rows);
@@ -6919,16 +7085,7 @@ EXPORT PDF
 
 function exportPDF(){
     if(currentUser.role!=="HRD"){ toast("Hanya HRD yang dapat export PDF.", "error"); return; }
-    let data=hrdVisibleAttendance();
-    const date=document.getElementById("filterDate").value;
-    const activity=document.getElementById("filterActivity").value;
-    const division=document.getElementById("filterDivision").value;
-    const status=document.getElementById("filterStatus").value;
-
-    if(date) data=data.filter(a=>a.date===date);
-    if(activity) data=data.filter(a=>a.activity===activity);
-    if(division) data=data.filter(a=>a.division===division);
-    if(status) data=data.filter(a=>a.status===status);
+    const data=hrdReportData();
 
     const { jsPDF } = window.jspdf;
     const doc=new jsPDF("landscape");
@@ -6940,7 +7097,7 @@ function exportPDF(){
     doc.autoTable({
         startY:28,
         head:[["Nama", "NIM", "Kegiatan", "Divisi", "Tanggal", "Jam", "Status"]],
-        body:data.map(a=>[a.userName, a.username, a.activity, a.division, a.date, formatTime(a.checkIn), a.status])
+        body:data.map(a=>[a.userName, a.username, a.activity, a.division, a.date, a.checkIn ? formatTime(a.checkIn) : "-", a.status])
     });
 
     doc.save("NEV-Absenku-Rekap.pdf");
@@ -7091,6 +7248,7 @@ function updateCurrentDate(){
 function renderAll(){
     if(!currentUser)return;
     refreshActivityFilters();
+    if(typeof renderWarningsAll==="function") renderWarningsAll();
     if(currentUser.role==="STAF"){
         renderStafDashboard(); renderStafHistory(); renderCalendar();
     }
@@ -7202,6 +7360,9 @@ function consumePendingAttendance(){
 
 <!-- File tambahan: sinkronisasi terpusat ke Google Sheets & Google Drive -->
 <script src="cloud-sync.js"></script>
+
+<!-- File tambahan: Surat Peringatan (SP) dari HRD ke staf / Koor KP -->
+<script src="sp-warning.js"></script>
 
 </body>
 </html>

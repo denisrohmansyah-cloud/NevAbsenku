@@ -250,6 +250,7 @@ function applyCloudAll(json){
     _localSave(DB.attendance,json.attendance||[]);
     _localSave(DB.settings,json.settings||{officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
     _localSave(DB.permits,json.permits||[]);
+    _localSave(DB.warnings,json.warnings||[]);
 
     cloudServerVersion=json.version||null;
     cloudLastSyncAt=new Date();

@@ -1,0 +1,143 @@
+/* =========================================================
+   NEV ABSENKU — Surat Peringatan (SP)
+   File terpisah: hanya menambah style untuk fitur SP.
+========================================================= */
+
+.menu-badge{
+    margin-left:auto;
+    min-width:20px;
+    height:20px;
+    padding:0 6px;
+    border-radius:10px;
+    background:#e50914;
+    color:#fff;
+    font-size:11px;
+    font-weight:800;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+}
+
+.sp-badge{
+    display:inline-flex;
+    align-items:center;
+    padding:5px 10px;
+    border-radius:20px;
+    font-size:10px;
+    font-weight:800;
+    letter-spacing:.3px;
+}
+.sp-badge-SP1{ background:#fef3c7; color:#b45309; }
+.sp-badge-SP2{ background:#ffedd5; color:#c2410c; }
+.sp-badge-SP3{ background:#fee2e2; color:#b91c1c; }
+
+.sp-hint{
+    background:#f7f7f7;
+    border-radius:10px;
+    padding:12px 14px;
+    margin:-6px 0 18px;
+    font-size:12px;
+    color:#555;
+    line-height:1.6;
+}
+.sp-hint:empty{ display:none; }
+
+.sp-banner{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    margin-bottom:18px;
+    padding:14px 16px;
+    border-radius:12px;
+    background:#fef2f2;
+    border:1px solid #fecaca;
+    color:#991b1b;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+}
+.sp-banner i{ font-size:18px; }
+
+.sp-card{
+    border:1px solid #eee;
+    border-left:5px solid #b45309;
+    border-radius:12px;
+    padding:16px 18px;
+    margin-bottom:14px;
+    cursor:pointer;
+    transition:box-shadow .15s ease;
+    background:#fff;
+}
+.sp-card:hover{ box-shadow:0 4px 14px rgba(0,0,0,.08); }
+.sp-card.lvl-SP1{ border-left-color:#d97706; }
+.sp-card.lvl-SP2{ border-left-color:#ea580c; }
+.sp-card.lvl-SP3{ border-left-color:#dc2626; }
+.sp-card.expired{ opacity:.65; }
+.sp-card-head{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-bottom:8px;
+}
+.sp-card-head small{ color:#888; }
+.sp-card p{
+    font-size:13px;
+    color:#444;
+    line-height:1.6;
+    white-space:pre-wrap;
+    word-break:break-word;
+}
+.sp-card-foot{
+    margin-top:10px;
+    font-size:11px;
+    color:#888;
+    display:flex;
+    gap:14px;
+    flex-wrap:wrap;
+}
+
+.sp-letter{
+    font-size:13px;
+    line-height:1.7;
+}
+.sp-letter-head{
+    text-align:center;
+    padding-bottom:14px;
+    margin-bottom:14px;
+    border-bottom:2px solid #111;
+}
+.sp-letter-head img{
+    width:54px;
+    height:54px;
+    border-radius:50%;
+    margin-bottom:6px;
+}
+.sp-letter-head h4{
+    font-size:15px;
+    letter-spacing:.5px;
+}
+.sp-letter-head span{
+    font-size:12px;
+    color:#666;
+}
+.sp-letter dl{
+    display:grid;
+    grid-template-columns:130px 1fr;
+    gap:6px 12px;
+    margin-bottom:14px;
+}
+.sp-letter dt{ font-weight:700; color:#555; }
+.sp-letter dd{ margin:0; word-break:break-word; }
+.sp-letter .sp-text{
+    white-space:pre-wrap;
+    background:#f7f7f7;
+    border-radius:10px;
+    padding:12px 14px;
+    margin:4px 0 14px;
+}
+
+@media (max-width:600px){
+    .sp-letter dl{ grid-template-columns:1fr; gap:0; }
+    .sp-letter dt{ margin-top:8px; }
+}

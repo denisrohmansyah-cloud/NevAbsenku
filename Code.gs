@@ -28,7 +28,7 @@ const FALLBACK_FOLDER_NAMES = {
   presensi: "NEV Absenku - Foto Presensi"
 };
 
-const CODE_VERSION = "secure-v5.3-link";
+const CODE_VERSION = "secure-v5.4-sp";
 const EARLY_OPEN_MIN = 15; // staf boleh mulai absen 15 menit sebelum jam mulai
 
 const SHEET_USERS = "Users";
@@ -36,6 +36,7 @@ const SHEET_SESSIONS = "Sessions";
 const SHEET_ATTENDANCE = "Attendance";
 const SHEET_SETTINGS = "Settings";
 const SHEET_PERMITS = "Permits";
+const SHEET_WARNINGS = "Warnings";
 
 const HEADERS = {
   Users: ["id", "name", "username", "password", "role", "division"],
@@ -50,12 +51,15 @@ const HEADERS = {
   Permits: ["id", "sessionId", "sessionActivity", "sessionDivision", "sessionDate", "sessionLocation",
             "sessionCreatorId", "sessionCreatorRole", "userId", "userName", "username",
             "type", "reason", "photo", "status", "submittedAt",
-            "reviewedBy", "reviewedByName", "reviewedAt", "reviewNote"]
+            "reviewedBy", "reviewedByName", "reviewedAt", "reviewNote"],
+  Warnings: ["id", "number", "level", "targetId", "targetName", "targetUsername", "targetRole",
+             "targetDivision", "reason", "action", "validUntil", "issuedBy", "issuedByName",
+             "issuedAt", "readAt"]
 };
 
 const NUMERIC_COLS = ["lat", "lng", "geoLat", "geoLng", "geoRadius", "expireMinutes", "officeLat", "officeLng", "radius"];
 const BOOL_COLS = ["active", "geofenceEnabled", "geoEnabled", "approvedFromPermit", "attendanceSubmitted"];
-const DATE_COLS = ["date", "sessionDate"];
+const DATE_COLS = ["date", "sessionDate", "validUntil"];
 const TIME_COLS = ["start", "end"];
 
 /* =========================================================
@@ -77,6 +81,8 @@ const ATT_STATUS    = ["Hadir","Izin","Sakit","Dispen","Alpha"];
 const PERMIT_STATUS = ["Menunggu","Disetujui","Ditolak"];
 const PERMIT_TYPES  = ["Izin","Sakit","Dispen"];
 const ROLES         = ["STAF","KOOR KP","HRD"];
+const WARNING_LEVELS = ["SP1","SP2","SP3"];
+const ROMAN_MONTHS   = ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII"];
 
 const MAX_BODY_CHARS    = 6000000;   // batas satu request
 const MAX_PHOTO_CHARS   = 3000000;   // batas satu foto (data URL base64)
@@ -89,6 +95,12 @@ const CHECKIN_GRACE_MIN = 10;        // toleransi setelah jam selesai (jaringan 
 function str_(v,max){
   if(v===undefined || v===null) return null;
   const t=String(v).replace(/[\u0000-\u001f\u007f]/g," ").trim().slice(0,max||200);
+  return t===""?null:t;
+}
+/* Teks beberapa baris (alasan SP): baris baru dipertahankan, karakter kontrol lain dibuang. */
+function multiline_(v,max){
+  if(v===undefined || v===null) return null;
+  const t=String(v).replace(/\r\n?/g,"\n").replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g," ").trim().slice(0,max||1000);
   return t===""?null:t;
 }
 function idOk_(v){ return typeof v==="string" && ID_RE.test(v); }
@@ -585,6 +597,13 @@ function permitsFor_(user){
   return all.filter(p=>p.userId===user.id);
 }
 
+/* HRD melihat semua SP; STAF/KOOR KP hanya SP yang ditujukan kepada dirinya. */
+function warningsFor_(user){
+  const all=sheetToObjects_(SHEET_WARNINGS).filter(w=>w.id && w.targetId);
+  if(user.role==="HRD") return all;
+  return all.filter(w=>w.targetId===user.id);
+}
+
 function usersFor_(user){
   const all=sheetToObjects_(SHEET_USERS);
   if(user.role==="HRD") return all.map(safeUser_);
@@ -715,7 +734,8 @@ function getAllFor_(user){
     sessions:sessionsFor_(user),
     attendance:attendanceFor_(user),
     settings:settingsToObject_(),
-    permits:permitsFor_(user)
+    permits:permitsFor_(user),
+    warnings:warningsFor_(user)
   };
 }
 
@@ -1182,6 +1202,87 @@ function addPermit_(actor,data){
 }
 
 /* =========================================================
+SURAT PERINGATAN (SP)
+Hanya HRD yang menerbitkan/mencabut. Penerima hanya menandai "dibaca".
+Semua field penerima diambil dari sheet Users di server, bukan dari klien.
+========================================================= */
+function nextWarningNumber_(){
+  const now=new Date();
+  const year=Number(Utilities.formatDate(now,"Asia/Jakarta","yyyy"));
+  const month=Number(Utilities.formatDate(now,"Asia/Jakarta","M"));
+  let max=0;
+  sheetToObjects_(SHEET_WARNINGS).forEach(w=>{
+    const m=String(w.number||"").match(/^(\d+)\/SP\/NEV\/[IVX]+\/(\d{4})$/);
+    if(m && Number(m[2])===year) max=Math.max(max,Number(m[1]));
+  });
+  return ("00"+(max+1)).slice(-3)+"/SP/NEV/"+ROMAN_MONTHS[month-1]+"/"+year;
+}
+
+function issueWarning_(actor,data){
+  if(actor.role!=="HRD") throw new Error("Hanya HRD yang dapat menerbitkan SP.");
+  if(!data || !idOk_(data.id)) throw new Error("Data SP tidak valid.");
+  if(!idOk_(data.targetId)) throw new Error("Penerima SP tidak valid.");
+  const level=String(data.level||"");
+  if(WARNING_LEVELS.indexOf(level)<0) throw new Error("Tingkat SP harus SP1, SP2, atau SP3.");
+  const reason=multiline_(data.reason,1000);
+  if(!reason) throw new Error("Alasan SP wajib diisi.");
+  const action=multiline_(data.action,500);
+  let validUntil=null;
+  if(data.validUntil){
+    if(!DATE_RE.test(String(data.validUntil))) throw new Error("Tanggal berlaku tidak valid.");
+    validUntil=String(data.validUntil);
+  }
+
+  const target=sheetToObjects_(SHEET_USERS).find(u=>u.id===data.targetId);
+  if(!target) throw new Error("Penerima tidak ditemukan.");
+  if(target.role!=="STAF" && target.role!=="KOOR KP") throw new Error("SP hanya dapat diberikan kepada STAF atau Koor KP.");
+
+  return withLock_(function(){
+    // Pengiriman ulang dengan id yang sama (jaringan lambat) tidak menerbitkan SP dobel.
+    const dup=sheetToObjects_(SHEET_WARNINGS).find(w=>w.id===data.id);
+    if(dup) return {ok:true,record:dup,duplicate:true};
+
+    const record={
+      id:data.id, number:nextWarningNumber_(), level:level,
+      targetId:target.id, targetName:target.name, targetUsername:target.username,
+      targetRole:target.role, targetDivision:target.division||null,
+      reason:reason, action:action, validUntil:validUntil,
+      issuedBy:actor.id, issuedByName:actor.name, issuedAt:new Date().toISOString(), readAt:null
+    };
+    appendObject_(SHEET_WARNINGS,record);
+    return {ok:true,record:record};
+  });
+}
+
+function markWarningRead_(actor,data){
+  const id=String(data && data.id || "");
+  if(!idOk_(id)) throw new Error("Data tidak valid.");
+  return withLock_(function(){
+    const list=sheetToObjects_(SHEET_WARNINGS);
+    const w=list.find(x=>x.id===id);
+    if(!w) throw new Error("SP tidak ditemukan.");
+    if(w.targetId!==actor.id) throw new Error("Akses ditolak.");
+    if(!w.readAt){
+      w.readAt=new Date().toISOString();
+      objectsToSheet_(SHEET_WARNINGS,list);
+    }
+    return {ok:true,readAt:w.readAt};
+  });
+}
+
+function deleteWarning_(actor,data){
+  if(actor.role!=="HRD") throw new Error("Hanya HRD yang dapat mencabut SP.");
+  const id=String(data && data.id || "");
+  if(!idOk_(id)) throw new Error("Data tidak valid.");
+  return withLock_(function(){
+    const list=sheetToObjects_(SHEET_WARNINGS);
+    if(!list.some(x=>x.id===id)) throw new Error("SP tidak ditemukan.");
+    objectsToSheet_(SHEET_WARNINGS,list.filter(x=>x.id!==id));
+    return {ok:true};
+  });
+}
+
+/* =========================================================
 POST
 ========================================================= */
 function loginKey_(username){
@@ -1312,6 +1413,15 @@ function doPost(e){
 
       case "addPermit":
         return jsonResponse_(addPermit_(actor,data));
+
+      case "issueWarning":
+        return jsonResponse_(issueWarning_(actor,data));
+
+      case "markWarningRead":
+        return jsonResponse_(markWarningRead_(actor,data));
+
+      case "deleteWarning":
+        return jsonResponse_(deleteWarning_(actor,data));
 
       default:
         return jsonResponse_({ok:false,error:"Action tidak dikenali: "+action});
