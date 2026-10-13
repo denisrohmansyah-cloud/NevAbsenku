@@ -60,6 +60,84 @@ function clearAuthSession(){
     localStorage.removeItem("nev_current_user");
 }
 
+/* =========================================================
+   SESI LOGIN — bertahan saat halaman di-refresh
+   - Aplikasi ditampilkan langsung dari cache lokal (tanpa menunggu jaringan).
+   - Halaman terakhir yang dibuka ikut dipulihkan.
+   - Logout paksa HANYA terjadi bila server menyatakan sesi berakhir
+     (authExpired). Jaringan lambat/offline tidak lagi me-logout pengguna.
+========================================================= */
+const LAST_PAGE_KEY = "nev_last_page";
+const ROLE_HOME_PAGE = { "STAF":"staf-dashboard", "HRD":"hrd-dashboard", "KOOR KP":"koor-dashboard" };
+
+function readSavedLogin(){
+    if(!getAuthToken()) return null;
+    try{
+        const user = JSON.parse(localStorage.getItem("nev_current_user") || "null");
+        if(user && user.id && ROLE_HOME_PAGE[user.role]) return user;
+    }catch(e){}
+    return null;
+}
+
+function endRestoringState(){
+    document.documentElement.classList.remove("nev-restoring");
+}
+
+// Dipanggil saat server menolak token (kedaluwarsa / dicabut / password diganti).
+function handleSessionExpired(message){
+    const wasInApp = (typeof currentUser !== "undefined" && !!currentUser) ||
+        !document.getElementById("app")?.classList.contains("hidden");
+    clearAuthSession();
+    if(typeof currentUser !== "undefined") currentUser = null;
+    try{ if(typeof stopScanner === "function") stopScanner(); }catch(e){}
+    document.getElementById("app")?.classList.add("hidden");
+    document.getElementById("loginScreen")?.classList.remove("hidden");
+    ["loginUsername","loginPassword"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
+    document.getElementById("cloudBadge")?.remove();
+    endRestoringState();
+    if(wasInApp && typeof toast === "function"){
+        toast(message || "Sesi login berakhir. Silakan login kembali.", "error");
+    }
+}
+
+// Ingat halaman terakhir yang berhasil dibuka (per akun) supaya refresh tidak kembali ke dashboard.
+const _origShowPage = showPage;
+showPage = function(page){
+    _origShowPage(page);
+    try{
+        if(currentUser && document.getElementById("page-"+page)?.classList.contains("active")){
+            localStorage.setItem(LAST_PAGE_KEY, JSON.stringify({ uid: currentUser.id, page }));
+        }
+    }catch(e){}
+};
+
+function restoreSessionUI(user){
+    currentUser = user;
+    document.getElementById("loginScreen")?.classList.add("hidden");
+    document.getElementById("app")?.classList.remove("hidden");
+    buildSidebar();
+    updateUserUI();
+
+    const home = ROLE_HOME_PAGE[user.role];
+    let page = home;
+    try{
+        const last = JSON.parse(localStorage.getItem(LAST_PAGE_KEY) || "null");
+        // Hanya pakai halaman terakhir bila milik akun ini dan ada di menu role-nya (tanpa toast akses ditolak).
+        if(last && last.uid === user.id && last.page &&
+           document.querySelector('.menu-item[data-page="'+last.page+'"]')) page = last.page;
+    }catch(e){}
+    showPage(page);
+}
+
+// Pastikan kunci data lokal ada tanpa menyemai akun demo (akun asli datang dari getAll).
+function ensureLocalDefaults(user){
+    if(!localStorage.getItem(DB.users)) _localSave(DB.users, [user]);
+    if(!localStorage.getItem(DB.sessions)) _localSave(DB.sessions, []);
+    if(!localStorage.getItem(DB.attendance)) _localSave(DB.attendance, []);
+    const st = load(DB.settings);
+    if(!st || Array.isArray(st)) _localSave(DB.settings, {officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
+}
+
 function cacheBust(url){
     return url + (url.indexOf("?") >= 0 ? "&" : "?") + "_ts=" + Date.now();
 }
@@ -153,10 +231,7 @@ async function cloudPost(action, data, retries){
             return json;
         }catch(err){
             lastErr = err;
-            if(err.authExpired){
-                clearAuthSession();
-                if(typeof currentUser !== "undefined") currentUser = null;
-            }
+            if(err.authExpired) handleSessionExpired(err.message);
             if(err.fatal) break;
             if(attempt < maxRetry) await new Promise(r=>setTimeout(r,1500));
         }
@@ -274,8 +349,7 @@ async function fetchCloudAll(){
         let json;
         try{json=JSON.parse(text);}catch(e){throw new Error("Respons getAll bukan JSON. Periksa Deployment Apps Script dan akses 'Anyone'.");}
         if(json && json.authExpired){
-            clearAuthSession();
-            if(typeof currentUser!=="undefined") currentUser=null;
+            handleSessionExpired(json.error||"Sesi login kedaluwarsa. Silakan login kembali.");
             throw new Error(json.error||"Sesi login kedaluwarsa.");
         }
         if(!json || !json.ok) throw new Error((json&&json.error)||("HTTP "+(res.status||"?")));
@@ -535,60 +609,70 @@ async function submitPermit(event){
 /* =========================================================
    BOOT
 ========================================================= */
-async function bootWithCloud(){
-    if(!cloudSyncEnabled){initializeDatabase();startCloudPolling();return;}
-
-    const hasSavedLogin = !!(getAuthToken() && localStorage.getItem("nev_current_user"));
-    // Tanpa sesi tersimpan, layar login langsung tampil; bootstrap hanya "membangunkan" server di latar belakang.
-    if(hasSavedLogin) showCloudLoader(true);
+// "Membangunkan" Apps Script di latar belakang + memastikan pengaturan lokal punya nilai awal.
+async function wakeCloudBootstrap(){
     try{
-        // Bootstrap tanpa auth: hanya untuk settings + versi server.
-        const bootstrapTask = (async()=>{ try{
-            const res=await fetch(cacheBust(`${CLOUD_SCRIPT_URL}?action=bootstrap`),{cache:"no-store"});
-            const text=await res.text(); const boot=JSON.parse(text);
-            if(boot&&boot.ok){
-                cloudServerVersion=boot.version||null;
-                // Lokasi/radius kantor baru diterima setelah login (getAll), bukan dari endpoint publik.
-                if(!load(DB.settings) || Array.isArray(load(DB.settings))){
-                    _localSave(DB.settings,{officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
-                }
-            }
-        }catch(e){
-            cloudLastError=friendlyCloudError(e);console.warn("Bootstrap cloud gagal:",e);updateCloudBadge();
-        } })();
-        if(hasSavedLogin) await bootstrapTask;
-
-        const savedToken=getAuthToken();
-        const savedUser=localStorage.getItem("nev_current_user");
-        if(savedToken&&savedUser){
-            try{
-                currentUser=JSON.parse(savedUser);
-                const ok=await fetchCloudAll();
-                if(ok){
-                    const valid=(load(DB.users)||[]).find(u=>u.id===currentUser.id);
-                    if(valid){
-                        currentUser=valid;localStorage.setItem("nev_current_user",JSON.stringify(valid));
-                        document.getElementById("loginScreen")?.classList.add("hidden");
-                        document.getElementById("app")?.classList.remove("hidden");
-                        buildSidebar();updateUserUI();
-                        if(currentUser.role==="STAF")showPage("staf-dashboard");
-                        else if(currentUser.role==="HRD")showPage("hrd-dashboard");
-                        else if(currentUser.role==="KOOR KP")showPage("koor-dashboard");
-                    }else{clearAuthSession();currentUser=null;}
-                }
-            }catch(e){
-                console.warn("Restore login cloud gagal:",e);
-                // Jangan menghapus sesi hanya karena network timeout.
+        const res=await fetch(cacheBust(`${CLOUD_SCRIPT_URL}?action=bootstrap`),{cache:"no-store"});
+        const text=await res.text(); const boot=JSON.parse(text);
+        if(boot&&boot.ok){
+            cloudServerVersion=boot.version||null;
+            // Lokasi/radius kantor baru diterima setelah login (getAll), bukan dari endpoint publik.
+            if(!load(DB.settings) || Array.isArray(load(DB.settings))){
+                _localSave(DB.settings,{officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
             }
         }
-        if(!currentUser) initializeDatabase();
-    }finally{
-        showCloudLoader(false);
+    }catch(e){
+        cloudLastError=friendlyCloudError(e);console.warn("Bootstrap cloud gagal:",e);updateCloudBadge();
     }
-    if(currentUser && typeof renderAll==="function") renderAll();
-    if(currentUser && typeof consumePendingAttendance==="function") consumePendingAttendance();
+}
+
+async function bootWithCloud(){
+    if(!cloudSyncEnabled){initializeDatabase();endRestoringState();startCloudPolling();return;}
+
+    const savedUser = readSavedLogin();
+    // Sisa sesi yang setengah tersimpan (token tanpa user, atau sebaliknya) dibersihkan.
+    if(!savedUser && (getAuthToken() || localStorage.getItem("nev_current_user"))) clearAuthSession();
+
+    wakeCloudBootstrap();
+
+    if(!savedUser){
+        initializeDatabase();
+        endRestoringState();
+        updateCloudBadge();
+        startCloudPolling();
+        return;
+    }
+
+    // 1) Tampilkan aplikasi SEKARANG dari cache lokal — tidak menunggu jaringan sama sekali.
+    ensureLocalDefaults(savedUser);
+    try{
+        restoreSessionUI(savedUser);
+        if(typeof renderAll==="function") renderAll();
+    }catch(e){
+        console.error("Pemulihan tampilan sesi gagal:",e);
+    }
+    endRestoringState();
     updateCloudBadge();
     startCloudPolling();
+
+    // 2) Validasi ke server di latar belakang.
+    const ok = await fetchCloudAll();
+    if(ok){
+        if(!currentUser) return;
+        const fresh=(load(DB.users)||[]).find(u=>u.id===savedUser.id);
+        if(fresh){
+            const roleChanged = fresh.role !== currentUser.role;
+            currentUser=fresh;
+            localStorage.setItem("nev_current_user",JSON.stringify(fresh));
+            updateUserUI();
+            if(roleChanged && ROLE_HOME_PAGE[fresh.role]){ buildSidebar(); showPage(ROLE_HOME_PAGE[fresh.role]); }
+        }
+        if(typeof renderAll==="function") renderAll();
+        if(typeof consumePendingAttendance==="function") consumePendingAttendance();
+    }
+    // ok=false: bila token ditolak server, handleSessionExpired() sudah mengembalikan ke layar login.
+    // Bila hanya jaringan/server lambat, pengguna tetap login dan badge Cloud menampilkan statusnya.
+    updateCloudBadge();
 }
 
 setInterval(updateCloudBadge,5000);

@@ -5,6 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NEV Absenku</title>
 
+<!-- Cegah kilatan layar login saat refresh jika masih ada sesi tersimpan.
+     Kelas dicabut oleh cloud-sync.js; timer 8 dtk hanya sebagai pengaman. -->
+<style>html.nev-restoring #loginScreen{display:none!important}</style>
+<script>
+(function(){
+    try{
+        if(localStorage.getItem("nev_auth_token") && localStorage.getItem("nev_current_user")){
+            document.documentElement.classList.add("nev-restoring");
+            setTimeout(function(){ document.documentElement.classList.remove("nev-restoring"); }, 8000);
+        }
+    }catch(e){}
+})();
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -4216,6 +4230,7 @@ function logout(){
     currentUser=null;
     localStorage.removeItem("nev_current_user");
     localStorage.removeItem("nev_auth_token");
+    localStorage.removeItem("nev_last_page");
     document.getElementById("app").classList.add("hidden");
     document.getElementById("loginScreen").classList.remove("hidden");
     document.getElementById("loginUsername").value="";
@@ -7259,34 +7274,6 @@ function renderAll(){
     if(currentUser.role==="KOOR KP"){
         renderKoorDashboard(); renderKoorAttendance(); populateKoorSessionPicker(); renderQRSessionList("koor"); renderUsers();
         if(document.getElementById("page-staff-recap")?.classList.contains("active")) renderStaffRecap();
-    }
-}
-
-/* Diubah dari IIFE menjadi fungsi biasa supaya dapat dipanggil oleh
-   cloud-sync.js SETELAH data akun terbaru selesai disinkronkan dari
-   Google Sheets (supaya sesi lama tidak memakai data users yang basi). */
-function restoreLogin(){
-    const saved=localStorage.getItem("nev_current_user");
-    if(!saved)return;
-    try{
-        const user=JSON.parse(saved);
-        const users=load(DB.users);
-        const valid=users.find(u=>u.id===user.id);
-        if(!valid)return;
-
-        currentUser=valid;
-        document.getElementById("loginScreen").classList.add("hidden");
-        document.getElementById("app").classList.remove("hidden");
-        buildSidebar();
-        updateUserUI();
-
-        if(currentUser.role==="STAF") showPage("staf-dashboard");
-        if(currentUser.role==="HRD") showPage("hrd-dashboard");
-        if(currentUser.role==="KOOR KP") showPage("koor-dashboard");
-        renderAll();
-        if(typeof consumePendingAttendance==="function") consumePendingAttendance();
-    }catch(e){
-        localStorage.removeItem("nev_current_user");
     }
 }
 
