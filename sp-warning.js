@@ -142,10 +142,10 @@ function renderHrdWarnings(){
                             <td>${w.issuedAt ? escapeHTML(formatDateTimeWIB(w.issuedAt)) : "-"}</td>
                             <td>${w.validUntil ? escapeHTML(spDateLabel(w.validUntil)) : "-"}</td>
                             <td>${spReadBadge(w)}</td>
-                            <td style="display:flex;gap:5px;">
+                            <td><div class="row-actions">
                                 <button class="btn btn-outline" style="padding:7px 9px;" title="Lihat" onclick="openWarningDetail('${jsId(w.id)}')"><i class="fa-solid fa-eye"></i></button>
                                 <button class="btn btn-danger" style="padding:7px 9px;" title="Cabut SP" onclick="deleteWarning('${jsId(w.id)}')"><i class="fa-solid fa-trash"></i></button>
-                            </td>
+                            </div></td>
                         </tr>
                     `).join("")}
                 </tbody>

@@ -1,0 +1,364 @@
+diff --git a/cloud-sync.js b/cloud-sync.js
+index 7d9734b..0075055 100644
+--- a/cloud-sync.js
++++ b/cloud-sync.js
+@@ -60,6 +60,84 @@ function clearAuthSession(){
+     localStorage.removeItem("nev_current_user");
+ }
+ 
++/* =========================================================
++   SESI LOGIN — bertahan saat halaman di-refresh
++   - Aplikasi ditampilkan langsung dari cache lokal (tanpa menunggu jaringan).
++   - Halaman terakhir yang dibuka ikut dipulihkan.
++   - Logout paksa HANYA terjadi bila server menyatakan sesi berakhir
++     (authExpired). Jaringan lambat/offline tidak lagi me-logout pengguna.
++========================================================= */
++const LAST_PAGE_KEY = "nev_last_page";
++const ROLE_HOME_PAGE = { "STAF":"staf-dashboard", "HRD":"hrd-dashboard", "KOOR KP":"koor-dashboard" };
++
++function readSavedLogin(){
++    if(!getAuthToken()) return null;
++    try{
++        const user = JSON.parse(localStorage.getItem("nev_current_user") || "null");
++        if(user && user.id && ROLE_HOME_PAGE[user.role]) return user;
++    }catch(e){}
++    return null;
++}
++
++function endRestoringState(){
++    document.documentElement.classList.remove("nev-restoring");
++}
++
++// Dipanggil saat server menolak token (kedaluwarsa / dicabut / password diganti).
++function handleSessionExpired(message){
++    const wasInApp = (typeof currentUser !== "undefined" && !!currentUser) ||
++        !document.getElementById("app")?.classList.contains("hidden");
++    clearAuthSession();
++    if(typeof currentUser !== "undefined") currentUser = null;
++    try{ if(typeof stopScanner === "function") stopScanner(); }catch(e){}
++    document.getElementById("app")?.classList.add("hidden");
++    document.getElementById("loginScreen")?.classList.remove("hidden");
++    ["loginUsername","loginPassword"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
++    document.getElementById("cloudBadge")?.remove();
++    endRestoringState();
++    if(wasInApp && typeof toast === "function"){
++        toast(message || "Sesi login berakhir. Silakan login kembali.", "error");
++    }
++}
++
++// Ingat halaman terakhir yang berhasil dibuka (per akun) supaya refresh tidak kembali ke dashboard.
++const _origShowPage = showPage;
++showPage = function(page){
++    _origShowPage(page);
++    try{
++        if(currentUser && document.getElementById("page-"+page)?.classList.contains("active")){
++            localStorage.setItem(LAST_PAGE_KEY, JSON.stringify({ uid: currentUser.id, page }));
++        }
++    }catch(e){}
++};
++
++function restoreSessionUI(user){
++    currentUser = user;
++    document.getElementById("loginScreen")?.classList.add("hidden");
++    document.getElementById("app")?.classList.remove("hidden");
++    buildSidebar();
++    updateUserUI();
++
++    const home = ROLE_HOME_PAGE[user.role];
++    let page = home;
++    try{
++        const last = JSON.parse(localStorage.getItem(LAST_PAGE_KEY) || "null");
++        // Hanya pakai halaman terakhir bila milik akun ini dan ada di menu role-nya (tanpa toast akses ditolak).
++        if(last && last.uid === user.id && last.page &&
++           document.querySelector('.menu-item[data-page="'+last.page+'"]')) page = last.page;
++    }catch(e){}
++    showPage(page);
++}
++
++// Pastikan kunci data lokal ada tanpa menyemai akun demo (akun asli datang dari getAll).
++function ensureLocalDefaults(user){
++    if(!localStorage.getItem(DB.users)) _localSave(DB.users, [user]);
++    if(!localStorage.getItem(DB.sessions)) _localSave(DB.sessions, []);
++    if(!localStorage.getItem(DB.attendance)) _localSave(DB.attendance, []);
++    const st = load(DB.settings);
++    if(!st || Array.isArray(st)) _localSave(DB.settings, {officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
++}
++
+ function cacheBust(url){
+     return url + (url.indexOf("?") >= 0 ? "&" : "?") + "_ts=" + Date.now();
+ }
+@@ -153,10 +231,7 @@ async function cloudPost(action, data, retries){
+             return json;
+         }catch(err){
+             lastErr = err;
+-            if(err.authExpired){
+-                clearAuthSession();
+-                if(typeof currentUser !== "undefined") currentUser = null;
+-            }
++            if(err.authExpired) handleSessionExpired(err.message);
+             if(err.fatal) break;
+             if(attempt < maxRetry) await new Promise(r=>setTimeout(r,1500));
+         }
+@@ -274,8 +349,7 @@ async function fetchCloudAll(){
+         let json;
+         try{json=JSON.parse(text);}catch(e){throw new Error("Respons getAll bukan JSON. Periksa Deployment Apps Script dan akses 'Anyone'.");}
+         if(json && json.authExpired){
+-            clearAuthSession();
+-            if(typeof currentUser!=="undefined") currentUser=null;
++            handleSessionExpired(json.error||"Sesi login kedaluwarsa. Silakan login kembali.");
+             throw new Error(json.error||"Sesi login kedaluwarsa.");
+         }
+         if(!json || !json.ok) throw new Error((json&&json.error)||("HTTP "+(res.status||"?")));
+@@ -535,60 +609,70 @@ async function submitPermit(event){
+ /* =========================================================
+    BOOT
+ ========================================================= */
+-async function bootWithCloud(){
+-    if(!cloudSyncEnabled){initializeDatabase();startCloudPolling();return;}
+-
+-    const hasSavedLogin = !!(getAuthToken() && localStorage.getItem("nev_current_user"));
+-    // Tanpa sesi tersimpan, layar login langsung tampil; bootstrap hanya "membangunkan" server di latar belakang.
+-    if(hasSavedLogin) showCloudLoader(true);
++// "Membangunkan" Apps Script di latar belakang + memastikan pengaturan lokal punya nilai awal.
++async function wakeCloudBootstrap(){
+     try{
+-        // Bootstrap tanpa auth: hanya untuk settings + versi server.
+-        const bootstrapTask = (async()=>{ try{
+-            const res=await fetch(cacheBust(`${CLOUD_SCRIPT_URL}?action=bootstrap`),{cache:"no-store"});
+-            const text=await res.text(); const boot=JSON.parse(text);
+-            if(boot&&boot.ok){
+-                cloudServerVersion=boot.version||null;
+-                // Lokasi/radius kantor baru diterima setelah login (getAll), bukan dari endpoint publik.
+-                if(!load(DB.settings) || Array.isArray(load(DB.settings))){
+-                    _localSave(DB.settings,{officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
+-                }
+-            }
+-        }catch(e){
+-            cloudLastError=friendlyCloudError(e);console.warn("Bootstrap cloud gagal:",e);updateCloudBadge();
+-        } })();
+-        if(hasSavedLogin) await bootstrapTask;
+-
+-        const savedToken=getAuthToken();
+-        const savedUser=localStorage.getItem("nev_current_user");
+-        if(savedToken&&savedUser){
+-            try{
+-                currentUser=JSON.parse(savedUser);
+-                const ok=await fetchCloudAll();
+-                if(ok){
+-                    const valid=(load(DB.users)||[]).find(u=>u.id===currentUser.id);
+-                    if(valid){
+-                        currentUser=valid;localStorage.setItem("nev_current_user",JSON.stringify(valid));
+-                        document.getElementById("loginScreen")?.classList.add("hidden");
+-                        document.getElementById("app")?.classList.remove("hidden");
+-                        buildSidebar();updateUserUI();
+-                        if(currentUser.role==="STAF")showPage("staf-dashboard");
+-                        else if(currentUser.role==="HRD")showPage("hrd-dashboard");
+-                        else if(currentUser.role==="KOOR KP")showPage("koor-dashboard");
+-                    }else{clearAuthSession();currentUser=null;}
+-                }
+-            }catch(e){
+-                console.warn("Restore login cloud gagal:",e);
+-                // Jangan menghapus sesi hanya karena network timeout.
++        const res=await fetch(cacheBust(`${CLOUD_SCRIPT_URL}?action=bootstrap`),{cache:"no-store"});
++        const text=await res.text(); const boot=JSON.parse(text);
++        if(boot&&boot.ok){
++            cloudServerVersion=boot.version||null;
++            // Lokasi/radius kantor baru diterima setelah login (getAll), bukan dari endpoint publik.
++            if(!load(DB.settings) || Array.isArray(load(DB.settings))){
++                _localSave(DB.settings,{officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
+             }
+         }
+-        if(!currentUser) initializeDatabase();
+-    }finally{
+-        showCloudLoader(false);
++    }catch(e){
++        cloudLastError=friendlyCloudError(e);console.warn("Bootstrap cloud gagal:",e);updateCloudBadge();
++    }
++}
++
++async function bootWithCloud(){
++    if(!cloudSyncEnabled){initializeDatabase();endRestoringState();startCloudPolling();return;}
++
++    const savedUser = readSavedLogin();
++    // Sisa sesi yang setengah tersimpan (token tanpa user, atau sebaliknya) dibersihkan.
++    if(!savedUser && (getAuthToken() || localStorage.getItem("nev_current_user"))) clearAuthSession();
++
++    wakeCloudBootstrap();
++
++    if(!savedUser){
++        initializeDatabase();
++        endRestoringState();
++        updateCloudBadge();
++        startCloudPolling();
++        return;
++    }
++
++    // 1) Tampilkan aplikasi SEKARANG dari cache lokal — tidak menunggu jaringan sama sekali.
++    ensureLocalDefaults(savedUser);
++    try{
++        restoreSessionUI(savedUser);
++        if(typeof renderAll==="function") renderAll();
++    }catch(e){
++        console.error("Pemulihan tampilan sesi gagal:",e);
+     }
+-    if(currentUser && typeof renderAll==="function") renderAll();
+-    if(currentUser && typeof consumePendingAttendance==="function") consumePendingAttendance();
++    endRestoringState();
+     updateCloudBadge();
+     startCloudPolling();
++
++    // 2) Validasi ke server di latar belakang.
++    const ok = await fetchCloudAll();
++    if(ok){
++        if(!currentUser) return;
++        const fresh=(load(DB.users)||[]).find(u=>u.id===savedUser.id);
++        if(fresh){
++            const roleChanged = fresh.role !== currentUser.role;
++            currentUser=fresh;
++            localStorage.setItem("nev_current_user",JSON.stringify(fresh));
++            updateUserUI();
++            if(roleChanged && ROLE_HOME_PAGE[fresh.role]){ buildSidebar(); showPage(ROLE_HOME_PAGE[fresh.role]); }
++        }
++        if(typeof renderAll==="function") renderAll();
++        if(typeof consumePendingAttendance==="function") consumePendingAttendance();
++    }
++    // ok=false: bila token ditolak server, handleSessionExpired() sudah mengembalikan ke layar login.
++    // Bila hanya jaringan/server lambat, pengguna tetap login dan badge Cloud menampilkan statusnya.
++    updateCloudBadge();
+ }
+ 
+ setInterval(updateCloudBadge,5000);
+diff --git a/index.html b/index.html
+index 9332903..105dfd7 100644
+--- a/index.html
++++ b/index.html
+@@ -5,6 +5,20 @@
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>NEV Absenku</title>
+ 
++<!-- Cegah kilatan layar login saat refresh jika masih ada sesi tersimpan.
++     Kelas dicabut oleh cloud-sync.js; timer 8 dtk hanya sebagai pengaman. -->
++<style>html.nev-restoring #loginScreen{display:none!important}</style>
++<script>
++(function(){
++    try{
++        if(localStorage.getItem("nev_auth_token") && localStorage.getItem("nev_current_user")){
++            document.documentElement.classList.add("nev-restoring");
++            setTimeout(function(){ document.documentElement.classList.remove("nev-restoring"); }, 8000);
++        }
++    }catch(e){}
++})();
++</script>
++
+ <link rel="preconnect" href="https://fonts.googleapis.com">
+ <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+ <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+@@ -707,6 +721,14 @@ td{
+     white-space:nowrap;
+ }
+ 
++/* Tombol aksi di dalam sel tabel. Jangan beri display:flex langsung pada <td>:
++   sel berhenti menjadi table-cell sehingga garis border-bottom tidak sejajar. */
++.row-actions{
++    display:flex;
++    gap:5px;
++    align-items:center;
++}
++
+ .badge{
+     display:inline-flex;
+     align-items:center;
+@@ -4216,6 +4238,7 @@ function logout(){
+     currentUser=null;
+     localStorage.removeItem("nev_current_user");
+     localStorage.removeItem("nev_auth_token");
++    localStorage.removeItem("nev_last_page");
+     document.getElementById("app").classList.add("hidden");
+     document.getElementById("loginScreen").classList.remove("hidden");
+     document.getElementById("loginUsername").value="";
+@@ -5265,14 +5288,14 @@ function renderQRSessionList(type){
+                             <td>${escapeHTML(s.creatorName)}</td>
+                             <td>${s.geoEnabled ? `<span class="badge badge-active" title="Radius ${Number(s.geoRadius)||0} m"><i class="fa-solid fa-location-dot"></i> ${Number(s.geoRadius)||0}m</span>` : `<span style="color:#999;font-size:12px;">Kantor</span>`}</td>
+                             <td><span class="badge ${s.active ? "badge-active" : "badge-inactive"}">${s.active ? "Aktif" : "Nonaktif"}</span>${s.attendanceSubmitted ? `<br><span style="font-size:11px;color:#15803d;"><i class="fa-solid fa-paper-plane"></i> Disubmit</span>` : (s.creatorRole==="KOOR KP" ? `<br><span style="font-size:11px;color:#b45309;">Draft Koor</span>` : "")}</td>
+-                            <td style="display:flex;gap:5px;">
++                            <td><div class="row-actions">
+                                 <button class="btn btn-outline" style="padding:7px 9px;" onclick="loadSessionToQR('${jsId(s.id)}','${type}')">
+                                     <i class="fa-solid fa-qrcode"></i>
+                                 </button>
+                                 <button class="btn btn-danger" style="padding:7px 9px;" ${(currentUser.role==="KOOR KP" && s.attendanceSubmitted) ? 'disabled title="Sudah disubmit. Hanya HRD yang dapat menghapus."' : ""} onclick="deleteSession('${jsId(s.id)}','${type}')">
+                                     <i class="fa-solid fa-trash"></i>
+                                 </button>
+-                            </td>
++                            </div></td>
+                         </tr>
+                     `).join("")}
+                 </tbody>
+@@ -5468,14 +5491,14 @@ function attendanceTable(data,canEdit){
+                                 <button class="btn btn-outline" style="padding:7px 9px;" title="Ubah status (hadir/izin/sakit/dispen)" onclick="openSessionAttendanceEdit('${jsId(a.sessionId)}','${jsId(a.userId)}')">
+                                     <i class="fa-solid fa-pen"></i>
+                                 </button>
+-                            </td>` : `<td style="display:flex;gap:5px;">
++                            </td>` : `<td><div class="row-actions">
+                                 <button class="btn btn-outline" style="padding:7px 9px;" onclick="openEditAttendance('${jsId(a.id)}')">
+                                     <i class="fa-solid fa-pen"></i>
+                                 </button>
+                                 <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteAttendance('${jsId(a.id)}')">
+                                     <i class="fa-solid fa-trash"></i>
+                                 </button>
+-                            </td>`) : `<td>${lockBadge}</td>`) : ""}
++                            </div></td>`) : `<td>${lockBadge}</td>`) : ""}
+                         </tr>
+                     `).join("")}
+                 </tbody>
+@@ -7262,34 +7285,6 @@ function renderAll(){
+     }
+ }
+ 
+-/* Diubah dari IIFE menjadi fungsi biasa supaya dapat dipanggil oleh
+-   cloud-sync.js SETELAH data akun terbaru selesai disinkronkan dari
+-   Google Sheets (supaya sesi lama tidak memakai data users yang basi). */
+-function restoreLogin(){
+-    const saved=localStorage.getItem("nev_current_user");
+-    if(!saved)return;
+-    try{
+-        const user=JSON.parse(saved);
+-        const users=load(DB.users);
+-        const valid=users.find(u=>u.id===user.id);
+-        if(!valid)return;
+-
+-        currentUser=valid;
+-        document.getElementById("loginScreen").classList.add("hidden");
+-        document.getElementById("app").classList.remove("hidden");
+-        buildSidebar();
+-        updateUserUI();
+-
+-        if(currentUser.role==="STAF") showPage("staf-dashboard");
+-        if(currentUser.role==="HRD") showPage("hrd-dashboard");
+-        if(currentUser.role==="KOOR KP") showPage("koor-dashboard");
+-        renderAll();
+-        if(typeof consumePendingAttendance==="function") consumePendingAttendance();
+-    }catch(e){
+-        localStorage.removeItem("nev_current_user");
+-    }
+-}
+-
+ </script>
+ 
+ <!-- Tautan QR (Google Lens / kamera bawaan), penangkap ?q=, dan jendela scan 15 menit sebelum mulai -->
+diff --git a/sp-warning.js b/sp-warning.js
+index 661c9ae..da67896 100644
+--- a/sp-warning.js
++++ b/sp-warning.js
+@@ -142,10 +142,10 @@ function renderHrdWarnings(){
+                             <td>${w.issuedAt ? escapeHTML(formatDateTimeWIB(w.issuedAt)) : "-"}</td>
+                             <td>${w.validUntil ? escapeHTML(spDateLabel(w.validUntil)) : "-"}</td>
+                             <td>${spReadBadge(w)}</td>
+-                            <td style="display:flex;gap:5px;">
++                            <td><div class="row-actions">
+                                 <button class="btn btn-outline" style="padding:7px 9px;" title="Lihat" onclick="openWarningDetail('${jsId(w.id)}')"><i class="fa-solid fa-eye"></i></button>
+                                 <button class="btn btn-danger" style="padding:7px 9px;" title="Cabut SP" onclick="deleteWarning('${jsId(w.id)}')"><i class="fa-solid fa-trash"></i></button>
+-                            </td>
++                            </div></td>
+                         </tr>
+                     `).join("")}
+                 </tbody>

@@ -721,6 +721,14 @@ td{
     white-space:nowrap;
 }
 
+/* Tombol aksi di dalam sel tabel. Jangan beri display:flex langsung pada <td>:
+   sel berhenti menjadi table-cell sehingga garis border-bottom tidak sejajar. */
+.row-actions{
+    display:flex;
+    gap:5px;
+    align-items:center;
+}
+
 .badge{
     display:inline-flex;
     align-items:center;
@@ -5280,14 +5288,14 @@ function renderQRSessionList(type){
                             <td>${escapeHTML(s.creatorName)}</td>
                             <td>${s.geoEnabled ? `<span class="badge badge-active" title="Radius ${Number(s.geoRadius)||0} m"><i class="fa-solid fa-location-dot"></i> ${Number(s.geoRadius)||0}m</span>` : `<span style="color:#999;font-size:12px;">Kantor</span>`}</td>
                             <td><span class="badge ${s.active ? "badge-active" : "badge-inactive"}">${s.active ? "Aktif" : "Nonaktif"}</span>${s.attendanceSubmitted ? `<br><span style="font-size:11px;color:#15803d;"><i class="fa-solid fa-paper-plane"></i> Disubmit</span>` : (s.creatorRole==="KOOR KP" ? `<br><span style="font-size:11px;color:#b45309;">Draft Koor</span>` : "")}</td>
-                            <td style="display:flex;gap:5px;">
+                            <td><div class="row-actions">
                                 <button class="btn btn-outline" style="padding:7px 9px;" onclick="loadSessionToQR('${jsId(s.id)}','${type}')">
                                     <i class="fa-solid fa-qrcode"></i>
                                 </button>
                                 <button class="btn btn-danger" style="padding:7px 9px;" ${(currentUser.role==="KOOR KP" && s.attendanceSubmitted) ? 'disabled title="Sudah disubmit. Hanya HRD yang dapat menghapus."' : ""} onclick="deleteSession('${jsId(s.id)}','${type}')">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
-                            </td>
+                            </div></td>
                         </tr>
                     `).join("")}
                 </tbody>
@@ -5483,14 +5491,14 @@ function attendanceTable(data,canEdit){
                                 <button class="btn btn-outline" style="padding:7px 9px;" title="Ubah status (hadir/izin/sakit/dispen)" onclick="openSessionAttendanceEdit('${jsId(a.sessionId)}','${jsId(a.userId)}')">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
-                            </td>` : `<td style="display:flex;gap:5px;">
+                            </td>` : `<td><div class="row-actions">
                                 <button class="btn btn-outline" style="padding:7px 9px;" onclick="openEditAttendance('${jsId(a.id)}')">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
                                 <button class="btn btn-danger" style="padding:7px 9px;" onclick="deleteAttendance('${jsId(a.id)}')">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
-                            </td>`) : `<td>${lockBadge}</td>`) : ""}
+                            </div></td>`) : `<td>${lockBadge}</td>`) : ""}
                         </tr>
                     `).join("")}
                 </tbody>
