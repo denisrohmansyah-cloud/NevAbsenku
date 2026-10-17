@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NEV Absenku</title>
+<meta name="description" content="NEV Absenku — sistem absensi digital dengan QR attendance, pengelolaan jadwal, rekap kehadiran, geofencing, dan laporan terintegrasi.">
+<meta name="theme-color" content="#101010">
+<meta name="color-scheme" content="light">
 
 <!-- Cegah kilatan layar login saat refresh jika masih ada sesi tersimpan.
      Kelas dicabut oleh cloud-sync.js; timer 8 dtk hanya sebagai pengaman. -->
@@ -1045,6 +1048,71 @@ td{
     }
 }
 
+/* =========================================================
+   UX HARDENING — responsif, keyboard-friendly, dan reduced motion
+========================================================= */
+html { scroll-behavior:smooth; }
+body { min-width:320px; }
+button, a, input, select, textarea { -webkit-tap-highlight-color:transparent; }
+button:focus-visible, a:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+    outline:3px solid rgba(229,9,20,.45);
+    outline-offset:2px;
+}
+input, select, textarea { max-width:100%; }
+img, canvas, video, iframe { max-width:100%; }
+.content, .section-card, .modal-body { min-width:0; }
+.table-wrapper { max-width:100%; overscroll-behavior-x:contain; }
+button:disabled { opacity:.6; cursor:not-allowed; transform:none; }
+.login-form form { width:100%; }
+.login-form .form-group input { min-height:46px; }
+.login-form .role-btn { min-height:58px; }
+.sp-card:focus-visible { outline:3px solid rgba(229,9,20,.45); outline-offset:3px; }
+
+@media (max-width:800px) {
+    .login-screen { padding:14px; align-items:flex-start; }
+    .login-box { margin:auto 0; min-height:0; border-radius:18px; }
+    .login-form { padding:28px 20px; }
+    .login-form h2 { font-size:24px; }
+    .topbar { min-height:68px; height:auto; padding:12px 14px; gap:10px; }
+    .topbar-title h2 { font-size:16px; }
+    .topbar-title p { line-height:1.4; }
+    .content { padding:14px; }
+    .welcome { padding:22px 18px; border-radius:16px; }
+    .welcome h1 { font-size:23px; }
+    .section-header { align-items:flex-start; flex-wrap:wrap; }
+    .section-card { padding:16px; }
+    .sidebar { box-shadow:14px 0 38px rgba(0,0,0,.2); }
+    .modal { padding:10px; align-items:flex-end; }
+    .modal-box { max-height:92dvh; border-radius:18px 18px 12px 12px; }
+    .modal-footer { flex-wrap:wrap; }
+}
+@media (max-width:550px) {
+    .login-screen { padding:10px; }
+    .login-form { padding:24px 16px; }
+    .login-subtitle { margin-bottom:20px; }
+    .role-selector { grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin-bottom:18px; }
+    .role-btn { padding:10px 4px; min-width:0; font-size:12px; }
+    .stats { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .stat-card { min-width:0; padding:13px; }
+    .stat-card p { overflow-wrap:anywhere; }
+    .filter-grid { grid-template-columns:minmax(0,1fr); }
+    .qr-preview { padding:16px; }
+    .qr-box { min-height:200px; }
+    .modal-footer .btn { flex:1 1 auto; }
+    .toast-container { left:10px; right:10px; bottom:16px; }
+    .toast { min-width:0; width:100%; }
+}
+@media (prefers-reduced-motion:reduce) {
+    html { scroll-behavior:auto; }
+    *, *::before, *::after {
+        animation-duration:.01ms!important;
+        animation-iteration-count:1!important;
+        transition-duration:.01ms!important;
+        scroll-behavior:auto!important;
+    }
+}
+
 /* LOADING ANIMATION — NEV Absenku */
 #cloudLoader{
     background:
@@ -1210,12 +1278,16 @@ LOGIN
 
                 <div class="form-group">
 
-                    <label>Username / NIM</label>
+                    <label for="loginUsername">Username</label>
 
                     <input
                         id="loginUsername"
                         class="form-control"
                         placeholder="Masukkan username"
+                        name="username"
+                        autocomplete="username"
+                        autocapitalize="none"
+                        spellcheck="false"
                         required
                     >
 
@@ -1223,13 +1295,15 @@ LOGIN
 
                 <div class="form-group">
 
-                    <label>Password</label>
+                    <label for="loginPassword">Password</label>
 
                     <input
                         id="loginPassword"
                         type="password"
                         class="form-control"
                         placeholder="Masukkan password"
+                        name="password"
+                        autocomplete="current-password"
                         required
                     >
 
