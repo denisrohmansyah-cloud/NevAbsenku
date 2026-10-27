@@ -1297,15 +1297,29 @@ LOGIN
 
                     <label for="loginPassword">Password</label>
 
-                    <input
-                        id="loginPassword"
-                        type="password"
-                        class="form-control"
-                        placeholder="Masukkan password"
-                        name="password"
-                        autocomplete="current-password"
-                        required
-                    >
+                    <div style="position:relative;">
+                        <input
+                            id="loginPassword"
+                            type="password"
+                            class="form-control"
+                            style="padding-right:48px;"
+                            placeholder="Masukkan password"
+                            name="password"
+                            autocomplete="current-password"
+                            required
+                        >
+                        <button
+                            id="toggleLoginPassword"
+                            type="button"
+                            onclick="toggleLoginPasswordVisibility()"
+                            aria-label="Tampilkan password"
+                            aria-pressed="false"
+                            title="Tampilkan password"
+                            style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:38px;height:38px;border:0;background:transparent;color:#64748b;cursor:pointer;border-radius:8px;display:flex;align-items:center;justify-content:center;"
+                        >
+                            <i id="toggleLoginPasswordIcon" class="fa-solid fa-eye" aria-hidden="true"></i>
+                        </button>
+                    </div>
 
                 </div>
 
@@ -2523,6 +2537,7 @@ APP
                             <option value="">Pilih sesi...</option>
 
                         </select>
+                        <div id="hrdSessionAttendanceHistoryControl"></div>
 
                     </div>
 
@@ -4230,7 +4245,22 @@ function setLoginLoading(loading){
     btn.setAttribute("aria-busy", loading ? "true" : "false");
 }
 
-async function login(event){
+async 
+function toggleLoginPasswordVisibility(){
+    const input = document.getElementById("loginPassword");
+    const button = document.getElementById("toggleLoginPassword");
+    const icon = document.getElementById("toggleLoginPasswordIcon");
+    if(!input || !button)return;
+
+    const show = input.type === "password";
+    input.type = show ? "text" : "password";
+    button.setAttribute("aria-pressed", String(show));
+    button.setAttribute("aria-label", show ? "Sembunyikan password" : "Tampilkan password");
+    button.title = show ? "Sembunyikan password" : "Tampilkan password";
+    if(icon) icon.className = show ? "fa-solid fa-eye-slash" : "fa-solid fa-eye";
+}
+
+function login(event){
   event.preventDefault();
   setLoginLoading(true);
 
@@ -5414,6 +5444,14 @@ function loadSessionToQR(id,type){
 STAFF ATTENDANCE PER SESSION (HRD)
 ========================================================= */
 
+const SESSION_PICKER_PREVIEW_LIMIT = 5;
+let sessionPickerExpanded = false;
+
+function toggleSessionAttendanceHistory(){
+    sessionPickerExpanded = !sessionPickerExpanded;
+    populateSessionAttendancePicker();
+}
+
 function populateSessionAttendancePicker(){
     if(currentUser?.role!=="HRD")return;
     const select=document.getElementById("hrdSessionAttendancePicker");
@@ -5423,15 +5461,26 @@ function populateSessionAttendancePicker(){
         .sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt));
 
     const previousValue=select.value;
-    select.innerHTML=`<option value="">Pilih sesi...</option>` + sessions.map(s=>
-        `<option value="${s.id}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${escapeHTML(s.date)} (${escapeHTML(s.start)}-${escapeHTML(s.end)})${s.creatorRole==="KOOR KP" ? " • oleh "+escapeHTML(s.creatorName) : ""}</option>`
+    const visibleSessions=sessionPickerExpanded ? sessions : sessions.slice(0,SESSION_PICKER_PREVIEW_LIMIT);
+    select.innerHTML=`<option value="">Pilih sesi...</option>` + visibleSessions.map(s=>
+        `<option value="${jsId(s.id)}">${escapeHTML(s.activity)} • ${escapeHTML(s.division)} • ${escapeHTML(s.date)} (${escapeHTML(s.start)}-${escapeHTML(s.end)})${s.creatorRole==="KOOR KP" ? " • oleh "+escapeHTML(s.creatorName) : ""}</option>`
     ).join("");
 
-    // Pertahankan pilihan sebelumnya, atau otomatis pilih QR yang sedang tampil di layar.
-    if(sessions.some(s=>s.id===previousValue)){
+    if(sessions.some(s=>s.id===previousValue) && visibleSessions.some(s=>s.id===previousValue)){
         select.value=previousValue;
-    }else if(currentQR.hrd && sessions.some(s=>s.id===currentQR.hrd.id)){
+    }else if(!sessionPickerExpanded && currentQR.hrd && visibleSessions.some(s=>s.id===currentQR.hrd.id)){
         select.value=currentQR.hrd.id;
+    }
+
+    const control=document.getElementById("hrdSessionAttendanceHistoryControl");
+    if(control){
+        control.innerHTML=sessions.length>SESSION_PICKER_PREVIEW_LIMIT ? `
+            <button type="button" class="btn btn-outline" onclick="toggleSessionAttendanceHistory()" aria-expanded="${sessionPickerExpanded}" style="padding:8px 12px;margin-top:8px;">
+                <i class="fa-solid ${sessionPickerExpanded ? "fa-chevron-up" : "fa-chevron-down"}"></i>
+                ${sessionPickerExpanded ? "Sembunyikan sesi lama" : `Lihat semua sesi (+${sessions.length-SESSION_PICKER_PREVIEW_LIMIT})`}
+            </button>
+            <span style="font-size:12px;color:#64748b;margin-left:8px;">${visibleSessions.length} dari ${sessions.length} sesi</span>
+        ` : "";
     }
 
     renderSessionStaffStatus();
