@@ -21,11 +21,11 @@ blocks.forEach((match, index) => {
 
   if (result.status !== 0) {
     failed = true;
-    console.error(\`Syntax error in inline JavaScript block #\${index + 1}.\`);
+    console.error("Syntax error in inline JavaScript block #" + (index + 1) + ".");
     if (result.stderr) console.error(result.stderr.trim());
     if (result.stdout) console.error(result.stdout.trim());
   }
 });
 
 if (failed) process.exit(1);
-console.log(\`Syntax check passed for \${blocks.length} inline JavaScript block(s).\`);
+console.log("Syntax check passed for " + blocks.length + " inline JavaScript block(s).");
