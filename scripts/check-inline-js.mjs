@@ -18,7 +18,7 @@ let failed = false;
 
 try {
   blocks.forEach((match, index) => {
-    const file = join(tempDir, `inline-${index + 1}.js`);
+    const file = join(tempDir, `inline-${index + 1}.mjs`);
     writeFileSync(file, match[2], "utf8");
 
     const result = spawnSync(process.execPath, ["--check", file], {
