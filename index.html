@@ -4095,6 +4095,11 @@ DATABASE LOCALSTORAGE
 // Deklarasikan konstanta kegiatan sebelum helper/render/sinkronisasi dapat menggunakannya.
 const STANDARD_ACTIVITIES = ["Rapat Rutin","Ngoprek","Kepanitiaan"];
 
+// State daftar sesi diinisialisasi sebelum fungsi halaman dapat merendernya.
+const qrSessionExpanded = { hrd:false, koor:false };
+const SESSION_PICKER_PREVIEW_LIMIT = 5;
+let sessionPickerExpanded = false;
+
 const DB = {
     users:"nev_users",
     sessions:"nev_sessions",
@@ -5364,7 +5369,7 @@ QR SESSION LIST
 /* Batasi daftar QR yang tampil agar riwayat lama tidak memenuhi halaman.
    Data sesi tetap tersimpan; tombol hanya mengatur tampilan daftar. */
 const QR_SESSION_PREVIEW_LIMIT = 5;
-const qrSessionExpanded = { hrd:false, koor:false };
+
 
 function toggleQRSessionHistory(type){
     qrSessionExpanded[type] = !qrSessionExpanded[type];
@@ -5447,8 +5452,7 @@ function loadSessionToQR(id,type){
 STAFF ATTENDANCE PER SESSION (HRD)
 ========================================================= */
 
-const SESSION_PICKER_PREVIEW_LIMIT = 5;
-let sessionPickerExpanded = false;
+
 
 function toggleSessionAttendanceHistory(){
     sessionPickerExpanded = !sessionPickerExpanded;
