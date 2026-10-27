@@ -4092,6 +4092,9 @@ EDIT ATTENDANCE MODAL
 DATABASE LOCALSTORAGE
 ========================================================= */
 
+// Deklarasikan konstanta kegiatan sebelum helper/render/sinkronisasi dapat menggunakannya.
+const STANDARD_ACTIVITIES = ["Rapat Rutin","Ngoprek","Kepanitiaan"];
+
 const DB = {
     users:"nev_users",
     sessions:"nev_sessions",
@@ -7317,7 +7320,7 @@ function closeModal(id){
 
 /* Kegiatan bawaan + kegiatan buatan sendiri oleh HRD ("Lainnya") */
 const CUSTOM_ACTIVITY_VALUE = "__custom__";
-const STANDARD_ACTIVITIES = ["Rapat Rutin","Ngoprek","Kepanitiaan"];
+
 const ACTIVITY_NAME_RE = /^[A-Za-z0-9 _.-]{1,40}$/;   // sama dengan LABEL_RE di Code.gs
 
 function knownCustomActivities(){
