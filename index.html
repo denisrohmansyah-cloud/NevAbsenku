@@ -4260,7 +4260,7 @@ function toggleLoginPasswordVisibility(){
     if(icon) icon.className = show ? "fa-solid fa-eye-slash" : "fa-solid fa-eye";
 }
 
-function login(event){
+async function login(event){
   event.preventDefault();
   setLoginLoading(true);
 
