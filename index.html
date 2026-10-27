@@ -4098,7 +4098,9 @@ const STANDARD_ACTIVITIES = ["Rapat Rutin","Ngoprek","Kepanitiaan"];
 // State daftar sesi diinisialisasi sebelum fungsi halaman dapat merendernya.
 const qrSessionExpanded = { hrd:false, koor:false };
 const SESSION_PICKER_PREVIEW_LIMIT = 5;
+const QR_SESSION_PREVIEW_LIMIT = 5;
 let sessionPickerExpanded = false;
+let recapRows = [];
 
 const DB = {
     users:"nev_users",
@@ -4253,7 +4255,6 @@ function setLoginLoading(loading){
     btn.setAttribute("aria-busy", loading ? "true" : "false");
 }
 
-async 
 function toggleLoginPasswordVisibility(){
     const input = document.getElementById("loginPassword");
     const button = document.getElementById("toggleLoginPassword");
@@ -5368,7 +5369,7 @@ QR SESSION LIST
 
 /* Batasi daftar QR yang tampil agar riwayat lama tidak memenuhi halaman.
    Data sesi tetap tersimpan; tombol hanya mengatur tampilan daftar. */
-const QR_SESSION_PREVIEW_LIMIT = 5;
+
 
 
 function toggleQRSessionHistory(type){
@@ -6517,7 +6518,7 @@ KOOR KP: hanya staf pada divisinya, dan hanya dari kegiatan
          yang memang dapat diakses Koor KP (Ngoprek miliknya).
 ========================================================= */
 
-let recapRows = [];
+
 
 function isSessionEnded(session){
     const today = getTodayWIB();
