@@ -3455,6 +3455,7 @@ APP
                         <select id="koorSessionPicker" class="form-control" onchange="renderKoorSessionRoster()">
                             <option value="">Pilih sesi...</option>
                         </select>
+                        <div id="koorSessionHistoryControl"></div>
                     </div>
                     <div id="koorSessionSubmitBar"></div>
                     <div id="koorSessionAttendanceTable"></div>
@@ -5568,15 +5569,20 @@ function renderSessionStaffStatus(){
 }
 
 function getSessionAttendanceExportData(sessionId){
-    if(currentUser?.role!=="HRD"){ toast("Hanya HRD yang dapat mengekspor kehadiran per sesi.","error"); return null; }
+    const role=currentUser?.role;
+    if(role!=="HRD" && role!=="KOOR KP"){ toast("Akses ekspor ditolak.","error"); return null; }
     const session=load(DB.sessions).find(s=>String(s.id)===String(sessionId));
     if(!session){ toast("Sesi QR tidak ditemukan.","error"); return null; }
+    if(role==="KOOR KP" && !koorOwnSessions().some(s=>String(s.id)===String(session.id))){
+        toast("Koor KP hanya dapat mengekspor sesi Ngoprek miliknya sendiri.","error"); return null;
+    }
     const users=load(DB.users);
     const relevantStaff=session.division && session.division!=="-" ? users.filter(u=>u.role==="STAF" && u.division===session.division) : users.filter(u=>u.role==="STAF");
     const attendance=load(DB.attendance).filter(a=>String(a.sessionId)===String(session.id));
+    const ended=isSessionEnded(session);
     const rows=relevantStaff.map(u=>{
         const record=attendance.find(a=>String(a.userId)===String(u.id));
-        return {"Nama":u.name||"-","Username/NIM":u.username||"-","Divisi":u.division||"-","Tanggal":session.date||"-","Kegiatan":session.activity||"-","Jam Sesi":String(session.start||"-")+" - "+String(session.end||"-"),"Jam Absen":record && record.checkIn ? formatTime(record.checkIn) : "-","Status":record && record.status ? record.status : "Alpha"};
+        return {"Nama":u.name||"-","Username/NIM":u.username||"-","Divisi":u.division||"-","Tanggal":session.date||"-","Kegiatan":session.activity||"-","Jam Sesi":String(session.start||"-")+" - "+String(session.end||"-"),"Jam Absen":record && record.checkIn ? formatTime(record.checkIn) : "-","Status":record && record.status ? record.status : (role==="KOOR KP" && !ended ? "Belum absen" : "Alpha")};
     }).sort((a,b)=>String(a["Nama"]).localeCompare(String(b["Nama"]),"id"));
     return {session,rows};
 }
@@ -5991,17 +5997,35 @@ function koorOwnSessions(){
         .sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt));
 }
 
+let koorSessionPickerExpanded = false;
+
+function toggleKoorSessionHistory(){
+    koorSessionPickerExpanded = !koorSessionPickerExpanded;
+    populateKoorSessionPicker();
+}
+
 function populateKoorSessionPicker(){
     if(currentUser?.role!=="KOOR KP") return;
     const select=document.getElementById("koorSessionPicker");
     if(!select) return;
     const sessions=koorOwnSessions();
     const previous=select.value;
-    select.innerHTML=`<option value="">Pilih sesi...</option>` + sessions.map(s=>
+    const visibleSessions=koorSessionPickerExpanded ? sessions : sessions.slice(0,5);
+    select.innerHTML=`<option value="">Pilih sesi...</option>` + visibleSessions.map(s=>
         `<option value="${escapeHTML(s.id)}">${escapeHTML(s.date)} (${escapeHTML(s.start)}-${escapeHTML(s.end)}) • ${s.attendanceSubmitted ? "Disubmit" : "Draft"}</option>`
     ).join("");
-    if(sessions.some(s=>s.id===previous)) select.value=previous;
-    else if(currentQR.koor && sessions.some(s=>s.id===currentQR.koor.id)) select.value=currentQR.koor.id;
+    if(sessions.some(s=>s.id===previous) && visibleSessions.some(s=>s.id===previous)) select.value=previous;
+    else if(!koorSessionPickerExpanded && currentQR.koor && visibleSessions.some(s=>s.id===currentQR.koor.id)) select.value=currentQR.koor.id;
+    const control=document.getElementById("koorSessionHistoryControl");
+    if(control){
+        control.innerHTML=sessions.length>5 ? `
+            <button type="button" class="btn btn-outline" onclick="toggleKoorSessionHistory()" aria-expanded="${koorSessionPickerExpanded}" style="padding:8px 12px;margin-top:8px;">
+                <i class="fa-solid ${koorSessionPickerExpanded ? "fa-chevron-up" : "fa-chevron-down"}"></i>
+                ${koorSessionPickerExpanded ? "Sembunyikan sesi lama" : `Lihat semua sesi (+${sessions.length-5})`}
+            </button>
+            <span style="font-size:12px;color:#64748b;margin-left:8px;">${visibleSessions.length} dari ${sessions.length} sesi</span>
+        ` : "";
+    }
     renderKoorSessionRoster();
 }
 
@@ -6050,7 +6074,13 @@ function renderKoorSessionRoster(){
     const tercatat=staff.filter(u=>attendance.some(a=>a.userId===u.id)).length;
 
     container.innerHTML=`
-        <p style="font-size:12px;color:#777;margin-bottom:10px;">${tercatat} dari ${staff.length} staf sudah tercatat pada sesi ini.</p>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+            <p style="font-size:12px;color:#777;margin:0;">${tercatat} dari ${staff.length} staf sudah tercatat pada sesi ini.</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-outline" onclick="exportSessionAttendanceExcel('${jsId(session.id)}')"><i class="fa-solid fa-file-excel"></i> Export Excel</button>
+                <button type="button" class="btn btn-outline" onclick="exportSessionAttendancePDF('${jsId(session.id)}')"><i class="fa-solid fa-file-pdf"></i> Export PDF</button>
+            </div>
+        </div>
         <div class="table-wrapper">
             <table>
                 <thead><tr><th>Nama</th><th>Username/NIM</th><th>Jam Absen</th><th>Status</th><th>Aksi</th></tr></thead>
