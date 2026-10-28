@@ -5529,9 +5529,15 @@ function renderSessionStaffStatus(){
     const hadirCount=relevantStaff.filter(u=> attendance.find(a=>a.userId===u.id)).length;
 
     container.innerHTML=`
-        <p style="font-size:12px;color:#777;margin-bottom:10px;">
-            ${hadirCount} dari ${relevantStaff.length} staf sudah tercatat pada sesi ini.
-        </p>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+            <p style="font-size:12px;color:#777;margin:0;">
+                ${hadirCount} dari ${relevantStaff.length} staf sudah tercatat pada sesi ini.
+            </p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-outline" onclick="exportSessionAttendanceExcel('${jsId(session.id)}')"><i class="fa-solid fa-file-excel"></i> Export Excel</button>
+                <button type="button" class="btn btn-outline" onclick="exportSessionAttendancePDF('${jsId(session.id)}')"><i class="fa-solid fa-file-pdf"></i> Export PDF</button>
+            </div>
+        </div>
         <div class="table-wrapper">
             <table>
                 <thead>
@@ -5561,6 +5567,44 @@ function renderSessionStaffStatus(){
     `;
 }
 
+function getSessionAttendanceExportData(sessionId){
+    if(currentUser?.role!=="HRD"){ toast("Hanya HRD yang dapat mengekspor kehadiran per sesi.","error"); return null; }
+    const session=load(DB.sessions).find(s=>String(s.id)===String(sessionId));
+    if(!session){ toast("Sesi QR tidak ditemukan.","error"); return null; }
+    const users=load(DB.users);
+    const relevantStaff=session.division && session.division!=="-" ? users.filter(u=>u.role==="STAF" && u.division===session.division) : users.filter(u=>u.role==="STAF");
+    const attendance=load(DB.attendance).filter(a=>String(a.sessionId)===String(session.id));
+    const rows=relevantStaff.map(u=>{
+        const record=attendance.find(a=>String(a.userId)===String(u.id));
+        return {"Nama":u.name||"-","Username/NIM":u.username||"-","Divisi":u.division||"-","Tanggal":session.date||"-","Kegiatan":session.activity||"-","Jam Sesi":String(session.start||"-")+" - "+String(session.end||"-"),"Jam Absen":record && record.checkIn ? formatTime(record.checkIn) : "-","Status":record && record.status ? record.status : "Alpha"};
+    }).sort((a,b)=>String(a["Nama"]).localeCompare(String(b["Nama"]),"id"));
+    return {session,rows};
+}
+
+function exportSessionAttendanceExcel(sessionId){
+    const result=getSessionAttendanceExportData(sessionId); if(!result)return;
+    if(!window.XLSX){ toast("Fitur Excel belum termuat. Muat ulang halaman lalu coba lagi.","error"); return; }
+    const ws=XLSX.utils.json_to_sheet(result.rows);
+    ws["!cols"]=[{wch:30},{wch:18},{wch:18},{wch:14},{wch:20},{wch:20},{wch:14},{wch:14}];
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Kehadiran Sesi");
+    const safeDate=String(result.session.date||"").replace(/[^0-9-]/g,"");
+    XLSX.writeFile(wb,"NEV-Absenku-Kehadiran-"+safeDate+".xlsx");
+    toast("Excel kehadiran sesi berhasil dibuat.","success");
+}
+
+function exportSessionAttendancePDF(sessionId){
+    const result=getSessionAttendanceExportData(sessionId); if(!result)return;
+    if(!window.jspdf || !window.jspdf.jsPDF){ toast("Fitur PDF belum termuat. Muat ulang halaman lalu coba lagi.","error"); return; }
+    const {jsPDF}=window.jspdf; const doc=new jsPDF("landscape","mm","a4");
+    doc.setFontSize(16); doc.text("NEV Absenku - Laporan Kehadiran per Sesi",14,15);
+    doc.setFontSize(10); doc.text("Kegiatan: "+String(result.session.activity||"-"),14,23);
+    doc.text("Divisi: "+String(result.session.division||"-"),14,29);
+    doc.text("Tanggal: "+String(result.session.date||"-")+" | Waktu: "+String(result.session.start||"-")+" - "+String(result.session.end||"-"),14,35);
+    const body=result.rows.map(r=>[r["Nama"],r["Username/NIM"],r["Divisi"],r["Jam Absen"],r["Status"]]);
+    doc.autoTable({head:[["Nama","Username/NIM","Divisi","Jam Absen","Status"]],body:body,startY:41,theme:"grid",styles:{fontSize:8,cellPadding:2,overflow:"linebreak"},headStyles:{fillColor:[35,35,35]},columnStyles:{0:{cellWidth:65},1:{cellWidth:35},2:{cellWidth:35},3:{cellWidth:30},4:{cellWidth:25}},didDrawPage:function(){const pageCount=doc.internal.getNumberOfPages();doc.setFontSize(8);doc.text("Dicetak dari NEV Absenku",14,doc.internal.pageSize.getHeight()-7);doc.text("Halaman "+pageCount,doc.internal.pageSize.getWidth()-28,doc.internal.pageSize.getHeight()-7);}});
+    const safeDate=String(result.session.date||"").replace(/[^0-9-]/g,"");
+    doc.save("NEV-Absenku-Kehadiran-"+safeDate+".pdf"); toast("PDF kehadiran sesi berhasil dibuat.","success");
+}
 function openSessionAttendanceEdit(sessionId,userId){
     if(currentUser.role!=="HRD" && currentUser.role!=="KOOR KP"){
         toast("Anda tidak dapat mengubah status absensi.", "error"); return;
