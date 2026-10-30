@@ -4393,13 +4393,11 @@ function buildSidebar(){
         html+=menuTitle("HRD");
         html+=menuItem("hrd-dashboard", "fa-chart-line", "Dashboard");
         html+=menuItem("hrd-qr", "fa-qrcode", "Buat QR Absensi");
-        html+=menuItem("hrd-report", "fa-table-list", "Rekap Absensi");
         html+=menuItem("staff-recap", "fa-user-check", "Rekap per Staf");
         html+=menuItem("hrd-analytics", "fa-chart-pie", "Analitik Kehadiran");
         html+=menuItem("hrd-permit", "fa-file-medical", "Persetujuan Izin/Sakit");
         html+=menuItem("hrd-warning", "fa-triangle-exclamation", "Surat Peringatan (SP)");
         html+=menuItem("hrd-location", "fa-location-dot", "Lokasi & Radius");
-        html+=menuItem("users", "fa-users-gear", "Manajemen Akun");
         html+=menuItem("staff-evaluation", "fa-star-half-stroke", "Penilaian Staf");
     }
 
@@ -4416,6 +4414,7 @@ function buildSidebar(){
     }
 
     html+=menuTitle("AKUN");
+    if(currentUser.role==="HRD" || currentUser.role==="KOOR KP") html+=menuItem("users", "fa-users-gear", "Manajemen Akun");
     html+=menuItem("settings", "fa-user-gear", "Pengaturan");
 
     menu.innerHTML=html;
@@ -4440,7 +4439,7 @@ function showPage(page){
 
     const allowed = {
         "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "staf-activities", "my-warning", "staff-evaluation", "settings"],
-        "HRD":["hrd-dashboard", "hrd-qr", "hrd-report", "staff-recap", "hrd-permit", "hrd-warning", "hrd-location", "users", "staff-evaluation", "hrd-analytics", "settings"],
+        "HRD":["hrd-dashboard", "hrd-qr", "staff-recap", "hrd-permit", "hrd-warning", "hrd-location", "users", "staff-evaluation", "hrd-analytics", "settings"],
         "KOOR KP":["koor-dashboard", "koor-qr", "koor-attendance", "staff-recap", "koor-permit", "users", "my-warning", "settings"]
     };
 
@@ -4469,7 +4468,6 @@ function showPage(page){
         "staf-activities":"Kegiatan",
         "hrd-dashboard":"Dashboard HRD",
         "hrd-qr":"Buat QR Absensi",
-        "hrd-report":"Rekap Absensi",
         "staff-recap":"Rekap per Staf",
         "hrd-permit":"Persetujuan Izin/Sakit",
         "hrd-warning":"Surat Peringatan (SP)",
@@ -4496,7 +4494,6 @@ function showPage(page){
     if(page==="staf-permit"){ populatePermitSessionOptions(); renderPermitHistory(); }
     if(page==="hrd-dashboard") renderHRDDashboard();
     if(page==="hrd-qr"){ renderQRSessionList("hrd"); populateSessionAttendancePicker(); }
-    if(page==="hrd-report") renderHRDReport();
     if(page==="staff-recap") initStaffRecapPage();
     if(page==="hrd-permit") renderPermitApproval("hrd");
     if(page==="hrd-warning" && typeof renderHrdWarnings==="function") renderHrdWarnings();
@@ -5914,20 +5911,24 @@ function renderHRDReport(){
 }
 
 function renderHRDDashboard(){
-    const users=load(DB.users);
-    const attendance=hrdVisibleAttendance();
-    const staff=users.filter(u=>u.role==="STAF");
-    
-    document.getElementById("hrdTotalStaff").textContent=staff.length;
-    document.getElementById("hrdHadir").textContent=attendance.filter(a=>a.status==="Hadir").length;
-    document.getElementById("hrdIzinSakit").textContent=attendance.filter(a=>a.status==="Izin" || a.status==="Sakit").length;
-    document.getElementById("hrdAlpha").textContent=attendance.filter(a=>a.status==="Alpha").length + implicitAlphaCount(staff, hrdVisibleSessions(), attendance);
-    document.getElementById("hrdDispen").textContent=attendance.filter(a=>a.status==="Dispen").length;
-
-    const recent=[...attendance].sort((a,b)=> new Date(b.checkIn) - new Date(a.checkIn)).slice(0,8);
+    const safeLoad=(key)=>{const value=load(key,[]);return Array.isArray(value)?value:[]};
+    const users=safeLoad(DB.users),attendance=hrdVisibleAttendance();
+    const staff=users.filter(u=>u&&u.role==="STAF");
+    const set=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=String(value)};
+    set("hrdTotalStaff",staff.length);
+    set("hrdHadir",attendance.filter(a=>a&&a.status==="Hadir").length);
+    set("hrdIzinSakit",attendance.filter(a=>a&&(a.status==="Izin"||a.status==="Sakit")).length);
+    set("hrdAlpha",attendance.filter(a=>a&&a.status==="Alpha").length+implicitAlphaCount(staff,hrdVisibleSessions(),attendance));
+    set("hrdDispen",attendance.filter(a=>a&&a.status==="Dispen").length);
+    const recent=attendance.slice().sort((a,b)=>{
+        const ta=Date.parse(a.checkIn||a.date||"")||0,tb=Date.parse(b.checkIn||b.date||"")||0;
+        return tb-ta;
+    }).slice(0,8);
     const container=document.getElementById("hrdRecentAttendance");
-    if(!recent.length) container.innerHTML=emptyHTML("fa-clipboard", "Belum ada absensi.");
-    else container.innerHTML=attendanceTable(recent,false);
+    if(container){
+        try{container.innerHTML=recent.length?attendanceTable(recent,false):emptyHTML("fa-clipboard","Belum ada absensi.");}
+        catch(err){console.error("HRD recent attendance render:",err);container.innerHTML=emptyHTML("fa-clipboard","Data absensi terbaru belum dapat ditampilkan.");}
+    }
 }
 
 
