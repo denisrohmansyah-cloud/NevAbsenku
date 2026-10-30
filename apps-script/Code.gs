@@ -368,6 +368,14 @@ function mergeSanitized_(name,incoming,actor,sanitize,policy){
     byId[out.id]=out;
   });
   objectsToSheet_(name,order.map(id=>byId[id]));
+  if(name===SHEET_PERMITS){
+    order.forEach(id=>{
+      const before=current.find(x=>x.id===id),after=byId[id];
+      if(before&&after&&before.status!==after.status){
+        auditEvent_(actor,"permit.review","permit",id,"Status pengajuan berubah dari "+before.status+" menjadi "+after.status+".");
+      }
+    });
+  }
   if(incoming.length) auditEvent_(actor,"data.bulk_save",name,"","Permintaan simpan massal; record masuk: "+incoming.length+", dilewati: "+skipped+".");
   return skipped;
 }
@@ -979,6 +987,7 @@ function trashFolderFiles_(kind,deadline){
 function purgeData_(actor,data){
   if(actor.role!=="HRD") throw new Error("Hanya HRD yang dapat menghapus data absensi.");
   const opt=data||{};
+  auditEvent_(actor,"data.purge","data","", "Permintaan penghapusan data; rows="+(opt.rows!==false)+", photos="+(opt.photos!==false)+".");
   const result={ok:true,photosTrashed:0,photosFinished:true};
 
   if(opt.rows!==false){
@@ -1399,6 +1408,7 @@ function doPost(e){
           geofenceEnabled:boolOf_(data.geofenceEnabled)
         };
         withLock_(()=>objectToSettingsSheet_(clean));
+        auditEvent_(actor,"settings.update","settings","","Pengaturan lokasi/radius kantor diperbarui.");
         return jsonResponse_({ok:true});
       }
 
