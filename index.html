@@ -2401,7 +2401,7 @@ APP
 
                             <button
                                 class="btn btn-dark"
-                                onclick="downloadQR('hrd')">
+                                onclick="downloadQR('hrd', this)>
 
                                 <i class="fa-solid fa-download"></i>
                                 Download
@@ -2410,7 +2410,7 @@ APP
 
                             <button
                                 class="btn btn-outline"
-                                onclick="printQR('hrd')">
+                                onclick="printQR('hrd', this)>
 
                                 <i class="fa-solid fa-print"></i>
                                 Print
@@ -2419,7 +2419,7 @@ APP
 
                             <button
                                 class="btn btn-success"
-                                onclick="copyToken('hrd')">
+                                onclick="copyToken('hrd', this)>
 
                                 <i class="fa-solid fa-copy"></i>
                                 Copy Token
@@ -2429,7 +2429,7 @@ APP
                             <button
                                 id="hrdToggleQRBtn"
                                 class="btn btn-warning"
-                                onclick="toggleCurrentQR('hrd')">
+                                onclick="toggleCurrentQR('hrd', this)>
 
                                 Nonaktifkan
 
@@ -2437,7 +2437,7 @@ APP
 
                             <button
                                 class="btn btn-danger"
-                                onclick="deleteCurrentQR('hrd')">
+                                onclick="deleteCurrentQR('hrd', this)>
 
                                 <i class="fa-solid fa-trash"></i>
                                 Hapus QR
@@ -2878,7 +2878,7 @@ APP
 
                             <button
                                 class="btn btn-dark"
-                                onclick="downloadQR('koor')">
+                                onclick="downloadQR('koor', this)>
 
                                 <i class="fa-solid fa-download"></i>
                                 Download
@@ -2887,7 +2887,7 @@ APP
 
                             <button
                                 class="btn btn-outline"
-                                onclick="printQR('koor')">
+                                onclick="printQR('koor', this)>
 
                                 <i class="fa-solid fa-print"></i>
                                 Print
@@ -2896,7 +2896,7 @@ APP
 
                             <button
                                 class="btn btn-success"
-                                onclick="copyToken('koor')">
+                                onclick="copyToken('koor', this)>
 
                                 <i class="fa-solid fa-copy"></i>
                                 Copy Token
@@ -2905,7 +2905,7 @@ APP
 
                             <button
                                 class="btn btn-warning"
-                                onclick="toggleCurrentQR('koor')">
+                                onclick="toggleCurrentQR('koor', this)>
 
                                 Nonaktifkan
 
@@ -2913,7 +2913,7 @@ APP
 
                             <button
                                 class="btn btn-danger"
-                                onclick="deleteCurrentQR('koor')">
+                                onclick="deleteCurrentQR('koor', this)>
 
                                 <i class="fa-solid fa-trash"></i>
                                 Hapus QR
@@ -5216,32 +5216,38 @@ function updateScannerStatus(message,type){
 QR DOWNLOAD & PRINT
 ========================================================= */
 
+async function withQRButtonLoading(button,label,action){
+    if(!button || button.dataset.loading==="true") return;
+    const original=button.innerHTML, wasDisabled=button.disabled;
+    button.dataset.loading="true"; button.disabled=true;
+    button.setAttribute("aria-busy","true"); button.style.cursor="wait";
+    button.innerHTML='<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> '+label;
+    const startedAt=Date.now();
+    try{
+        return await action();
+    }finally{
+        // Keep feedback visible briefly even for instant local actions (download/copy).
+        const remaining=250-(Date.now()-startedAt);
+        if(remaining>0) await new Promise(resolve=>setTimeout(resolve,remaining));
+        button.innerHTML=original;button.disabled=wasDisabled;button.removeAttribute("aria-busy");button.style.cursor="";delete button.dataset.loading;}
+}
 function getQRCanvas(type){
     const box = document.getElementById(type==="hrd" ? "hrdQrBox" : "koorQrBox");
     return box.querySelector("canvas");
 }
 
-function downloadQR(type){
-    const canvas=getQRCanvas(type);
-    if(!canvas){ toast("QR belum tersedia.", "error"); return; }
-    const session=currentQR[type];
-    if(!session) return;
-    const link=document.createElement("a");
-    link.download = `NEV-Absenku-${session.activity}-${session.date}.png`;
-    link.href=canvas.toDataURL("image/png");
-    link.click();
-    toast("QR berhasil di-download.", "success");
-}
+function downloadQR(type,button){return withQRButtonLoading(button,"Menyiapkan...",async()=>{
+    const canvas=getQRCanvas(type);if(!canvas){toast("QR belum tersedia.","error");return;}
+    const session=currentQR[type];if(!session)return;
+    const link=document.createElement("a");link.download=`NEV-Absenku-${session.activity}-${session.date}.png`;link.href=canvas.toDataURL("image/png");link.click();toast("QR berhasil di-download.","success");
+});}
 
-function printQR(type){
-    const canvas=getQRCanvas(type);
-    if(!canvas){ toast("QR belum tersedia.", "error"); return; }
-    const session=currentQR[type];
-    if(!session)return;
-
+function printQR(type,button){return withQRButtonLoading(button,"Menyiapkan cetak...",async()=>{
+    const canvas=getQRCanvas(type);if(!canvas){toast("QR belum tersedia.","error");return;}
+    const session=currentQR[type];if(!session)return;
     const image=canvas.toDataURL("image/png");
     const printWindow=window.open("","_blank","width=700,height=800");
-
+    if(!printWindow){toast("Popup diblokir. Izinkan popup untuk mencetak QR.","error");return;}
     printWindow.document.write(`
         <!DOCTYPE html>
         <html><head><title>QR NEV Absenku</title>
@@ -5262,17 +5268,15 @@ function printQR(type){
     printWindow.document.close();
     printWindow.focus();
     setTimeout(()=>{ printWindow.print(); },500);
-}
+});}
 
-function copyToken(type){
-    const session=currentQR[type];
-    if(!session)return;
-    navigator.clipboard.writeText(session.token).then(()=>{
-        toast("Token berhasil disalin.", "success");
-    });
-}
+function copyToken(type,button){return withQRButtonLoading(button,"Menyalin...",async()=>{
+    const session=currentQR[type];if(!session)return;
+    try{await navigator.clipboard.writeText(session.token);toast("Token berhasil disalin.","success");}
+    catch(err){toast("Token tidak dapat disalin. Periksa izin clipboard browser.","error");}
+});}
 
-async function toggleCurrentQR(type){
+async function toggleCurrentQR(type,button){
     const session=currentQR[type];
     if(!session)return;
     const sessions=load(DB.sessions);
@@ -5285,6 +5289,7 @@ async function toggleCurrentQR(type){
     }
 
     const next=!target.active;
+    return withQRButtonLoading(button,next?"Mengaktifkan...":"Menonaktifkan...",async()=>{
     try{
         if(typeof cloudSyncEnabled!=="undefined" && cloudSyncEnabled){
             await cloudPost("setSessionActive",{ sessionId:target.id, active:next },1);
@@ -5301,17 +5306,18 @@ async function toggleCurrentQR(type){
     renderGeneratedQR(type, target);
     renderQRSessionList(type);
     toast(target.active ? "QR diaktifkan." : "QR dinonaktifkan. Staf tidak bisa absen sampai QR diaktifkan kembali.", "success");
+    });
 }
 
-async function deleteCurrentQR(type){
+async function deleteCurrentQR(type,button){
     const session=currentQR[type];
     if(!session){
         toast("QR belum dipilih.","error"); return;
     }
-    await deleteSession(session.id,type);
+    await deleteSession(session.id,type,button);
 }
 
-async function deleteSession(id,type){
+async function deleteSession(id,type,button){
     const sessions=load(DB.sessions);
     const session=sessions.find(s=>s.id===id);
     if(!session)return;
@@ -5327,6 +5333,7 @@ async function deleteSession(id,type){
 
     if(!confirm(`Hapus QR ${session.activity} • ${session.date}? Semua absensi pada kegiatan ini juga akan dihapus.`)) return;
 
+    return withQRButtonLoading(button,"Menghapus QR...",async()=>{
     try{
         await cloudPost("deleteSession",{sessionId:id},1);
         _localSave(DB.sessions,sessions.filter(s=>s.id!==id));
@@ -5339,6 +5346,7 @@ async function deleteSession(id,type){
     }catch(err){
         toast("Gagal menghapus QR/kegiatan: "+friendlyCloudError(err),"error");
     }
+    });
 }
 
 
