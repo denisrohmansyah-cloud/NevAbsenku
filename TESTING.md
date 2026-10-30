@@ -59,3 +59,14 @@ Checklist manual ringkas untuk setiap rilis NEV Absenku. Tandai hasil uji dan br
 - [ ] Panel notifikasi responsif di desktop dan ponsel.
 - [ ] Notifikasi diperbarui setelah data lokal berubah dan setelah getAll selesai.
 - [ ] Tidak ada notifikasi duplikat untuk ID sumber yang sama.
+
+
+## AuditLog
+- [ ] Aksi penting menghasilkan catatan pada sheet AuditLog.
+- [ ] Sheet AuditLog dibuat otomatis dengan header yang benar saat aktivitas pertama dicatat.
+- [ ] Header sheet operasional lama tetap identik dan tidak dimigrasikan.
+- [ ] HRD dapat mengambil audit log melalui action getAuditLog.
+- [ ] STAF dan KOOR KP ditolak saat meminta getAuditLog.
+- [ ] Password, auth token, QR token, alasan izin/SP, koordinat, dan URL foto tidak masuk ke ringkasan audit.
+- [ ] Kegagalan pencatatan AuditLog tidak menggagalkan check-in atau mutasi utama.
+- [ ] Audit review izin mencatat perubahan status, tanpa mencatat alasan pribadi.

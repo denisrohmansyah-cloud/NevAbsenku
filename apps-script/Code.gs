@@ -37,6 +37,7 @@ const SHEET_ATTENDANCE = "Attendance";
 const SHEET_SETTINGS = "Settings";
 const SHEET_PERMITS = "Permits";
 const SHEET_WARNINGS = "Warnings";
+const SHEET_AUDIT_LOG = "AuditLog";
 
 const HEADERS = {
   Users: ["id", "name", "username", "password", "role", "division"],
@@ -215,6 +216,58 @@ function ensureRows_(sheet,needed){
   if(max<needed) sheet.insertRowsAfter(max,needed-max);
 }
 
+
+/* =========================================================
+AUDIT LOG — sheet terpisah; tidak mengubah header sheet lama.
+Tidak menyimpan password, token, isi alasan, koordinat, atau URL foto.
+========================================================= */
+const AUDIT_HEADERS_ = ["timestamp","actorId","actorName","actorRole","actorDivision","action","entityType","entityId","summary"];
+function auditEvent_(actor,action,entityType,entityId,summary){
+  try{
+    const ss=SpreadsheetApp.getActiveSpreadsheet();
+    let sh=ss.getSheetByName(SHEET_AUDIT_LOG);
+    if(!sh){
+      sh=ss.insertSheet(SHEET_AUDIT_LOG);
+      sh.getRange(1,1,1,AUDIT_HEADERS_.length).setNumberFormat("@").setValues([AUDIT_HEADERS_]);
+      sh.setFrozenRows(1);
+    }else{
+      const lastCol=sh.getLastColumn();
+      const current=lastCol?sh.getRange(1,1,1,Math.max(lastCol,AUDIT_HEADERS_.length)).getDisplayValues()[0]:[];
+      if(sh.getLastRow()===0 || (sh.getLastRow()===1 && lastCol===0)){
+        sh.getRange(1,1,1,AUDIT_HEADERS_.length).setNumberFormat("@").setValues([AUDIT_HEADERS_]);
+        sh.setFrozenRows(1);
+      }else if(current.slice(0,AUDIT_HEADERS_.length).join("|")!==AUDIT_HEADERS_.join("|") || current.slice(AUDIT_HEADERS_.length).some(v=>String(v||"").trim()!=="")){
+        throw new Error("Header AuditLog tidak sesuai; audit event tidak ditulis agar data tidak tertimpa.");
+      }
+    }
+    const row=[
+      new Date().toISOString(),
+      actor&&actor.id||"",
+      str_(actor&&actor.name,100)||"",
+      str_(actor&&actor.role,20)||"",
+      str_(actor&&actor.division,40)||"",
+      str_(action,60)||"unknown",
+      str_(entityType,40)||"",
+      str_(entityId,100)||"",
+      str_(summary,240)||""
+    ];
+    sh.appendRow(row);
+  }catch(err){
+    // Audit logging tidak boleh membatalkan absensi/aksi utama yang telah berhasil.
+    console.error("AuditLog write failed: "+String(err&&err.message||err));
+    try{Logger.log("AuditLog write failed: "+String(err&&err.message||err));}catch(ignore){}
+  }
+}
+function getAuditLog_(actor,data){
+  if(actor.role!=="HRD")throw new Error("Hanya HRD yang dapat melihat AuditLog.");
+  const limit=Math.max(1,Math.min(500,Number(data&&data.limit)||100));
+  const ss=SpreadsheetApp.getActiveSpreadsheet(),sh=ss.getSheetByName(SHEET_AUDIT_LOG);
+  if(!sh||sh.getLastRow()<2)return {ok:true,records:[]};
+  const headers=AUDIT_HEADERS_,last=sh.getLastRow(),count=Math.min(limit,last-1),start=last-count+1;
+  const values=sh.getRange(start,1,count,headers.length).getDisplayValues();
+  return {ok:true,records:values.reverse().map(r=>{const o={};headers.forEach((h,i)=>o[h]=r[i]);return o;})};
+}
+
 function appendObject_(name,obj){
   if(name===SHEET_SESSIONS) _sessMapCache = null;
   if(name===SHEET_USERS) invalidateUsersCache_();
@@ -315,6 +368,15 @@ function mergeSanitized_(name,incoming,actor,sanitize,policy){
     byId[out.id]=out;
   });
   objectsToSheet_(name,order.map(id=>byId[id]));
+  if(name===SHEET_PERMITS){
+    order.forEach(id=>{
+      const before=current.find(x=>x.id===id),after=byId[id];
+      if(before&&after&&before.status!==after.status){
+        auditEvent_(actor,"permit.review","permit",id,"Status pengajuan berubah dari "+before.status+" menjadi "+after.status+".");
+      }
+    });
+  }
+  if(incoming.length) auditEvent_(actor,"data.bulk_save",name,"","Permintaan simpan massal; record masuk: "+incoming.length+", dilewati: "+skipped+".");
   return skipped;
 }
 
@@ -778,6 +840,7 @@ function createUser_(actor, data){
     role, division
   };
   appendObject_(SHEET_USERS,record);
+  auditEvent_(actor,"user.create","user",record.id,"Akun dibuat: "+record.username+" ("+record.role+")");
   return safeUser_(record);
 }
 
@@ -854,6 +917,7 @@ function updateUser_(actor,data){
   if(user.name!==oldName || user.username!==oldUsername){
     syncUserIdentity_(user);
   }
+  auditEvent_(actor,"user.update","user",user.id,"Profil akun diperbarui; perubahan kredensial tidak dicatat.");
   return safeUser_(user);
 }
 
@@ -884,6 +948,7 @@ function deleteUser_(actor,data){
   }
 
   objectsToSheet_(SHEET_USERS,users.filter(u=>u.id!==id));
+  auditEvent_(actor,"user.delete","user",target.id,"Akun dihapus: "+target.username);
   return {ok:true};
 }
 
@@ -922,6 +987,7 @@ function trashFolderFiles_(kind,deadline){
 function purgeData_(actor,data){
   if(actor.role!=="HRD") throw new Error("Hanya HRD yang dapat menghapus data absensi.");
   const opt=data||{};
+  auditEvent_(actor,"data.purge","data","", "Permintaan penghapusan data; rows="+(opt.rows!==false)+", photos="+(opt.photos!==false)+".");
   const result={ok:true,photosTrashed:0,photosFinished:true};
 
   if(opt.rows!==false){
@@ -971,6 +1037,7 @@ function deleteSession_(actor,sessionId){
   objectsToSheet_(SHEET_SESSIONS,sessions.filter(s=>s.id!==sessionId));
   objectsToSheet_(SHEET_ATTENDANCE,sheetToObjects_(SHEET_ATTENDANCE).filter(a=>a.sessionId!==sessionId));
   objectsToSheet_(SHEET_PERMITS,sheetToObjects_(SHEET_PERMITS).filter(p=>p.sessionId!==sessionId));
+  auditEvent_(actor,"session.delete","session",sessionId,"Sesi beserta data terkait dihapus.");
   return {ok:true};
 }
 
@@ -989,6 +1056,7 @@ function deleteAttendance_(actor,id){
   }
 
   objectsToSheet_(SHEET_ATTENDANCE,list.filter(a=>a.id!==id));
+  auditEvent_(actor,"attendance.delete","attendance",id,"Record absensi dihapus.");
   return {ok:true};
 }
 
@@ -1033,6 +1101,7 @@ function addAttendance_(actor,data){
     const photoUrl=data.photo?savePhotoToDrive_(data.photo,(actor.username||"user")+"_"+session.date+"_"+Date.now(),"selfie"):null;
     const record={id:newId_("ATT"),sessionId:session.id,token:session.token,userId:actor.id,userName:actor.name,username:actor.username,activity:session.activity,division:session.division,date:session.date,checkIn:now.iso,status:"Hadir",creatorId:session.creatorId,creatorRole:session.creatorRole,lat:lat,lng:lng,photo:photoUrl,permitId:null,approvedFromPermit:false};
     try{appendObject_(SHEET_ATTENDANCE,record);}catch(err){if(photoUrl){const m=photoUrl.match(/\/file\/d\/([A-Za-z0-9_-]{10,100})\/view/);if(m){try{DriveApp.getFileById(m[1]).setTrashed(true);}catch(cleanupErr){Logger.log("Cleanup foto gagal: "+cleanupErr);}}}throw err;}
+    auditEvent_(actor,"attendance.checkin","attendance",record.id,"Check-in berhasil untuk sesi "+session.id+".");
     return {ok:true,record:record};
   });
 }
@@ -1088,6 +1157,7 @@ function setSessionActive_(actor,data){
     session.active=active;
     objectsToSheet_(SHEET_SESSIONS,list);
     _sessMapCache=null;
+    auditEvent_(actor,active?"session.activate":"session.deactivate","session",session.id,"Status QR diubah.");
     return {ok:true, active:active};
   });
 }
@@ -1112,6 +1182,7 @@ function submitSessionAttendance_(actor,data){
       session.active=false;   // QR ditutup supaya tidak ada absen baru yang masuk setelah data diserahkan
       objectsToSheet_(SHEET_SESSIONS,list);
       _sessMapCache=null;
+      auditEvent_(actor,"attendance.submit","session",session.id,"Absensi sesi diserahkan ke HRD.");
     }
     return {ok:true, session:{
       id:session.id, active:session.active, attendanceSubmitted:true,
@@ -1151,6 +1222,7 @@ function addPermit_(actor,data){
       reviewedBy:null, reviewedByName:null, reviewedAt:null, reviewNote:null
     };
     appendObject_(SHEET_PERMITS,record);
+    auditEvent_(actor,"permit.create","permit",record.id,"Pengajuan "+record.type+" dibuat untuk sesi "+record.sessionId+".");
     return {ok:true,record:record};
   });
 }
@@ -1204,6 +1276,7 @@ function issueWarning_(actor,data){
       issuedBy:actor.id, issuedByName:actor.name, issuedAt:new Date().toISOString(), readAt:null
     };
     appendObject_(SHEET_WARNINGS,record);
+    auditEvent_(actor,"warning.issue","warning",record.id,"Surat peringatan "+record.level+" diterbitkan kepada "+target.username+".");
     return {ok:true,record:record};
   });
 }
@@ -1219,6 +1292,7 @@ function markWarningRead_(actor,data){
     if(!w.readAt){
       w.readAt=new Date().toISOString();
       objectsToSheet_(SHEET_WARNINGS,list);
+      auditEvent_(actor,"warning.read","warning",id,"Penerima membaca surat peringatan.");
     }
     return {ok:true,readAt:w.readAt};
   });
@@ -1232,6 +1306,7 @@ function deleteWarning_(actor,data){
     const list=sheetToObjects_(SHEET_WARNINGS);
     if(!list.some(x=>x.id===id)) throw new Error("SP tidak ditemukan.");
     objectsToSheet_(SHEET_WARNINGS,list.filter(x=>x.id!==id));
+    auditEvent_(actor,"warning.revoke","warning",id,"Surat peringatan dicabut.");
     return {ok:true};
   });
 }
@@ -1277,6 +1352,7 @@ function doPost(e){
 
       cache.remove(key);
       const authToken=createAuthToken_(user);
+      auditEvent_(user,"auth.login","auth",user.id,"Login berhasil.");
       const resp={ok:true,authToken:authToken,user:safeUser_(user)};
       // Kirim data awal sekaligus supaya klien tidak perlu request getAll kedua setelah login.
       try{ resp.all=getAllFor_(user); }catch(e){}
@@ -1284,7 +1360,10 @@ function doPost(e){
     }
 
     if(action==="logout"){
-      if(body.authToken) CacheService.getScriptCache().remove("nev-auth-"+String(body.authToken));
+      if(body.authToken){
+        try{const raw=CacheService.getScriptCache().get("nev-auth-"+String(body.authToken));if(raw){const session=JSON.parse(raw),u=usersCached_().find(x=>x.id===session.userId);if(u)auditEvent_(u,"auth.logout","auth",u.id,"Logout.");}}catch(ignore){}
+        CacheService.getScriptCache().remove("nev-auth-"+String(body.authToken));
+      }
       return jsonResponse_({ok:true});
     }
 
@@ -1297,6 +1376,9 @@ function doPost(e){
 
       case "getPhoto":
         return jsonResponse_(getPhoto_(actor,data));
+
+      case "getAuditLog":
+        return jsonResponse_(getAuditLog_(actor,data));
 
       case "createUser":
         return jsonResponse_({ok:true,user:withLock_(()=>createUser_(actor,data))});
@@ -1331,6 +1413,7 @@ function doPost(e){
           geofenceEnabled:boolOf_(data.geofenceEnabled)
         };
         withLock_(()=>objectToSettingsSheet_(clean));
+        auditEvent_(actor,"settings.update","settings","","Pengaturan lokasi/radius kantor diperbarui.");
         return jsonResponse_({ok:true});
       }
 
