@@ -38,6 +38,7 @@ const SHEET_SETTINGS = "Settings";
 const SHEET_PERMITS = "Permits";
 const SHEET_WARNINGS = "Warnings";
 const SHEET_AUDIT_LOG = "AuditLog";
+const SHEET_EVALUATIONS = "StaffEvaluations";
 
 const HEADERS = {
   Users: ["id", "name", "username", "password", "role", "division"],
@@ -266,6 +267,38 @@ function getAuditLog_(actor,data){
   const headers=AUDIT_HEADERS_,last=sh.getLastRow(),count=Math.min(limit,last-1),start=last-count+1;
   const values=sh.getRange(start,1,count,headers.length).getDisplayValues();
   return {ok:true,records:values.reverse().map(r=>{const o={};headers.forEach((h,i)=>o[h]=r[i]);return o;})};
+}
+
+const EVALUATION_HEADERS_ = ["id","staffId","staffName","staffUsername","division","period","discipline","responsibility","teamwork","initiative","performance","average","strengths","improvement","evaluatorId","evaluatorName","evaluatorRole","createdAt"];
+function evaluationSheet_(){
+  const ss=SpreadsheetApp.getActiveSpreadsheet();
+  let sh=ss.getSheetByName(SHEET_EVALUATIONS);
+  if(!sh){sh=ss.insertSheet(SHEET_EVALUATIONS);sh.getRange(1,1,1,EVALUATION_HEADERS_.length).setValues([EVALUATION_HEADERS_]);sh.setFrozenRows(1);}
+  else {const actual=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),EVALUATION_HEADERS_.length)).getDisplayValues()[0];if(actual.slice(0,EVALUATION_HEADERS_.length).join("|")!==EVALUATION_HEADERS_.join("|"))throw new Error("Header StaffEvaluations tidak sesuai. Data tidak diubah.");}
+  return sh;
+}
+function getEvaluations_(actor){
+  const sh=SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_EVALUATIONS);
+  let all=[];
+  if(sh&&sh.getLastRow()>1){const vals=sh.getRange(2,1,sh.getLastRow()-1,EVALUATION_HEADERS_.length).getValues();all=vals.map(row=>{const o={};EVALUATION_HEADERS_.forEach((h,i)=>o[h]=row[i] instanceof Date?row[i].toISOString():row[i]);return o;});}
+  if(actor.role==="HRD")return {ok:true,records:all};
+  if(actor.role==="KOOR KP")return {ok:true,records:all.filter(x=>x.division===actor.division)};
+  if(actor.role==="STAF")return {ok:true,records:all.filter(x=>x.staffId===actor.id)};
+  throw new Error("Akses ditolak.");
+}
+function submitEvaluation_(actor,data){
+  if(actor.role!=="HRD"&&actor.role!=="KOOR KP")throw new Error("Hanya HRD atau Koor KP yang dapat menilai staf.");
+  const staffId=String(data.staffId||"").trim(),period=String(data.period||"").trim().slice(0,40);
+  if(!staffId||!period)throw new Error("Staf dan periode penilaian wajib diisi.");
+  const staff=sheetToObjects_(SHEET_USERS).find(u=>u.id===staffId&&u.role==="STAF");
+  if(!staff)throw new Error("Akun staf tidak ditemukan.");
+  if(actor.role==="KOOR KP"&&staff.division!==actor.division)throw new Error("Koor KP hanya dapat menilai staf di divisinya.");
+  const keys=["discipline","responsibility","teamwork","initiative","performance"],scores={};
+  keys.forEach(k=>{const n=Number(data[k]);if(!Number.isInteger(n)||n<1||n>5)throw new Error("Setiap nilai harus bilangan bulat 1 sampai 5.");scores[k]=n;});
+  const record={id:"EV-"+Utilities.getUuid(),staffId:staff.id,staffName:staff.name,staffUsername:staff.username,division:staff.division||"",period,discipline:scores.discipline,responsibility:scores.responsibility,teamwork:scores.teamwork,initiative:scores.initiative,performance:scores.performance,average:Number((keys.reduce((s,k)=>s+scores[k],0)/keys.length).toFixed(2)),strengths:str_(data.strengths,1000),improvement:str_(data.improvement,1000),evaluatorId:actor.id,evaluatorName:actor.name,evaluatorRole:actor.role,createdAt:new Date().toISOString()};
+  evaluationSheet_().appendRow(EVALUATION_HEADERS_.map(h=>record[h]===undefined?"":record[h]));
+  auditEvent_(actor,"evaluation.create","staff-evaluation",record.id,"Penilaian staf "+staff.name+" periode "+period+".");
+  return {ok:true,record};
 }
 
 function appendObject_(name,obj){
@@ -1379,6 +1412,12 @@ function doPost(e){
 
       case "getAuditLog":
         return jsonResponse_(getAuditLog_(actor,data));
+
+      case "getEvaluations":
+        return jsonResponse_(getEvaluations_(actor));
+
+      case "submitEvaluation":
+        return jsonResponse_(withLock_(()=>submitEvaluation_(actor,data)));
 
       case "createUser":
         return jsonResponse_({ok:true,user:withLock_(()=>createUser_(actor,data))});

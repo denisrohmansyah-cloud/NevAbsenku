@@ -1204,7 +1204,7 @@ button:disabled { opacity:.6; cursor:not-allowed; transform:none; }
 </style>
 
 <link rel="stylesheet" href="notifications.css?v=1">
-<link rel="stylesheet" href="audit-log.css?v=1">
+<link rel="stylesheet" href="staff-evaluation.css?v=1">
 </head>
 
 <body>
@@ -4379,6 +4379,7 @@ function buildSidebar(){
     if(currentUser.role==="STAF"){
         html+=menuTitle("MENU UTAMA");
         html+=menuItem("staf-dashboard", "fa-house", "Dashboard");
+        html+=menuItem("staff-evaluation", "fa-star", "Penilaian Saya");
         html+=menuItem("staf-scan", "fa-qrcode", "Scan QR Absensi");
         html+=menuItem("staf-calendar", "fa-calendar-days", "Kalender");
         html+=menuItem("staf-history", "fa-clock-rotate-left", "Riwayat Absensi");
@@ -4397,7 +4398,7 @@ function buildSidebar(){
         html+=menuItem("hrd-warning", "fa-triangle-exclamation", "Surat Peringatan (SP)");
         html+=menuItem("hrd-location", "fa-location-dot", "Lokasi & Radius");
         html+=menuItem("users", "fa-users-gear", "Manajemen Akun");
-        html+=menuItem("hrd-audit-log", "fa-clipboard-list", "Audit Aktivitas");
+        html+=menuItem("staff-evaluation", "fa-star-half-stroke", "Penilaian Staf");
     }
 
     if(currentUser.role==="KOOR KP"){
@@ -4406,6 +4407,7 @@ function buildSidebar(){
         html+=menuItem("koor-qr", "fa-qrcode", "Buat QR Ngoprek");
         html+=menuItem("koor-attendance", "fa-clipboard-check", "Absensi Ngoprek");
         html+=menuItem("staff-recap", "fa-user-check", "Rekap per Staf");
+        html+=menuItem("staff-evaluation", "fa-star-half-stroke", "Penilaian Staf");
         html+=menuItem("koor-permit", "fa-file-medical", "Persetujuan Izin/Sakit");
         html+=menuItem("users", "fa-users-gear", "Manajemen Akun");
         html+=menuItem("my-warning", "fa-envelope-open-text", "Surat Peringatan");
@@ -4435,8 +4437,8 @@ function showPage(page){
     if(!currentUser) return;
 
     const allowed = {
-        "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "staf-activities", "my-warning", "settings"],
-        "HRD":["hrd-dashboard", "hrd-qr", "hrd-report", "staff-recap", "hrd-permit", "hrd-warning", "hrd-location", "users", "hrd-audit-log", "settings"],
+        "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "staf-activities", "my-warning", "staff-evaluation", "settings"],
+        "HRD":["hrd-dashboard", "hrd-qr", "hrd-report", "staff-recap", "hrd-permit", "hrd-warning", "hrd-location", "users", "staff-evaluation", "settings"],
         "KOOR KP":["koor-dashboard", "koor-qr", "koor-attendance", "staff-recap", "koor-permit", "users", "my-warning", "settings"]
     };
 
@@ -4470,7 +4472,8 @@ function showPage(page){
         "my-warning":"Surat Peringatan",
         "hrd-location":"Lokasi & Radius Kantor",
         "users":"Manajemen Akun",
-        "hrd-audit-log":"Audit Aktivitas",
+        "staff-evaluation":"Penilaian Staf",
+        
         "koor-dashboard":"Dashboard Koor KP",
         "koor-qr":"Buat QR Ngoprek",
         "koor-attendance":"Absensi Ngoprek",
@@ -4492,7 +4495,7 @@ function showPage(page){
     if(page==="staff-recap") initStaffRecapPage();
     if(page==="hrd-permit") renderPermitApproval("hrd");
     if(page==="hrd-warning" && typeof renderHrdWarnings==="function") renderHrdWarnings();
-    if(page==="hrd-audit-log" && typeof renderAuditLog==="function") renderAuditLog();
+    if(page==="staff-evaluation" && typeof renderStaffEvaluations==="function") renderStaffEvaluations();
     if(page==="my-warning" && typeof renderMyWarnings==="function") renderMyWarnings();
     if(page==="hrd-location") setTimeout(initOfficeMap, 50);
     if(page==="users") renderUsers();
@@ -7599,7 +7602,7 @@ function consumePendingAttendance(){
 <!-- File tambahan: Surat Peringatan (SP) dari HRD ke staf / Koor KP -->
 <script src="sp-warning.js"></script>
 <script src="notifications.js?v=2"></script>
-<script src="audit-log.js?v=1"></script>
+<script src="staff-evaluation.js?v=1"></script>
 
 </body>
 </html>
