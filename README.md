@@ -18,6 +18,8 @@ Aplikasi absensi digital berbasis web untuk pengelolaan jadwal kegiatan, QR atte
 | `cloud-sync.js` | Login, token sesi, sinkronisasi API, polling, dan antrean retry |
 | `geo-selfie.js` / `geo-selfie.css` | Geofencing, peta, lokasi sesi, dan selfie |
 | `sp-warning.js` / `sp-warning.css` | Surat peringatan (SP) |
+| `staff-evaluation.js` / `staff-evaluation.css` | Penilaian kinerja staf |
+| `priority-suite.js` / `priority-suite.css` | Analitik, koreksi absensi, profil, dan laporan |
 | `nev-logo.png` | Logo aplikasi |
 | `persist-login-dan-fix-garis-tabel.patch` | Patch historis; bukan file yang dimuat oleh halaman |
 
@@ -51,6 +53,15 @@ Baca [SECURITY.md](SECURITY.md) sebelum production. Jangan menganggap pembatasan
 ## Pusat notifikasi
 Pusat notifikasi dalam aplikasi tersedia untuk pengingat kegiatan, status pengajuan izin/sakit/dispen, SP, pengajuan yang menunggu review, dan penyerahan absensi KOOR KP ke HRD. Status baca disimpan secara lokal per akun/perangkat; tidak menambah kolom Google Sheets. Notifikasi dihitung dari data yang sudah diterima aplikasi dan bukan push notification ketika browser ditutup.
 
+
+## Penilaian kinerja staf
+Menu Penilaian Staf tersedia untuk HRD dan KOOR KP sesuai divisi; STAF hanya melihat penilaian sendiri. Data baru disimpan pada sheet terpisah `StaffEvaluations` dengan lima kriteria skala 1–5 dan nilai rata-rata server-side. Satu evaluator tidak dapat mengirim penilaian ganda untuk staf dan periode yang sama.
+
+## Koreksi absensi
+Staf dapat mengajukan koreksi terhadap record absensinya sendiri. HRD menjadi pengambil keputusan akhir; data absensi hanya berubah setelah persetujuan. Permintaan disimpan di sheet baru `AttendanceCorrections`, tanpa mengubah header sheet Attendance lama.
+
+## Analitik, profil, dan laporan
+Dashboard analitik menampilkan ringkasan berdasarkan data yang tersedia dan lingkup role. Profil staf merangkum identitas akun, riwayat absensi, dan penilaian yang dapat diakses. Laporan HRD dapat difilter berdasarkan rentang tanggal/divisi dan diekspor ke Excel. Angka analitik dan laporan tetap perlu dicocokkan dengan rekap manual sebelum digunakan sebagai laporan resmi.
 
 ## AuditLog (jejak audit)
 Backend Apps Script membuat sheet `AuditLog` secara otomatis saat aktivitas pertama berhasil dicatat. Sheet ini terpisah dari sheet operasional dan tidak mengubah header `Users`, `Sessions`, `Attendance`, `Settings`, `Permits`, atau `Warnings`.

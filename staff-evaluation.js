@@ -17,7 +17,7 @@ function isEvaluator(){return currentUser?.role==="HRD"||currentUser?.role==="KO
 function setStatus(t,error){const el=document.getElementById("evalStatus");if(el){el.textContent=t;el.classList.toggle("is-error",!!error)}}
 async function loadRecords(){
  if(!currentUser||!currentPage())return;if(loading)return;loading=true;setStatus("Mengambil data penilaian…");
- try{const res=await cloudPost("getEvaluations",{},1);records=Array.isArray(res.records)?res.records:[];setStatus(records.length+" penilaian ditemukan.");renderForm();render()}
+ try{const res=await cloudPost("getEvaluations",{},1);records=Array.isArray(res.records)?res.records:[];window.PriorityEvaluationRecords=records;setStatus(records.length+" penilaian ditemukan.");renderForm();render()}
  catch(e){setStatus("Gagal memuat penilaian: "+(e.message||e),true)}
  finally{loading=false}
 }
