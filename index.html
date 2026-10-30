@@ -6832,24 +6832,39 @@ async function purgeAttendanceData(){
 CALENDAR
 ========================================================= */
 
+let staffCalendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1);
+let staffCalendarSelected=getTodayWIB();
 function renderCalendar(){
-    const sessions=load(DB.sessions).sort((a,b)=> a.date.localeCompare(b.date));
-    const container=document.getElementById("staffCalendar");
-    if(!sessions.length){
-        container.innerHTML=emptyHTML("fa-calendar", "Belum ada jadwal kegiatan."); return;
-    }
-    container.innerHTML=`<div class="grid-3">
-        ${sessions.map(s=>`
-            <div class="activity-card">
-                <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px;">
-                    <div class="activity-icon" style="margin:0;"><i class="fa-solid fa-calendar-check"></i></div>
-                    ${s.active ? `<span class="badge badge-active">Aktif</span>` : `<span class="badge badge-inactive">Nonaktif</span>`}
-                </div>
-                <h4>${escapeHTML(s.activity)}</h4><p>${escapeHTML(s.division)}</p>
-                <p style="margin-top:8px;"><strong>${escapeHTML(s.date)}</strong><br>${escapeHTML(s.start)} -${escapeHTML(s.end)}</p>
-                <p>${escapeHTML(s.location)}</p>
-            </div>
-        `).join("")}</div>`;
+ const container=document.getElementById("staffCalendar");if(!container||!currentUser)return;
+ const allSessions=Array.isArray(load(DB.sessions))?load(DB.sessions):[];
+ const sessions=allSessions.filter(s=>s&&/^\\d{4}-\\d{2}-\\d{2}$/.test(String(s.date||""))&&(!s.division||s.division==="-"||s.division===currentUser.division));
+ const attendance=Array.isArray(load(DB.attendance))?load(DB.attendance):[];
+ const mine=attendance.filter(a=>a&&a.userId===currentUser.id);
+ const year=staffCalendarMonth.getFullYear(),month=staffCalendarMonth.getMonth();
+ const first=new Date(year,month,1),last=new Date(year,month+1,0);
+ const offset=(first.getDay()+6)%7,total=Math.ceil((offset+last.getDate())/7)*7;
+ const monthLabel=new Intl.DateTimeFormat("id-ID",{month:"long",year:"numeric"}).format(first);
+ const byDate={};sessions.forEach(s=>(byDate[s.date]||(byDate[s.date]=[])).push(s));
+ const dayNames=["Sen","Sel","Rab","Kam","Jum","Sab","Min"];
+ const cells=Array.from({length:total},(_,i)=>{
+  const day=i-offset+1;if(day<1||day>last.getDate())return '<div class="staff-cal-day is-outside"></div>';
+  const date=year+"-"+String(month+1).padStart(2,"0")+"-"+String(day).padStart(2,"0"),items=byDate[date]||[];
+  const today=date===getTodayWIB(),selected=date===staffCalendarSelected;
+  return '<button type="button" class="staff-cal-day'+(today?' is-today':'')+(selected?' is-selected':'')+(items.length?' has-events':'')+'" data-calendar-date="'+date+'" aria-label="'+day+(items.length?' memiliki '+items.length+' kegiatan':'')+'"><span class="staff-cal-number">'+day+'</span>'+(items.length?'<span class="staff-cal-dot" aria-hidden="true"></span>':'')+'</button>';
+ }).join("");
+ const selectedItems=(byDate[staffCalendarSelected]||[]).slice().sort((a,b)=>String(a.start||"").localeCompare(String(b.start||"")));
+ const details=selectedItems.length?selectedItems.map(s=>{
+  const rec=mine.find(a=>a.sessionId===s.id);
+  let status=rec?.status||"Belum absen";
+  if(!rec&&s.active===false&&s.date<=getTodayWIB())status="Alpha";
+  const badge=status==="Hadir"?"success":status==="Belum absen"?"neutral":status==="Alpha"?"danger":"warning";
+  return '<article class="staff-cal-event"><div class="staff-cal-event-main"><strong>'+escapeHTML(s.activity||"Kegiatan")+'</strong><span>'+escapeHTML(s.start||"-")+' – '+escapeHTML(s.end||"-")+'</span><small>'+escapeHTML(s.division||"Umum")+' · '+escapeHTML(s.location||"-")+'</small></div><span class="staff-cal-status '+badge+'">'+escapeHTML(status)+'</span></article>';
+ }).join(""):'<div class="staff-cal-empty">'+(sessions.length?'Tidak ada kegiatan pada tanggal ini.':'Belum ada jadwal kegiatan untuk divisi Anda.')+'</div>';
+ container.innerHTML='<div class="staff-cal-shell"><div class="staff-cal-toolbar"><button type="button" class="btn btn-outline" id="staffCalPrev" aria-label="Bulan sebelumnya"><i class="fa-solid fa-chevron-left"></i></button><h4>'+escapeHTML(monthLabel)+'</h4><button type="button" class="btn btn-outline" id="staffCalNext" aria-label="Bulan berikutnya"><i class="fa-solid fa-chevron-right"></i></button><button type="button" class="btn btn-outline" id="staffCalToday">Hari ini</button></div><div class="staff-cal-grid">'+dayNames.map(d=>'<div class="staff-cal-weekday">'+d+'</div>').join("")+cells+'</div><div class="staff-cal-legend"><span class="staff-cal-dot"></span> Ada kegiatan</div><section class="staff-cal-details"><h4>Kegiatan pada '+escapeHTML(new Intl.DateTimeFormat("id-ID",{dateStyle:"full",timeZone:"Asia/Jakarta"}).format(new Date(staffCalendarSelected+"T12:00:00+07:00")))+'</h4>'+details+'</section></div>';
+ container.querySelector("#staffCalPrev").onclick=()=>{staffCalendarMonth=new Date(year,month-1,1);renderCalendar()};
+ container.querySelector("#staffCalNext").onclick=()=>{staffCalendarMonth=new Date(year,month+1,1);renderCalendar()};
+ container.querySelector("#staffCalToday").onclick=()=>{const d=getTodayWIB();staffCalendarMonth=new Date(Number(d.slice(0,4)),Number(d.slice(5,7))-1,1);staffCalendarSelected=d;renderCalendar()};
+ container.querySelectorAll("[data-calendar-date]").forEach(btn=>btn.addEventListener("click",()=>{staffCalendarSelected=btn.dataset.calendarDate;renderCalendar()}));
 }
 
 
