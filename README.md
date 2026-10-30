@@ -50,3 +50,11 @@ Baca [SECURITY.md](SECURITY.md) sebelum production. Jangan menganggap pembatasan
 
 ## Pusat notifikasi
 Pusat notifikasi dalam aplikasi tersedia untuk pengingat kegiatan, status pengajuan izin/sakit/dispen, SP, pengajuan yang menunggu review, dan penyerahan absensi KOOR KP ke HRD. Status baca disimpan secara lokal per akun/perangkat; tidak menambah kolom Google Sheets. Notifikasi dihitung dari data yang sudah diterima aplikasi dan bukan push notification ketika browser ditutup.
+
+
+## AuditLog (jejak audit)
+Backend Apps Script membuat sheet `AuditLog` secara otomatis saat aktivitas pertama berhasil dicatat. Sheet ini terpisah dari sheet operasional dan tidak mengubah header `Users`, `Sessions`, `Attendance`, `Settings`, `Permits`, atau `Warnings`.
+
+Kolom: `timestamp`, `actorId`, `actorName`, `actorRole`, `actorDivision`, `action`, `entityType`, `entityId`, dan `summary`. Audit mencatat aktivitas penting seperti pembuatan/perubahan/penghapusan akun, check-in, submit sesi, perubahan status QR, review izin, penerbitan/pencabutan SP, perubahan pengaturan, serta operasi simpan massal.
+
+Data sensitif seperti password, token autentikasi/QR, isi alasan pribadi, koordinat, dan URL foto tidak disimpan dalam ringkasan audit. Kegagalan penulisan audit dicatat pada execution log dan tidak membatalkan aksi bisnis yang telah berhasil. Endpoint `getAuditLog` dibatasi untuk HRD (maksimum 500 catatan per permintaan).
