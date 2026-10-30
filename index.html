@@ -4393,13 +4393,11 @@ function buildSidebar(){
         html+=menuTitle("HRD");
         html+=menuItem("hrd-dashboard", "fa-chart-line", "Dashboard");
         html+=menuItem("hrd-qr", "fa-qrcode", "Buat QR Absensi");
-        html+=menuItem("hrd-report", "fa-table-list", "Rekap Absensi");
         html+=menuItem("staff-recap", "fa-user-check", "Rekap per Staf");
         html+=menuItem("hrd-analytics", "fa-chart-pie", "Analitik Kehadiran");
         html+=menuItem("hrd-permit", "fa-file-medical", "Persetujuan Izin/Sakit");
         html+=menuItem("hrd-warning", "fa-triangle-exclamation", "Surat Peringatan (SP)");
         html+=menuItem("hrd-location", "fa-location-dot", "Lokasi & Radius");
-        html+=menuItem("users", "fa-users-gear", "Manajemen Akun");
         html+=menuItem("staff-evaluation", "fa-star-half-stroke", "Penilaian Staf");
     }
 
@@ -4411,11 +4409,11 @@ function buildSidebar(){
         html+=menuItem("staff-recap", "fa-user-check", "Rekap per Staf");
         html+=menuItem("staff-evaluation", "fa-star-half-stroke", "Penilaian Staf");
         html+=menuItem("koor-permit", "fa-file-medical", "Persetujuan Izin/Sakit");
-        html+=menuItem("users", "fa-users-gear", "Manajemen Akun");
         html+=menuItem("my-warning", "fa-envelope-open-text", "Surat Peringatan");
     }
 
     html+=menuTitle("AKUN");
+    if(currentUser.role==="HRD" || currentUser.role==="KOOR KP") html+=menuItem("users", "fa-users-gear", "Manajemen Akun");
     html+=menuItem("settings", "fa-user-gear", "Pengaturan");
 
     menu.innerHTML=html;
@@ -4440,7 +4438,7 @@ function showPage(page){
 
     const allowed = {
         "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "staf-activities", "my-warning", "staff-evaluation", "settings"],
-        "HRD":["hrd-dashboard", "hrd-qr", "hrd-report", "staff-recap", "hrd-permit", "hrd-warning", "hrd-location", "users", "staff-evaluation", "hrd-analytics", "settings"],
+        "HRD":["hrd-dashboard", "hrd-qr", "staff-recap", "hrd-permit", "hrd-warning", "hrd-location", "users", "staff-evaluation", "hrd-analytics", "settings"],
         "KOOR KP":["koor-dashboard", "koor-qr", "koor-attendance", "staff-recap", "koor-permit", "users", "my-warning", "settings"]
     };
 
@@ -4469,7 +4467,6 @@ function showPage(page){
         "staf-activities":"Kegiatan",
         "hrd-dashboard":"Dashboard HRD",
         "hrd-qr":"Buat QR Absensi",
-        "hrd-report":"Rekap Absensi",
         "staff-recap":"Rekap per Staf",
         "hrd-permit":"Persetujuan Izin/Sakit",
         "hrd-warning":"Surat Peringatan (SP)",
@@ -4496,7 +4493,6 @@ function showPage(page){
     if(page==="staf-permit"){ populatePermitSessionOptions(); renderPermitHistory(); }
     if(page==="hrd-dashboard") renderHRDDashboard();
     if(page==="hrd-qr"){ renderQRSessionList("hrd"); populateSessionAttendancePicker(); }
-    if(page==="hrd-report") renderHRDReport();
     if(page==="staff-recap") initStaffRecapPage();
     if(page==="hrd-permit") renderPermitApproval("hrd");
     if(page==="hrd-warning" && typeof renderHrdWarnings==="function") renderHrdWarnings();
@@ -5914,20 +5910,49 @@ function renderHRDReport(){
 }
 
 function renderHRDDashboard(){
-    const users=load(DB.users);
-    const attendance=hrdVisibleAttendance();
-    const staff=users.filter(u=>u.role==="STAF");
-    
-    document.getElementById("hrdTotalStaff").textContent=staff.length;
-    document.getElementById("hrdHadir").textContent=attendance.filter(a=>a.status==="Hadir").length;
-    document.getElementById("hrdIzinSakit").textContent=attendance.filter(a=>a.status==="Izin" || a.status==="Sakit").length;
-    document.getElementById("hrdAlpha").textContent=attendance.filter(a=>a.status==="Alpha").length + implicitAlphaCount(staff, hrdVisibleSessions(), attendance);
-    document.getElementById("hrdDispen").textContent=attendance.filter(a=>a.status==="Dispen").length;
-
-    const recent=[...attendance].sort((a,b)=> new Date(b.checkIn) - new Date(a.checkIn)).slice(0,8);
+    const safeArray=(key)=>{const value=load(key,[]);return Array.isArray(value)?value.filter(Boolean):[]};
+    const set=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=String(value)};
     const container=document.getElementById("hrdRecentAttendance");
-    if(!recent.length) container.innerHTML=emptyHTML("fa-clipboard", "Belum ada absensi.");
-    else container.innerHTML=attendanceTable(recent,false);
+    try{
+        const users=safeArray(DB.users),sessions=safeArray(DB.sessions),allAttendance=safeArray(DB.attendance);
+        const staff=users.filter(u=>u.role==="STAF");
+        const draftIds=new Set(sessions.filter(s=>s.creatorRole==="KOOR KP"&&s.attendanceSubmitted!==true).map(s=>s.id));
+        const attendance=allAttendance.filter(a=>!draftIds.has(a.sessionId));
+        let implicitAlpha=0;
+        try{
+            const nowSessions=sessions.filter(s=>{
+                const draft=s.creatorRole==="KOOR KP"&&s.attendanceSubmitted!==true;
+                const ended=typeof isSessionEnded==="function"&&isSessionEnded(s);
+                const deactivated=s.active===false&&s.date&&s.date<=getTodayWIB();
+                return draft||ended||deactivated;
+            });
+            const recorded=new Set(attendance.map(a=>a.sessionId+"|"+a.userId));
+            nowSessions.forEach(s=>staff.forEach(u=>{
+                const general=!s.division||s.division==="-";
+                if((general||s.division===u.division)&&!recorded.has(s.id+"|"+u.id))implicitAlpha++;
+            }));
+        }catch(alphaError){console.warn("HRD dashboard Alpha calculation:",alphaError)}
+        set("hrdTotalStaff",staff.length);
+        set("hrdHadir",attendance.filter(a=>a.status==="Hadir").length);
+        set("hrdIzinSakit",attendance.filter(a=>a.status==="Izin"||a.status==="Sakit").length);
+        set("hrdAlpha",attendance.filter(a=>a.status==="Alpha").length+implicitAlpha);
+        set("hrdDispen",attendance.filter(a=>a.status==="Dispen").length);
+        const recent=attendance.slice().sort((a,b)=>{
+            const time=x=>Date.parse(x.checkIn||x.date||"")||0;
+            return time(b)-time(a);
+        }).slice(0,8);
+        if(container){
+            if(!recent.length)container.innerHTML=emptyHTML("fa-clipboard","Belum ada absensi.");
+            else{
+                try{container.innerHTML=attendanceTable(recent,false)}
+                catch(tableError){console.error("HRD attendance table:",tableError);container.innerHTML=emptyHTML("fa-clipboard","Data absensi terbaru belum dapat ditampilkan.");}
+            }
+        }
+    }catch(error){
+        console.error("HRD dashboard render failed:",error);
+        ["hrdTotalStaff","hrdHadir","hrdIzinSakit","hrdAlpha","hrdDispen"].forEach(id=>set(id,"—"));
+        if(container)container.innerHTML='<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><p>Dashboard HRD belum dapat dimuat. Periksa sinkronisasi data lalu tekan Segarkan.</p><button class="btn btn-outline" onclick="renderHRDDashboard()">Coba lagi</button></div>';
+    }
 }
 
 
@@ -7607,7 +7632,7 @@ function consumePendingAttendance(){
 <!-- File tambahan: Surat Peringatan (SP) dari HRD ke staf / Koor KP -->
 <script src="sp-warning.js"></script>
 <script src="notifications.js?v=2"></script>
-<script src="staff-evaluation.js?v=2"></script>
+<script src="staff-evaluation.js?v=4"></script>
 <script src="priority-suite.js?v=1"></script>
 
 </body>
