@@ -5003,7 +5003,7 @@ const currentTime = `${wib.hour}:${wib.minute}`;
     return true;
 }
 
-function finalizeAttendance(session, token, location, photo){
+async function finalizeAttendance(session, token, location, photo){
     const attendance=load(DB.attendance);
     const duplicate=attendance.find(a=> a.sessionId===session.id && a.userId===currentUser.id);
     if(duplicate){
@@ -5022,10 +5022,23 @@ function finalizeAttendance(session, token, location, photo){
         photo: photo || null
     };
 
-    attendance.push(record);
-    save(DB.attendance,attendance);
-
-    toast(`Absensi ${session.activity} berhasil.`, "success");
+    if(typeof cloudSyncEnabled!=="undefined" && cloudSyncEnabled){
+        const result=await cloudPost("addAttendance",{
+            sessionId:session.id, token:token,
+            lat:location ? location.lat : null,
+            lng:location ? location.lng : null,
+            photo:photo || null
+        },1);
+        if(!result || !result.ok || !result.record) throw new Error("Server belum mengonfirmasi penyimpanan absensi.");
+        const saved=result.record;
+        const fresh=load(DB.attendance).filter(a=>!(a.sessionId===saved.sessionId && a.userId===saved.userId));
+        fresh.push(saved);
+        _localSave(DB.attendance,fresh);
+    }else{
+        attendance.push(record);
+        _localSave(DB.attendance,attendance);
+    }
+    toast(`Absensi ${session.activity} berhasil disimpan.`, "success");
     updateScannerStatus(`Berhasil hadir: ${session.activity}${session.division!=="-" ? " • "+session.division : ""}`, "success");
     const manualInput=document.getElementById("manualToken");
     if(manualInput) manualInput.value="";
@@ -6182,7 +6195,7 @@ function openEditAttendance(id){
     document.getElementById("editAttendanceModal").classList.add("show");
 }
 
-function saveAttendanceEdit(){
+async function saveAttendanceEdit(){
     const id=document.getElementById("editAttendanceId").value;
     const status=document.getElementById("editAttendanceStatus").value;
     const sessionId=document.getElementById("editAttendanceSessionId")?.value;
@@ -6229,11 +6242,23 @@ function saveAttendanceEdit(){
         closeModal("editAttendanceModal"); return;
     }
 
-    save(DB.attendance,attendance);
-    closeModal("editAttendanceModal");
+    _localSave(DB.attendance,attendance);
     renderAll();
     renderSessionStaffStatus();
-    toast("Status absensi berhasil diperbarui.", "success");
+    if(typeof cloudSyncEnabled!=="undefined" && cloudSyncEnabled){
+        try{
+            const synced=await pushToCloud(DB.attendance,attendance);
+            if(!synced) throw new Error("Perubahan masih menunggu sinkronisasi.");
+            closeModal("editAttendanceModal");
+            toast("Status absensi berhasil disimpan ke server.", "success");
+        }catch(err){
+            closeModal("editAttendanceModal");
+            toast("Perubahan disimpan di perangkat, tetapi belum tersinkron: "+friendlyCloudError(err), "error");
+        }
+    }else{
+        closeModal("editAttendanceModal");
+        toast("Status absensi disimpan secara lokal (mode offline).", "success");
+    }
 }
 
 async function deleteAttendance(id){

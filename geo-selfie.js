@@ -577,12 +577,16 @@ async function submitAttendanceWithSelfie(){
     if(submitBtn){ submitBtn.disabled = true; submitBtn.innerHTML = "<i class=\"fa-solid fa-spinner fa-spin\"></i> Menyimpan..."; }
     if(retakeBtn) retakeBtn.disabled = true;
 
+    let saved=false;
     try{
         await finalizeAttendance(pendingAttendance.session, pendingAttendance.token, pendingAttendance.location, pendingAttendance.photo);
-    } finally {
+        saved=true;
+    }catch(err){
+        toast("Absensi belum tersimpan: "+(err && err.message ? err.message : "gagal menghubungi server"), "error");
+    }finally{
         if(submitBtn){ submitBtn.disabled = false; submitBtn.innerHTML = "<i class=\"fa-solid fa-check\"></i> Kirim Absensi"; }
         if(retakeBtn) retakeBtn.disabled = false;
-        closeSelfieModal();
+        if(saved) closeSelfieModal();
     }
 }
 
