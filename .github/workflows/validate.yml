@@ -31,7 +31,7 @@ jobs:
           node --check sp-warning.js
           node --check notifications.js
           node --check staff-evaluation.js
-          node --check audit-log.js
+          node --check priority-suite.js
           node --check < apps-script/Code.gs
 
       - name: Check inline JavaScript in index.html
