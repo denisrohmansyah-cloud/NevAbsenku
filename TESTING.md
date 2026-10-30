@@ -93,3 +93,18 @@ Checklist manual ringkas untuk setiap rilis NEV Absenku. Tandai hasil uji dan br
 - [ ] Menu Laporan HRD tidak tampil pada seluruh role.
 - [ ] API koreksi absensi tidak tersedia.
 - [ ] Data historis pada sheet lama/AttendanceCorrections tidak dihapus.
+
+
+## Perubahan Dashboard HRD dan navigasi
+- [ ] Login sebagai HRD membuka Dashboard HRD tanpa area konten kosong.
+- [ ] Kartu Total Staf, Hadir, Izin/Sakit, Alpha, dan Dispen tampil tanpa error.
+- [ ] Tabel absensi terbaru tetap tampil saat ada data dan menampilkan empty state saat kosong.
+- [ ] Data parsial/tidak valid tidak membuat seluruh dashboard gagal dirender.
+- [ ] Menu Rekap Absensi tidak tampil untuk HRD dan rute `hrd-report` ditolak.
+- [ ] Manajemen Akun tampil di bagian AKUN, tepat sebelum Pengaturan.
+
+## Tanggal Penilaian
+- [ ] Form penilaian menggunakan date picker kalender, bukan input periode teks.
+- [ ] Tanggal wajib dipilih dan dikirim dalam format `YYYY-MM-DD`.
+- [ ] Daftar penilaian menampilkan tanggal dalam format lokal Indonesia.
+- [ ] Penilaian lama dengan label periode teks tetap dapat dibaca.
