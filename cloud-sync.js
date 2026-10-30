@@ -258,6 +258,7 @@ async function purgeCloudData(options){
 save = function(key,data){
     sanitizeList(key,data);
     _localSave(key,data);
+    try{ window.dispatchEvent(new Event("nev-cloud-updated")); }catch(e){}
     pushToCloud(key,data);
 };
 
@@ -332,6 +333,7 @@ function applyCloudAll(json){
     cloudLastError=null;
     cloudUnsynced=getCloudQueue().length;
     updateCloudBadge();
+    try{ window.dispatchEvent(new Event("nev-cloud-updated")); }catch(e){}
 }
 
 async function fetchCloudAll(){

@@ -46,3 +46,16 @@ Checklist manual ringkas untuk setiap rilis NEV Absenku. Tandai hasil uji dan br
 
 - [ ] Uji hapus/purge hanya di salinan data uji dan verifikasi data akun/lokasi yang seharusnya dipertahankan.
 - [ ] Pastikan backup dan prosedur pemulihan tersedia sebelum melakukan purge data produksi.
+
+
+## Pusat notifikasi dalam aplikasi
+- [ ] STAF melihat pengingat sesi aktif/mendatang yang sesuai divisinya.
+- [ ] STAF melihat perubahan status pengajuan izin/sakit/dispen.
+- [ ] STAF melihat SP yang belum dibaca; akun lain tidak melihat notifikasi tersebut.
+- [ ] KOOR KP hanya melihat pengajuan pada sesi Ngoprek miliknya.
+- [ ] HRD melihat pengajuan menunggu review dan sesi yang telah disubmit.
+- [ ] Klik notifikasi membuka halaman yang sesuai.
+- [ ] Tandai dibaca hanya memengaruhi akun/perangkat yang sedang digunakan.
+- [ ] Panel notifikasi responsif di desktop dan ponsel.
+- [ ] Notifikasi diperbarui setelah data lokal berubah dan setelah getAll selesai.
+- [ ] Tidak ada notifikasi duplikat untuk ID sumber yang sama.
