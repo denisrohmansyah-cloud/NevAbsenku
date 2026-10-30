@@ -10,12 +10,20 @@ function scopedRecords(){let ss=data("sessions"),aa=data("attendance");if(curren
 function analytics(){
  const el=ensurePage("hrd-analytics","Dashboard Analitik Kehadiran","Ringkasan kehadiran berdasarkan data yang tersedia dan hak akses akun.");if(!el)return;
  const {ss,aa}=scopedRecords(),staff=scopedStaff(),today=new Date().toISOString().slice(0,10),month=today.slice(0,7);
- const period=$("analyticsPeriod")?.value||month,filtered=ss.filter(s=>String(s.date||"").startsWith(period)),ids=new Set(filtered.map(s=>s.id)),records=aa.filter(a=>ids.has(a.sessionId));
- const counts={Hadir:0,Izin:0,Sakit:0,Dispen:0,Alpha:0};records.forEach(a=>{if(counts[a.status]!==undefined)counts[a.status]++});
- const expected=filtered.reduce((sum,s)=>sum+staff.filter(u=>!s.division||s.division==="-"||s.division===u.division).length,0),alpha=Math.max(0,expected-records.length);counts.Alpha=alpha;
+ const period=$("analyticsPeriod")?.value||month,filtered=ss.filter(s=>String(s.date||"").startsWith(period));
+ const bySession=new Map(filtered.map(s=>[s.id,s])),byAttendance=new Map();
+ aa.forEach(a=>{if(bySession.has(a.sessionId)&&!byAttendance.has(a.sessionId+"|"+a.userId))byAttendance.set(a.sessionId+"|"+a.userId,a)});
+ const counts={Hadir:0,Izin:0,Sakit:0,Dispen:0,Alpha:0},expectedByDivision={};
+ let expected=0;
+ filtered.forEach(s=>staff.forEach(u=>{
+   if(s.division&&s.division!=="-"&&s.division!==u.division)return;
+   expected++;const div=u.division||"-";expectedByDivision[div]=(expectedByDivision[div]||0)+1;
+   const rec=byAttendance.get(s.id+"|"+u.id),status=rec&&statusList.includes(rec.status)?rec.status:"Alpha";
+   counts[status]++;
+ }));
  const total=Object.values(counts).reduce((a,b)=>a+b,0),pct=total?Math.round(counts.Hadir/total*100):0;
  const divs=[...new Set(staff.map(x=>x.division||"-"))].sort();
- const byDiv=divs.map(d=>{const us=staff.filter(u=>(u.division||"-")===d),ids2=new Set(filtered.filter(s=>!s.division||s.division==="-"||s.division===d).map(s=>s.id)),rows=records.filter(a=>ids2.has(a.sessionId)&&us.some(u=>u.id===a.userId));const exp=filtered.filter(s=>!s.division||s.division==="-"||s.division===d).length*us.length;const hadir=rows.filter(a=>a.status==="Hadir").length;return {d,hadir,exp,pct:exp?Math.round(hadir/exp*100):0}});
+ const byDiv=divs.map(d=>{const us=staff.filter(u=>(u.division||"-")===d),sessions=filtered.filter(s=>!s.division||s.division==="-"||s.division===d),target=sessions.length*us.length;let hadir=0;sessions.forEach(s=>us.forEach(u=>{const rec=byAttendance.get(s.id+"|"+u.id);if(rec&&rec.status==="Hadir")hadir++}));return {d,hadir,exp:target,pct:target?Math.round(hadir/target*100):0}});
  const body=el.querySelector(".priority-body");body.innerHTML='<div class="priority-filter"><label>Periode<input id="analyticsPeriod" type="month" value="'+esc(period)+'" class="form-control"></label></div><div class="priority-kpis">'+[['Kegiatan',filtered.length],['Staf',staff.length],['Hadir',counts.Hadir],['Persentase hadir',pct+'%']].map(x=>'<div><strong>'+x[1]+'</strong><span>'+x[0]+'</span></div>').join("")+'</div><div class="priority-panel"><h4>Distribusi status</h4><div class="priority-bars">'+statusList.map(s=>'<div><span>'+s+'</span><b><i style="width:'+(total?counts[s]/total*100:0)+'%"></i></b><strong>'+counts[s]+'</strong></div>').join("")+'</div></div><div class="priority-panel"><h4>Kehadiran per divisi</h4><div class="priority-table"><table><thead><tr><th>Divisi</th><th>Hadir</th><th>Target</th><th>% Hadir</th></tr></thead><tbody>'+byDiv.map(x=>'<tr><td>'+esc(x.d)+'</td><td>'+x.hadir+'</td><td>'+x.exp+'</td><td>'+x.pct+'%</td></tr>').join("")+'</tbody></table></div></div><p class="priority-note">Alpha dihitung dari target peserta per sesi dikurangi record absensi yang tersedia. Pastikan status sesi dan kebijakan kehadiran telah sesuai sebelum menggunakan angka ini sebagai laporan resmi.</p>';
  $("analyticsPeriod").addEventListener("change",analytics);
 }
