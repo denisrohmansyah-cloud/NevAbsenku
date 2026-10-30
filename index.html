@@ -5748,7 +5748,8 @@ function normalizePhotoUrl(url, size){
 function isPrivatePhoto(url){
   if(!url) return false;
   const permits = load(DB.permits) || [];
-  return permits.some(p => p.photo === url);
+  const attendance = load(DB.attendance) || [];
+  return permits.some(p => p.photo === url) || attendance.some(a => a.photo === url);
 }
 
 /* Tanggal hari ini menurut WIB (format YYYY-MM-DD), bukan UTC. */
