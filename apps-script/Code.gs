@@ -294,6 +294,8 @@ function submitEvaluation_(actor,data){
   const staff=sheetToObjects_(SHEET_USERS).find(u=>u.id===staffId&&u.role==="STAF");
   if(!staff)throw new Error("Akun staf tidak ditemukan.");
   if(actor.role==="KOOR KP"&&staff.division!==actor.division)throw new Error("Koor KP hanya dapat menilai staf di divisinya.");
+  const existing=evaluationSheet_().getLastRow()>1?evaluationSheet_().getRange(2,1,evaluationSheet_().getLastRow()-1,EVALUATION_HEADERS_.length).getValues():[];
+  if(existing.some(row=>String(row[1])===staff.id&&String(row[5]).toLowerCase()===period.toLowerCase()&&String(row[14])===actor.id))throw new Error("Anda sudah memberikan penilaian untuk staf ini pada periode tersebut.");
   const keys=["discipline","responsibility","teamwork","initiative","performance"],scores={};
   keys.forEach(k=>{const n=Number(data[k]);if(!Number.isInteger(n)||n<1||n>5)throw new Error("Setiap nilai harus bilangan bulat 1 sampai 5.");scores[k]=n;});
   const record={id:"EV-"+Utilities.getUuid(),staffId:staff.id,staffName:staff.name,staffUsername:staff.username,division:staff.division||"",period,discipline:scores.discipline,responsibility:scores.responsibility,teamwork:scores.teamwork,initiative:scores.initiative,performance:scores.performance,average:Number((keys.reduce((s,k)=>s+scores[k],0)/keys.length).toFixed(2)),strengths:str_(data.strengths,1000),improvement:str_(data.improvement,1000),evaluatorId:actor.id,evaluatorName:actor.name,evaluatorRole:actor.role,createdAt:new Date().toISOString()};
