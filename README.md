@@ -19,7 +19,7 @@ Aplikasi absensi digital berbasis web untuk pengelolaan jadwal kegiatan, QR atte
 | `geo-selfie.js` / `geo-selfie.css` | Geofencing, peta, lokasi sesi, dan selfie |
 | `sp-warning.js` / `sp-warning.css` | Surat peringatan (SP) |
 | `staff-evaluation.js` / `staff-evaluation.css` | Penilaian kinerja staf |
-| `priority-suite.js` / `priority-suite.css` | Analitik, koreksi absensi, profil, dan laporan |
+| `priority-suite.js` / `priority-suite.css` | Analitik kehadiran HRD |
 | `nev-logo.png` | Logo aplikasi |
 | `persist-login-dan-fix-garis-tabel.patch` | Patch historis; bukan file yang dimuat oleh halaman |
 
@@ -57,11 +57,8 @@ Pusat notifikasi dalam aplikasi tersedia untuk pengingat kegiatan, status pengaj
 ## Penilaian kinerja staf
 Menu Penilaian Staf tersedia untuk HRD dan KOOR KP sesuai divisi; STAF hanya melihat penilaian sendiri. Data baru disimpan pada sheet terpisah `StaffEvaluations` dengan lima kriteria skala 1–5 dan nilai rata-rata server-side. Satu evaluator tidak dapat mengirim penilaian ganda untuk staf dan periode yang sama.
 
-## Koreksi absensi
-Staf dapat mengajukan koreksi terhadap record absensinya sendiri. HRD menjadi pengambil keputusan akhir; data absensi hanya berubah setelah persetujuan. Permintaan disimpan di sheet baru `AttendanceCorrections`, tanpa mengubah header sheet Attendance lama.
-
-## Analitik, profil, dan laporan
-Dashboard analitik menampilkan ringkasan berdasarkan data yang tersedia dan lingkup role. Profil staf merangkum identitas akun, riwayat absensi, dan penilaian yang dapat diakses. Laporan HRD dapat difilter berdasarkan rentang tanggal/divisi dan diekspor ke Excel. Angka analitik dan laporan tetap perlu dicocokkan dengan rekap manual sebelum digunakan sebagai laporan resmi.
+## Analitik kehadiran
+Dashboard analitik tersedia untuk HRD dengan pembatasan data sesuai visibilitas HRD. Perhitungan menggunakan pasangan unik sesi-staf yang memenuhi cakupan divisi; pasangan tanpa record dihitung Alpha. Cocokkan hasilnya dengan rekap manual sebelum dijadikan laporan resmi.
 
 ## AuditLog (jejak audit)
 Backend Apps Script membuat sheet `AuditLog` secara otomatis saat aktivitas pertama berhasil dicatat. Sheet ini terpisah dari sheet operasional dan tidak mengubah header `Users`, `Sessions`, `Attendance`, `Settings`, `Permits`, atau `Warnings`.
@@ -69,3 +66,7 @@ Backend Apps Script membuat sheet `AuditLog` secara otomatis saat aktivitas pert
 Kolom: `timestamp`, `actorId`, `actorName`, `actorRole`, `actorDivision`, `action`, `entityType`, `entityId`, dan `summary`. Audit mencatat aktivitas penting seperti pembuatan/perubahan/penghapusan akun, check-in, submit sesi, perubahan status QR, review izin, penerbitan/pencabutan SP, perubahan pengaturan, serta operasi simpan massal.
 
 Data sensitif seperti password, token autentikasi/QR, isi alasan pribadi, koordinat, dan URL foto tidak disimpan dalam ringkasan audit. Kegagalan penulisan audit dicatat pada execution log dan tidak membatalkan aksi bisnis yang telah berhasil. Endpoint `getAuditLog` dibatasi untuk HRD (maksimum 500 catatan per permintaan).
+
+
+### Fitur yang tidak lagi tersedia
+Menu dan API untuk Koreksi Absensi, Profil Staf, dan Laporan HRD telah dihapus. Jika sheet `AttendanceCorrections` pernah dibuat sebelumnya, sheet dan isinya sengaja tidak dihapus agar tidak ada kehilangan data; aplikasi tidak lagi mengaksesnya.
