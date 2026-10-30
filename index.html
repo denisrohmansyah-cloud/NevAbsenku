@@ -4391,7 +4391,7 @@ function showPage(page){
     const allowed = {
         "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "my-warning", "staff-evaluation", "settings"],
         "HRD":["hrd-dashboard", "hrd-qr", "staff-recap", "hrd-permit", "hrd-warning", "hrd-location", "users", "staff-evaluation", "settings"],
-        "KOOR KP":["koor-dashboard", "koor-qr", "koor-attendance", "staff-recap", "koor-permit", "users", "my-warning", "settings"]
+        "KOOR KP":["koor-dashboard", "koor-qr", "koor-attendance", "staff-recap", "staff-evaluation", "koor-permit", "users", "my-warning", "settings"]
     };
 
     if(!allowed[currentUser.role].includes(page)){
