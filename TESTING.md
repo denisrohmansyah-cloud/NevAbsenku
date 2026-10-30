@@ -70,3 +70,34 @@ Checklist manual ringkas untuk setiap rilis NEV Absenku. Tandai hasil uji dan br
 - [ ] Password, auth token, QR token, alasan izin/SP, koordinat, dan URL foto tidak masuk ke ringkasan audit.
 - [ ] Kegagalan pencatatan AuditLog tidak menggagalkan check-in atau mutasi utama.
 - [ ] Audit review izin mencatat perubahan status, tanpa mencatat alasan pribadi.
+
+
+## Penilaian staf
+- [ ] HRD dapat menilai staf dari semua divisi.
+- [ ] KOOR KP hanya dapat menilai staf di divisinya.
+- [ ] STAF hanya dapat membaca penilaian miliknya.
+- [ ] Nilai tiap kriteria dibatasi 1–5 dan rata-rata dihitung server-side.
+- [ ] Evaluator yang sama tidak dapat menilai staf yang sama dua kali pada periode yang sama.
+- [ ] Riwayat penilaian tampil pada profil sesuai lingkup akses.
+
+## Koreksi absensi
+- [ ] STAF hanya dapat mengajukan koreksi untuk record miliknya.
+- [ ] Pengajuan ganda yang masih menunggu ditolak.
+- [ ] Hanya HRD dapat menyetujui/menolak.
+- [ ] Keputusan tidak dapat diproses dua kali.
+- [ ] Record Attendance berubah hanya setelah keputusan Disetujui.
+- [ ] Sheet Attendance lama tidak berubah struktur; sheet AttendanceCorrections terpisah.
+
+## Analitik dan laporan
+- [ ] Angka analitik cocok dengan rekap manual pada data uji.
+- [ ] KOOR KP hanya melihat data sesi/absensi yang menjadi lingkupnya.
+- [ ] HRD melihat data yang sudah memenuhi aturan visibilitas HRD.
+- [ ] Filter periode, tanggal, dan divisi menghasilkan data yang benar.
+- [ ] Ekspor Excel cocok dengan tabel yang tampil.
+- [ ] Periksa perhitungan Alpha dan sesi yang tidak berlaku bagi divisi staf.
+
+## Profil staf
+- [ ] STAF hanya melihat profil/riwayat sendiri.
+- [ ] HRD dapat memilih staf lintas divisi.
+- [ ] KOOR KP hanya dapat memilih staf pada divisinya.
+- [ ] Riwayat absensi dan penilaian sesuai dengan data sumber.
