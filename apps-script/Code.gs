@@ -1140,7 +1140,7 @@ function addPermit_(actor,data){
     const dup=sheetToObjects_(SHEET_PERMITS).filter(validPermit_).find(r=>r.sessionId===session.id&&r.userId===actor.id&&r.status!=="Ditolak");
     if(dup)return {ok:true,record:dup,duplicate:true};
     const photoUrl=data.photo?savePhotoToDrive_(data.photo,(actor.username||"user")+"_"+session.date+"_"+Date.now(),"permit"):null;
-    const record:{
+    const record={
       id:newId_("PERMIT"), sessionId:session.id,
       sessionActivity:session.activity, sessionDivision:session.division,
       sessionDate:session.date, sessionLocation:session.location,
