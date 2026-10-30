@@ -4511,7 +4511,6 @@ function showPage(page){
     if(page==="hrd-permit") renderPermitApproval("hrd");
     if(page==="hrd-warning" && typeof renderHrdWarnings==="function") renderHrdWarnings();
     if(page==="staff-evaluation" && typeof renderStaffEvaluations==="function") renderStaffEvaluations();
-    if(["hrd-analytics","attendance-corrections","staff-profile","hrd-reports"].includes(page) && window.PrioritySuite) PrioritySuite.open(page);
     if(page==="my-warning" && typeof renderMyWarnings==="function") renderMyWarnings();
     if(page==="hrd-location") setTimeout(initOfficeMap, 50);
     if(page==="users") renderUsers();
