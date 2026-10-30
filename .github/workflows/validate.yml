@@ -30,6 +30,7 @@ jobs:
           node --check geo-selfie.js
           node --check sp-warning.js
           node --check notifications.js
+          node --check audit-log.js
           node --check < apps-script/Code.gs
 
       - name: Check inline JavaScript in index.html
