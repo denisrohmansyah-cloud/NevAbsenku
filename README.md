@@ -70,3 +70,7 @@ Data sensitif seperti password, token autentikasi/QR, isi alasan pribadi, koordi
 
 ### Fitur yang tidak lagi tersedia
 Menu dan API untuk Koreksi Absensi, Profil Staf, dan Laporan HRD telah dihapus. Jika sheet `AttendanceCorrections` pernah dibuat sebelumnya, sheet dan isinya sengaja tidak dihapus agar tidak ada kehilangan data; aplikasi tidak lagi mengaksesnya.
+
+
+### Navigasi HRD dan tanggal penilaian
+Menu Rekap Absensi tidak lagi tersedia untuk HRD. Manajemen Akun berada di bagian AKUN tepat di atas Pengaturan. Form Penilaian Staf menggunakan tanggal kalender; tanggal disimpan pada field `period` yang sudah ada dengan format `YYYY-MM-DD`, sehingga struktur sheet `StaffEvaluations` tidak berubah. Label periode teks pada data lama tetap ditampilkan.
