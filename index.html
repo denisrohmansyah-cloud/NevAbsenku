@@ -1205,6 +1205,7 @@ button:disabled { opacity:.6; cursor:not-allowed; transform:none; }
 
 <link rel="stylesheet" href="notifications.css?v=1">
 <link rel="stylesheet" href="staff-evaluation.css?v=1">
+<link rel="stylesheet" href="priority-suite.css?v=1">
 </head>
 
 <body>
@@ -4380,6 +4381,8 @@ function buildSidebar(){
         html+=menuTitle("MENU UTAMA");
         html+=menuItem("staf-dashboard", "fa-house", "Dashboard");
         html+=menuItem("staff-evaluation", "fa-star", "Penilaian Saya");
+        html+=menuItem("attendance-corrections", "fa-file-circle-check", "Koreksi Absensi");
+        html+=menuItem("staff-profile", "fa-id-card", "Profil Saya");
         html+=menuItem("staf-scan", "fa-qrcode", "Scan QR Absensi");
         html+=menuItem("staf-calendar", "fa-calendar-days", "Kalender");
         html+=menuItem("staf-history", "fa-clock-rotate-left", "Riwayat Absensi");
@@ -4394,11 +4397,18 @@ function buildSidebar(){
         html+=menuItem("hrd-qr", "fa-qrcode", "Buat QR Absensi");
         html+=menuItem("hrd-report", "fa-table-list", "Rekap Absensi");
         html+=menuItem("staff-recap", "fa-user-check", "Rekap per Staf");
+        html+=menuItem("hrd-analytics", "fa-chart-pie", "Analitik Kehadiran");
+        html+=menuItem("attendance-corrections", "fa-file-circle-check", "Koreksi Absensi");
+        html+=menuItem("staff-profile", "fa-id-card", "Profil Staf");
         html+=menuItem("hrd-permit", "fa-file-medical", "Persetujuan Izin/Sakit");
         html+=menuItem("hrd-warning", "fa-triangle-exclamation", "Surat Peringatan (SP)");
         html+=menuItem("hrd-location", "fa-location-dot", "Lokasi & Radius");
         html+=menuItem("users", "fa-users-gear", "Manajemen Akun");
         html+=menuItem("staff-evaluation", "fa-star-half-stroke", "Penilaian Staf");
+        html+=menuItem("hrd-analytics", "fa-chart-pie", "Analitik Kehadiran");
+        html+=menuItem("attendance-corrections", "fa-file-circle-check", "Koreksi Absensi");
+        html+=menuItem("staff-profile", "fa-id-card", "Profil Staf");
+        html+=menuItem("hrd-reports", "fa-file-export", "Laporan HRD");
     }
 
     if(currentUser.role==="KOOR KP"){
@@ -4437,8 +4447,8 @@ function showPage(page){
     if(!currentUser) return;
 
     const allowed = {
-        "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "staf-activities", "my-warning", "staff-evaluation", "settings"],
-        "HRD":["hrd-dashboard", "hrd-qr", "hrd-report", "staff-recap", "hrd-permit", "hrd-warning", "hrd-location", "users", "staff-evaluation", "settings"],
+        "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "staf-activities", "my-warning", "staff-evaluation", "attendance-corrections", "staff-profile", "settings"],
+        "HRD":["hrd-dashboard", "hrd-qr", "hrd-report", "staff-recap", "hrd-permit", "hrd-warning", "hrd-location", "users", "staff-evaluation", "hrd-analytics", "attendance-corrections", "staff-profile", "hrd-reports", "settings"],
         "KOOR KP":["koor-dashboard", "koor-qr", "koor-attendance", "staff-recap", "koor-permit", "users", "my-warning", "settings"]
     };
 
@@ -4448,6 +4458,7 @@ function showPage(page){
     }
 
     document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+    if(window.PrioritySuite) PrioritySuite.open(page);
     const target = document.getElementById("page-"+page);
     if(!target) return;
     target.classList.add("active");
@@ -4473,6 +4484,10 @@ function showPage(page){
         "hrd-location":"Lokasi & Radius Kantor",
         "users":"Manajemen Akun",
         "staff-evaluation":"Penilaian Staf",
+        "hrd-analytics":"Analitik Kehadiran",
+        "attendance-corrections":"Koreksi Absensi",
+        "staff-profile":"Profil Staf",
+        "hrd-reports":"Laporan HRD",
         
         "koor-dashboard":"Dashboard Koor KP",
         "koor-qr":"Buat QR Ngoprek",
@@ -4496,6 +4511,7 @@ function showPage(page){
     if(page==="hrd-permit") renderPermitApproval("hrd");
     if(page==="hrd-warning" && typeof renderHrdWarnings==="function") renderHrdWarnings();
     if(page==="staff-evaluation" && typeof renderStaffEvaluations==="function") renderStaffEvaluations();
+    if(["hrd-analytics","attendance-corrections","staff-profile","hrd-reports"].includes(page) && window.PrioritySuite) PrioritySuite.open(page);
     if(page==="my-warning" && typeof renderMyWarnings==="function") renderMyWarnings();
     if(page==="hrd-location") setTimeout(initOfficeMap, 50);
     if(page==="users") renderUsers();
@@ -7603,6 +7619,7 @@ function consumePendingAttendance(){
 <script src="sp-warning.js"></script>
 <script src="notifications.js?v=2"></script>
 <script src="staff-evaluation.js?v=1"></script>
+<script src="priority-suite.js?v=1"></script>
 
 </body>
 </html>
