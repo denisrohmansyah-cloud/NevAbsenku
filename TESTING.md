@@ -80,24 +80,16 @@ Checklist manual ringkas untuk setiap rilis NEV Absenku. Tandai hasil uji dan br
 - [ ] Evaluator yang sama tidak dapat menilai staf yang sama dua kali pada periode yang sama.
 - [ ] Riwayat penilaian tampil pada profil sesuai lingkup akses.
 
-## Koreksi absensi
-- [ ] STAF hanya dapat mengajukan koreksi untuk record miliknya.
-- [ ] Pengajuan ganda yang masih menunggu ditolak.
-- [ ] Hanya HRD dapat menyetujui/menolak.
-- [ ] Keputusan tidak dapat diproses dua kali.
-- [ ] Record Attendance berubah hanya setelah keputusan Disetujui.
-- [ ] Sheet Attendance lama tidak berubah struktur; sheet AttendanceCorrections terpisah.
+## Analitik kehadiran
+- [ ] Hanya HRD yang melihat menu analitik.
+- [ ] Cocokkan statistik per periode dengan hitung manual dari pasangan sesi-staf yang memenuhi divisi.
+- [ ] Setiap pasangan sesi-staf dihitung satu kali.
+- [ ] Pasangan tanpa record dihitung Alpha; status valid dihitung sesuai record.
+- [ ] Pastikan sesi divisi tertentu tidak menghitung staf dari divisi lain.
 
-## Analitik dan laporan
-- [ ] Angka analitik cocok dengan rekap manual pada data uji.
-- [ ] KOOR KP hanya melihat data sesi/absensi yang menjadi lingkupnya.
-- [ ] HRD melihat data yang sudah memenuhi aturan visibilitas HRD.
-- [ ] Filter periode, tanggal, dan divisi menghasilkan data yang benar.
-- [ ] Ekspor Excel cocok dengan tabel yang tampil.
-- [ ] Periksa perhitungan Alpha dan sesi yang tidak berlaku bagi divisi staf.
-
-## Profil staf
-- [ ] STAF hanya melihat profil/riwayat sendiri.
-- [ ] HRD dapat memilih staf lintas divisi.
-- [ ] KOOR KP hanya dapat memilih staf pada divisinya.
-- [ ] Riwayat absensi dan penilaian sesuai dengan data sumber.
+## Pemeriksaan penghapusan fitur
+- [ ] Menu Koreksi Absensi tidak tampil pada seluruh role.
+- [ ] Menu Profil Staf tidak tampil pada seluruh role.
+- [ ] Menu Laporan HRD tidak tampil pada seluruh role.
+- [ ] API koreksi absensi tidak tersedia.
+- [ ] Data historis pada sheet lama/AttendanceCorrections tidak dihapus.
