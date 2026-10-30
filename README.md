@@ -46,3 +46,7 @@ Lakukan pemeriksaan pada browser desktop dan ponsel. Gunakan akun uji untuk seti
 ## Catatan keamanan penting
 
 Baca [SECURITY.md](SECURITY.md) sebelum production. Jangan menganggap pembatasan menu atau pemeriksaan geofence di browser sebagai kontrol keamanan server. Endpoint harus memverifikasi sesi, role, kepemilikan data, masa berlaku QR, dan aturan absensi untuk setiap aksi.
+
+
+## Pusat notifikasi
+Pusat notifikasi dalam aplikasi tersedia untuk pengingat kegiatan, status pengajuan izin/sakit/dispen, SP, pengajuan yang menunggu review, dan penyerahan absensi KOOR KP ke HRD. Status baca disimpan secara lokal per akun/perangkat; tidak menambah kolom Google Sheets. Notifikasi dihitung dari data yang sudah diterima aplikasi dan bukan push notification ketika browser ditutup.
