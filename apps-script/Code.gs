@@ -368,6 +368,7 @@ function mergeSanitized_(name,incoming,actor,sanitize,policy){
     byId[out.id]=out;
   });
   objectsToSheet_(name,order.map(id=>byId[id]));
+  if(incoming.length) auditEvent_(actor,"data.bulk_save",name,"","Permintaan simpan massal; record masuk: "+incoming.length+", dilewati: "+skipped+".");
   return skipped;
 }
 
@@ -1091,6 +1092,7 @@ function addAttendance_(actor,data){
     const photoUrl=data.photo?savePhotoToDrive_(data.photo,(actor.username||"user")+"_"+session.date+"_"+Date.now(),"selfie"):null;
     const record={id:newId_("ATT"),sessionId:session.id,token:session.token,userId:actor.id,userName:actor.name,username:actor.username,activity:session.activity,division:session.division,date:session.date,checkIn:now.iso,status:"Hadir",creatorId:session.creatorId,creatorRole:session.creatorRole,lat:lat,lng:lng,photo:photoUrl,permitId:null,approvedFromPermit:false};
     try{appendObject_(SHEET_ATTENDANCE,record);}catch(err){if(photoUrl){const m=photoUrl.match(/\/file\/d\/([A-Za-z0-9_-]{10,100})\/view/);if(m){try{DriveApp.getFileById(m[1]).setTrashed(true);}catch(cleanupErr){Logger.log("Cleanup foto gagal: "+cleanupErr);}}}throw err;}
+    auditEvent_(actor,"attendance.checkin","attendance",record.id,"Check-in berhasil untuk sesi "+session.id+".");
     return {ok:true,record:record};
   });
 }
