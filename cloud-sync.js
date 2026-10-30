@@ -175,7 +175,7 @@ function getCloudDeadLetters(){
     }catch(e){return[];}
 }
 function setCloudDeadLetters(items){
-    try{localStorage.setItem(CLOUD_DEAD_LETTER_KEY,JSON.stringify(items.slice(-CLOUD_DEAD_LETTER_LIMIT)));}
+    try{localStorage.setItem(CLOUD_DEAD_LETTER_KEY,JSON.stringify(items));}
     catch(e){cloudLastError="Penyimpanan arsip gagal sinkron penuh. Ekspor data segera.";console.error(e);}
 }
 function archiveCloudQueueItem(item,error){
