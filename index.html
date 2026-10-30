@@ -1206,6 +1206,33 @@ button:disabled { opacity:.6; cursor:not-allowed; transform:none; }
 <link rel="stylesheet" href="notifications.css?v=1">
 <link rel="stylesheet" href="staff-evaluation.css?v=2">
 <link rel="stylesheet" href="priority-suite.css?v=1">
+
+<style id="staff-month-calendar-styles">
+#staffCalendar .staff-cal-shell{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:20px}
+#staffCalendar .staff-cal-toolbar{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:18px}
+#staffCalendar .staff-cal-toolbar h4{margin:0;min-width:180px;text-align:center;text-transform:capitalize}
+#staffCalendar .staff-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px}
+#staffCalendar .staff-cal-weekday{text-align:center;padding:9px 2px;color:#6b7280;font-size:13px;font-weight:700}
+#staffCalendar .staff-cal-day{position:relative;min-height:76px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#111827;display:flex;align-items:flex-start;justify-content:center;padding:12px 6px;cursor:pointer;font:inherit}
+#staffCalendar .staff-cal-day:hover{border-color:#dc2626;background:#fff7f7}
+#staffCalendar .staff-cal-day.is-outside{visibility:hidden;pointer-events:none}
+#staffCalendar .staff-cal-day.is-today .staff-cal-number{outline:1px solid #dc2626;border-radius:50%;padding:3px 7px}
+#staffCalendar .staff-cal-day.is-selected{background:#fff1f2;border:2px solid #dc2626}
+#staffCalendar .staff-cal-day.has-events:after{content:"";position:absolute;bottom:10px;width:7px;height:7px;border-radius:50%;background:#dc2626}
+#staffCalendar .staff-cal-legend{display:flex;align-items:center;gap:8px;color:#6b7280;font-size:13px;margin-top:12px}
+#staffCalendar .staff-cal-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626}
+#staffCalendar .staff-cal-details{border-top:1px solid #e5e7eb;margin-top:18px;padding-top:16px}
+#staffCalendar .staff-cal-details h4{margin:0 0 12px;text-transform:capitalize}
+#staffCalendar .staff-cal-event{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px 0;border-bottom:1px solid #f0f0f0}
+#staffCalendar .staff-cal-event-main{display:flex;flex-direction:column;gap:4px;min-width:0}
+#staffCalendar .staff-cal-event-main small,#staffCalendar .staff-cal-event-main span{color:#6b7280}
+#staffCalendar .staff-cal-status{font-size:12px;font-weight:700;padding:6px 10px;border-radius:20px;white-space:nowrap;background:#f3f4f6;color:#374151}
+#staffCalendar .staff-cal-status.success{background:#dcfce7;color:#166534}
+#staffCalendar .staff-cal-status.warning{background:#fef3c7;color:#92400e}
+#staffCalendar .staff-cal-status.danger{background:#fee2e2;color:#991b1b}
+#staffCalendar .staff-cal-empty{padding:18px;border-radius:10px;background:#f9fafb;color:#6b7280;text-align:center}
+@media(max-width:640px){#staffCalendar .staff-cal-shell{padding:12px}#staffCalendar .staff-cal-grid{gap:4px}#staffCalendar .staff-cal-day{min-height:48px;padding:8px 2px;font-size:13px}#staffCalendar .staff-cal-weekday{font-size:11px}#staffCalendar .staff-cal-toolbar{gap:6px}#staffCalendar .staff-cal-toolbar h4{min-width:0;flex:1;font-size:15px}#staffCalendar .staff-cal-event{align-items:flex-start;flex-direction:column}}
+</style>
 </head>
 
 <body>
@@ -1783,79 +1810,6 @@ APP
                     </div>
 
                     <div id="staffCalendar"></div>
-
-                </div>
-
-            </section>
-
-
-            <!-- =================================================
-            STAF ACTIVITIES
-            ================================================= -->
-
-            <section id="page-staf-activities" class="page">
-
-                <div class="section-card">
-
-                    <div class="section-header">
-
-                        <div>
-
-                            <h3>Kegiatan</h3>
-
-                            <p>
-                                Daftar kegiatan NEV
-                            </p>
-
-                        </div>
-
-                    </div>
-
-                    <div class="grid-3">
-
-                        <div class="activity-card">
-
-                            <div class="activity-icon">
-                                <i class="fa-solid fa-users"></i>
-                            </div>
-
-                            <h4>Rapat Rutin</h4>
-
-                            <p>
-                                Kegiatan rapat rutin organisasi.
-                            </p>
-
-                        </div>
-
-                        <div class="activity-card">
-
-                            <div class="activity-icon">
-                                <i class="fa-solid fa-laptop-code"></i>
-                            </div>
-
-                            <h4>Ngoprek</h4>
-
-                            <p>
-                                Kegiatan teknis berdasarkan divisi.
-                            </p>
-
-                        </div>
-
-                        <div class="activity-card">
-
-                            <div class="activity-icon">
-                                <i class="fa-solid fa-list-check"></i>
-                            </div>
-
-                            <h4>Kepanitiaan</h4>
-
-                            <p>
-                                Kegiatan kepanitiaan NEV.
-                            </p>
-
-                        </div>
-
-                    </div>
 
                 </div>
 
@@ -4385,7 +4339,6 @@ function buildSidebar(){
         html+=menuItem("staf-calendar", "fa-calendar-days", "Kalender");
         html+=menuItem("staf-history", "fa-clock-rotate-left", "Riwayat Absensi");
         html+=menuItem("staf-permit", "fa-file-medical", "Izin/Sakit");
-        html+=menuItem("staf-activities", "fa-list-check", "Kegiatan");
         html+=menuItem("my-warning", "fa-envelope-open-text", "Surat Peringatan");
     }
 
@@ -4436,7 +4389,7 @@ function showPage(page){
     if(!currentUser) return;
 
     const allowed = {
-        "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "staf-activities", "my-warning", "staff-evaluation", "settings"],
+        "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "my-warning", "staff-evaluation", "settings"],
         "HRD":["hrd-dashboard", "hrd-qr", "staff-recap", "hrd-permit", "hrd-warning", "hrd-location", "users", "staff-evaluation", "settings"],
         "KOOR KP":["koor-dashboard", "koor-qr", "koor-attendance", "staff-recap", "koor-permit", "users", "my-warning", "settings"]
     };
@@ -4462,7 +4415,6 @@ function showPage(page){
         "staf-calendar":"Kalender",
         "staf-history":"Riwayat Absensi",
         "staf-permit":"Izin/Sakit",
-        "staf-activities":"Kegiatan",
         "hrd-dashboard":"Dashboard HRD",
         "hrd-qr":"Buat QR Absensi",
         "staff-recap":"Rekap per Staf",
@@ -6907,24 +6859,39 @@ async function purgeAttendanceData(){
 CALENDAR
 ========================================================= */
 
+let staffCalendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1);
+let staffCalendarSelected=getTodayWIB();
 function renderCalendar(){
-    const sessions=load(DB.sessions).sort((a,b)=> a.date.localeCompare(b.date));
-    const container=document.getElementById("staffCalendar");
-    if(!sessions.length){
-        container.innerHTML=emptyHTML("fa-calendar", "Belum ada jadwal kegiatan."); return;
-    }
-    container.innerHTML=`<div class="grid-3">
-        ${sessions.map(s=>`
-            <div class="activity-card">
-                <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px;">
-                    <div class="activity-icon" style="margin:0;"><i class="fa-solid fa-calendar-check"></i></div>
-                    ${s.active ? `<span class="badge badge-active">Aktif</span>` : `<span class="badge badge-inactive">Nonaktif</span>`}
-                </div>
-                <h4>${escapeHTML(s.activity)}</h4><p>${escapeHTML(s.division)}</p>
-                <p style="margin-top:8px;"><strong>${escapeHTML(s.date)}</strong><br>${escapeHTML(s.start)} -${escapeHTML(s.end)}</p>
-                <p>${escapeHTML(s.location)}</p>
-            </div>
-        `).join("")}</div>`;
+ const container=document.getElementById("staffCalendar");if(!container||!currentUser)return;
+ const allSessions=Array.isArray(load(DB.sessions))?load(DB.sessions):[];
+ const sessions=allSessions.filter(s=>s&&/^\d{4}-\d{2}-\d{2}$/.test(String(s.date||""))&&(!s.division||s.division==="-"||s.division===currentUser.division));
+ const attendance=Array.isArray(load(DB.attendance))?load(DB.attendance):[];
+ const mine=attendance.filter(a=>a&&a.userId===currentUser.id);
+ const year=staffCalendarMonth.getFullYear(),month=staffCalendarMonth.getMonth();
+ const first=new Date(year,month,1),last=new Date(year,month+1,0);
+ const offset=(first.getDay()+6)%7,total=Math.ceil((offset+last.getDate())/7)*7;
+ const monthLabel=new Intl.DateTimeFormat("id-ID",{month:"long",year:"numeric"}).format(first);
+ const byDate={};sessions.forEach(s=>(byDate[s.date]||(byDate[s.date]=[])).push(s));
+ const dayNames=["Sen","Sel","Rab","Kam","Jum","Sab","Min"];
+ const cells=Array.from({length:total},(_,i)=>{
+  const day=i-offset+1;if(day<1||day>last.getDate())return '<div class="staff-cal-day is-outside"></div>';
+  const date=year+"-"+String(month+1).padStart(2,"0")+"-"+String(day).padStart(2,"0"),items=byDate[date]||[];
+  const today=date===getTodayWIB(),selected=date===staffCalendarSelected;
+  return '<button type="button" class="staff-cal-day'+(today?' is-today':'')+(selected?' is-selected':'')+(items.length?' has-events':'')+'" data-calendar-date="'+date+'" aria-label="'+day+(items.length?' memiliki '+items.length+' kegiatan':'')+'"><span class="staff-cal-number">'+day+'</span>'+(items.length?'<span class="staff-cal-dot" aria-hidden="true"></span>':'')+'</button>';
+ }).join("");
+ const selectedItems=(byDate[staffCalendarSelected]||[]).slice().sort((a,b)=>String(a.start||"").localeCompare(String(b.start||"")));
+ const details=selectedItems.length?selectedItems.map(s=>{
+  const rec=mine.find(a=>a.sessionId===s.id);
+  let status=rec?.status||"Belum absen";
+  if(!rec&&s.active===false&&s.date<=getTodayWIB())status="Alpha";
+  const badge=status==="Hadir"?"success":status==="Belum absen"?"neutral":status==="Alpha"?"danger":"warning";
+  return '<article class="staff-cal-event"><div class="staff-cal-event-main"><strong>'+escapeHTML(s.activity||"Kegiatan")+'</strong><span>'+escapeHTML(s.start||"-")+' – '+escapeHTML(s.end||"-")+'</span><small>'+escapeHTML(s.division||"Umum")+' · '+escapeHTML(s.location||"-")+'</small></div><span class="staff-cal-status '+badge+'">'+escapeHTML(status)+'</span></article>';
+ }).join(""):'<div class="staff-cal-empty">'+(sessions.length?'Tidak ada kegiatan pada tanggal ini.':'Belum ada jadwal kegiatan untuk divisi Anda.')+'</div>';
+ container.innerHTML='<div class="staff-cal-shell"><div class="staff-cal-toolbar"><button type="button" class="btn btn-outline" id="staffCalPrev" aria-label="Bulan sebelumnya"><i class="fa-solid fa-chevron-left"></i></button><h4>'+escapeHTML(monthLabel)+'</h4><button type="button" class="btn btn-outline" id="staffCalNext" aria-label="Bulan berikutnya"><i class="fa-solid fa-chevron-right"></i></button><button type="button" class="btn btn-outline" id="staffCalToday">Hari ini</button></div><div class="staff-cal-grid">'+dayNames.map(d=>'<div class="staff-cal-weekday">'+d+'</div>').join("")+cells+'</div><div class="staff-cal-legend"><span class="staff-cal-dot"></span> Ada kegiatan</div><section class="staff-cal-details"><h4>Kegiatan pada '+escapeHTML(new Intl.DateTimeFormat("id-ID",{dateStyle:"full",timeZone:"Asia/Jakarta"}).format(new Date(staffCalendarSelected+"T12:00:00+07:00")))+'</h4>'+details+'</section></div>';
+ container.querySelector("#staffCalPrev").onclick=()=>{staffCalendarMonth=new Date(year,month-1,1);renderCalendar()};
+ container.querySelector("#staffCalNext").onclick=()=>{staffCalendarMonth=new Date(year,month+1,1);renderCalendar()};
+ container.querySelector("#staffCalToday").onclick=()=>{const d=getTodayWIB();staffCalendarMonth=new Date(Number(d.slice(0,4)),Number(d.slice(5,7))-1,1);staffCalendarSelected=d;renderCalendar()};
+ container.querySelectorAll("[data-calendar-date]").forEach(btn=>btn.addEventListener("click",()=>{staffCalendarSelected=btn.dataset.calendarDate;renderCalendar()}));
 }
 
 

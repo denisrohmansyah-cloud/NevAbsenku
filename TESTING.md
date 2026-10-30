@@ -108,3 +108,15 @@ Checklist manual ringkas untuk setiap rilis NEV Absenku. Tandai hasil uji dan br
 - [ ] Tanggal wajib dipilih dan dikirim dalam format `YYYY-MM-DD`.
 - [ ] Daftar penilaian menampilkan tanggal dalam format lokal Indonesia.
 - [ ] Penilaian lama dengan label periode teks tetap dapat dibaca.
+
+## Fitur STAF: privasi penilaian dan kalender bulanan
+- [ ] Login sebagai STAF A hanya menampilkan evaluasi dengan `staffId` sama dengan ID STAF A.
+- [ ] Ringkasan total penilaian dan rata-rata hanya dihitung dari evaluasi milik STAF yang login.
+- [ ] Login sebagai STAF B tidak dapat melihat data penilaian STAF A.
+- [ ] HRD dan KOOR KP tetap dapat melihat daftar penilaian sesuai kewenangannya.
+- [ ] Kalender menampilkan seluruh hari dalam bulan, termasuk awal/akhir bulan yang kosong.
+- [ ] Navigasi bulan sebelumnya/berikutnya dan tombol Hari ini berfungsi.
+- [ ] Tanggal dengan satu atau lebih kegiatan menampilkan titik merah.
+- [ ] Klik tanggal menampilkan kegiatan, waktu, divisi/lokasi, dan status absensi milik staf yang login.
+- [ ] Status absensi tidak mengambil data staf lain.
+- [ ] Menu dan halaman Kegiatan tidak tampil/terakses oleh STAF.

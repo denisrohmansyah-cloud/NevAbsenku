@@ -74,3 +74,9 @@ Menu dan API untuk Koreksi Absensi, Profil Staf, dan Laporan HRD telah dihapus. 
 
 ### Navigasi HRD dan tanggal penilaian
 Menu Rekap Absensi tidak lagi tersedia untuk HRD. Manajemen Akun berada di bagian AKUN tepat di atas Pengaturan. Form Penilaian Staf menggunakan tanggal kalender; tanggal disimpan pada field `period` yang sudah ada dengan format `YYYY-MM-DD`, sehingga struktur sheet `StaffEvaluations` tidak berubah. Label periode teks pada data lama tetap ditampilkan.
+
+
+### Penyempurnaan akun STAF
+- Penilaian Saya difilter berdasarkan ID staf yang sedang login; ringkasan juga hanya memakai penilaian miliknya.
+- Kalender menampilkan tampilan bulanan, penanda titik merah untuk tanggal berkegiatan, dan detail kegiatan/status absensi saat tanggal dipilih.
+- Menu dan halaman Kegiatan statis dihapus. Pengelolaan sesi dan data kegiatan tetap tersedia melalui alur HRD/KOOR KP.
