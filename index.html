@@ -4773,7 +4773,8 @@ QR VALIDATION
 
 /* Status sesi dari data sinkron. Sesi Koor KP yang belum di-submit disebut "draft" dan belum terlihat HRD. */
 function isDraftKoorSession(s){ return !!(s && s.creatorRole==="KOOR KP" && s.attendanceSubmitted!==true); }
-function hrdVisibleSessions(){ return load(DB.sessions).filter(s=>!isDraftKoorSession(s)); }
+// HRD langsung melihat sesi KOOR KP sejak dibuat; hasil absensinya tetap disembunyikan sampai submit.
+function hrdVisibleSessions(){ return load(DB.sessions); }
 function hrdVisibleAttendance(){
     const draft=new Set(load(DB.sessions).filter(isDraftKoorSession).map(s=>s.id));
     return load(DB.attendance).filter(a=>!draft.has(a.sessionId));
@@ -4795,7 +4796,7 @@ function hrdReportRows(){
     const recorded=new Set(attendance.map(a=>a.sessionId+"|"+a.userId));
     const rows=attendance.slice();
     sessions.forEach(s=>{
-        if(!isDeactivatedSession(s)) return;
+        if(!isDraftKoorSession(s) && !isDeactivatedSession(s)) return;
         const general=!s.division || s.division==="-";
         staff.forEach(u=>{
             if(!general && s.division!==u.division) return;
@@ -6610,7 +6611,7 @@ function isSessionEnded(session){
 function implicitAlphaCount(staffList, sessions, attendance){
     let n = 0;
     sessions.forEach(s=>{
-        if(!isSessionEnded(s) && !isDeactivatedSession(s)) return;
+        if(!isDraftKoorSession(s) && !isSessionEnded(s) && !isDeactivatedSession(s)) return;
         const general = !s.division || s.division==="-";
         staffList.forEach(u=>{
             if(!general && s.division!==u.division) return;
@@ -6691,7 +6692,7 @@ function computeStaffRecap(){
             if(rec){ entries.push({ date:s.date, activity:s.activity, status:rec.status, checkIn:rec.checkIn }); return; }
             // Alpha hanya dihitung untuk sesi yang berlaku bagi divisi staf saat ini.
             if(!general && s.division!==u.division) return;
-            if(isSessionEnded(s) || isDeactivatedSession(s)) entries.push({ date:s.date, activity:s.activity, status:"Alpha", checkIn:null });
+            if(isDraftKoorSession(s) || isSessionEnded(s) || isDeactivatedSession(s)) entries.push({ date:s.date, activity:s.activity, status:"Alpha", checkIn:null });
         });
 
         // Catatan absensi yang sesinya sudah tidak ada tetap dihitung.
