@@ -39,7 +39,6 @@ const SHEET_PERMITS = "Permits";
 const SHEET_WARNINGS = "Warnings";
 const SHEET_AUDIT_LOG = "AuditLog";
 const SHEET_EVALUATIONS = "StaffEvaluations";
-const SHEET_CORRECTIONS = "AttendanceCorrections";
 
 const HEADERS = {
   Users: ["id", "name", "username", "password", "role", "division"],
@@ -304,62 +303,6 @@ function submitEvaluation_(actor,data){
   return {ok:true,record};
 }
 
-
-const CORRECTION_HEADERS_=["id","attendanceId","sessionId","staffId","staffName","division","originalStatus","requestedStatus","originalCheckIn","requestedCheckIn","reason","status","submittedAt","reviewedBy","reviewedByName","reviewedAt","reviewNote"];
-function correctionSheet_(){
-  const ss=SpreadsheetApp.getActiveSpreadsheet();let sh=ss.getSheetByName(SHEET_CORRECTIONS);
-  if(!sh){sh=ss.insertSheet(SHEET_CORRECTIONS);sh.getRange(1,1,1,CORRECTION_HEADERS_.length).setNumberFormat("@").setValues([CORRECTION_HEADERS_]);sh.setFrozenRows(1);}
-  else{const n=sh.getLastColumn();const head=n?sh.getRange(1,1,1,Math.max(n,CORRECTION_HEADERS_.length)).getDisplayValues()[0]:[];if(head.slice(0,CORRECTION_HEADERS_.length).join("|")!==CORRECTION_HEADERS_.join("|"))throw new Error("Header AttendanceCorrections tidak sesuai. Data tidak diubah.");}
-  return sh;
-}
-function correctionRows_(){
-  const sh=SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_CORRECTIONS);if(!sh||sh.getLastRow()<2)return[];
-  return sh.getRange(2,1,sh.getLastRow()-1,CORRECTION_HEADERS_.length).getValues().map(row=>{const o={};CORRECTION_HEADERS_.forEach((k,i)=>o[k]=row[i] instanceof Date?row[i].toISOString():row[i]);return o;});
-}
-function getCorrectionRequests_(actor){
-  const rows=correctionRows_();
-  if(actor.role==="HRD")return {ok:true,records:rows};
-  if(actor.role==="STAF")return {ok:true,records:rows.filter(x=>x.staffId===actor.id)};
-  if(actor.role==="KOOR KP")return {ok:true,records:rows.filter(x=>x.division===actor.division)};
-  throw new Error("Akses ditolak.");
-}
-function submitAttendanceCorrection_(actor,data){
-  if(actor.role!=="STAF")throw new Error("Hanya STAF yang dapat mengajukan koreksi absensi.");
-  const attendanceId=String(data.attendanceId||"").trim(),reason=str_(data.reason,500),requestedStatus=String(data.requestedStatus||"").trim(),requestedCheckIn=String(data.requestedCheckIn||"").trim();
-  if(!attendanceId||reason.length<8)throw new Error("Pilih absensi dan berikan alasan minimal 8 karakter.");
-  if(!["Hadir","Izin","Sakit","Dispen"].includes(requestedStatus))throw new Error("Status koreksi tidak valid.");
-  if(requestedCheckIn&&!TIME_RE.test(requestedCheckIn))throw new Error("Format jam harus HH:MM.");
-  return withLock_(()=>{
-    const attendance=sheetToObjects_(SHEET_ATTENDANCE).find(x=>x.id===attendanceId&&x.userId===actor.id&&validAttendance_(x));
-    if(!attendance)throw new Error("Data absensi tidak ditemukan atau bukan milik Anda.");
-    if(correctionRows_().some(x=>x.attendanceId===attendanceId&&x.status==="Menunggu"))throw new Error("Masih ada pengajuan koreksi yang menunggu keputusan.");
-    if(attendance.status===requestedStatus&&(!requestedCheckIn||attendance.checkIn===requestedCheckIn))throw new Error("Tidak ada perubahan yang diajukan.");
-    const record={id:"CR-"+Utilities.getUuid(),attendanceId,sessionId:attendance.sessionId,staffId:actor.id,staffName:actor.name,division:actor.division||"",originalStatus:attendance.status,requestedStatus,originalCheckIn:attendance.checkIn||"",requestedCheckIn,reason,status:"Menunggu",submittedAt:new Date().toISOString(),reviewedBy:"",reviewedByName:"",reviewedAt:"",reviewNote:""};
-    correctionSheet_().appendRow(CORRECTION_HEADERS_.map(k=>record[k]??""));
-    auditEvent_(actor,"attendance.correction.submit","attendance-correction",record.id,"Pengajuan koreksi absensi dibuat.");
-    return {ok:true,record};
-  });
-}
-function reviewAttendanceCorrection_(actor,data){
-  if(actor.role!=="HRD")throw new Error("Hanya HRD yang dapat memutuskan koreksi absensi.");
-  const id=String(data.id||"").trim(),decision=String(data.decision||"").trim(),note=str_(data.reviewNote,500);
-  if(!id||!["Disetujui","Ditolak"].includes(decision))throw new Error("Keputusan koreksi tidak valid.");
-  return withLock_(()=>{
-    const sh=correctionSheet_(),rows=correctionRows_(),idx=rows.findIndex(x=>x.id===id);
-    if(idx<0)throw new Error("Pengajuan koreksi tidak ditemukan.");
-    const req=rows[idx];if(req.status!=="Menunggu")throw new Error("Pengajuan ini sudah diproses.");
-    if(decision==="Disetujui"){
-      const all=sheetToObjects_(SHEET_ATTENDANCE),at=all.findIndex(x=>x.id===req.attendanceId&&x.userId===req.staffId);
-      if(at<0)throw new Error("Data absensi asal sudah tidak tersedia; koreksi tidak diterapkan.");
-      all[at].status=req.requestedStatus;if(req.requestedCheckIn)all[at].checkIn=req.requestedCheckIn;
-      objectsToSheet_(SHEET_ATTENDANCE,all);
-    }
-    const row=idx+2,values={status:decision,reviewedBy:actor.id,reviewedByName:actor.name,reviewedAt:new Date().toISOString(),reviewNote:note};
-    CORRECTION_HEADERS_.forEach((k,i)=>{if(Object.prototype.hasOwnProperty.call(values,k))sh.getRange(row,i+1).setValue(values[k]);});
-    auditEvent_(actor,"attendance.correction."+decision.toLowerCase(),"attendance-correction",id,"Keputusan koreksi absensi: "+decision+".");
-    return {ok:true,status:decision};
-  });
-}
 
 function appendObject_(name,obj){
   if(name===SHEET_SESSIONS) _sessMapCache = null;
@@ -1478,15 +1421,6 @@ function doPost(e){
 
       case "submitEvaluation":
         return jsonResponse_(withLock_(()=>submitEvaluation_(actor,data)));
-
-      case "getCorrectionRequests":
-        return jsonResponse_(getCorrectionRequests_(actor));
-
-      case "submitAttendanceCorrection":
-        return jsonResponse_(submitAttendanceCorrection_(actor,data));
-
-      case "reviewAttendanceCorrection":
-        return jsonResponse_(reviewAttendanceCorrection_(actor,data));
 
       case "createUser":
         return jsonResponse_({ok:true,user:withLock_(()=>createUser_(actor,data))});
