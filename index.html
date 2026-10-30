@@ -6837,7 +6837,7 @@ let staffCalendarSelected=getTodayWIB();
 function renderCalendar(){
  const container=document.getElementById("staffCalendar");if(!container||!currentUser)return;
  const allSessions=Array.isArray(load(DB.sessions))?load(DB.sessions):[];
- const sessions=allSessions.filter(s=>s&&/^\\d{4}-\\d{2}-\\d{2}$/.test(String(s.date||""))&&(!s.division||s.division==="-"||s.division===currentUser.division));
+ const sessions=allSessions.filter(s=>s&&/^\d{4}-\d{2}-\d{2}$/.test(String(s.date||""))&&(!s.division||s.division==="-"||s.division===currentUser.division));
  const attendance=Array.isArray(load(DB.attendance))?load(DB.attendance):[];
  const mine=attendance.filter(a=>a&&a.userId===currentUser.id);
  const year=staffCalendarMonth.getFullYear(),month=staffCalendarMonth.getMonth();
