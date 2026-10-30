@@ -1384,4 +1384,3 @@ function doPost(e){
     return failResponse_(err);
   }
 }
-}
