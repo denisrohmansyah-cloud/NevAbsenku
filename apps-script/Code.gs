@@ -1351,6 +1351,7 @@ function doPost(e){
 
       cache.remove(key);
       const authToken=createAuthToken_(user);
+      auditEvent_(user,"auth.login","auth",user.id,"Login berhasil.");
       const resp={ok:true,authToken:authToken,user:safeUser_(user)};
       // Kirim data awal sekaligus supaya klien tidak perlu request getAll kedua setelah login.
       try{ resp.all=getAllFor_(user); }catch(e){}
@@ -1358,7 +1359,10 @@ function doPost(e){
     }
 
     if(action==="logout"){
-      if(body.authToken) CacheService.getScriptCache().remove("nev-auth-"+String(body.authToken));
+      if(body.authToken){
+        try{const raw=CacheService.getScriptCache().get("nev-auth-"+String(body.authToken));if(raw){const session=JSON.parse(raw),u=usersCached_().find(x=>x.id===session.userId);if(u)auditEvent_(u,"auth.logout","auth",u.id,"Logout.");}}catch(ignore){}
+        CacheService.getScriptCache().remove("nev-auth-"+String(body.authToken));
+      }
       return jsonResponse_({ok:true});
     }
 
