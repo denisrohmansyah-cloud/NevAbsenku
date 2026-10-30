@@ -34,7 +34,7 @@ async function submitForm(e){
  e.preventDefault();if(saving)return;if(!isEvaluator())return;
  const form=e.currentTarget,fd=new FormData(form),payload={};for(const [k,v] of fd.entries())payload[k]=String(v).trim();
  if(!payload.staffId||!payload.period){setStatus("Pilih staf dan tanggal penilaian.",true);return}
- if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(payload.period)||Number.isNaN(Date.parse(payload.period+"T00:00:00"))){setStatus("Tanggal penilaian tidak valid.",true);return}
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(payload.period)||Number.isNaN(Date.parse(payload.period+"T00:00:00"))){setStatus("Tanggal penilaian tidak valid.",true);return}
  for(const [k] of criteria)if(!payload[k]){setStatus("Lengkapi seluruh nilai kriteria.",true);return}
  saving=true;const btn=form.querySelector("button[type=submit]");btn.disabled=true;
  try{await cloudPost("submitEvaluation",payload,1);form.reset();await loadRecords();setStatus("Penilaian berhasil disimpan.");}
@@ -45,11 +45,11 @@ function render(){
  const box=document.getElementById("evalList");if(!box)return;
  const q=(document.getElementById("evalSearch")?.value||"").toLowerCase(),period=document.getElementById("evalPeriod")?.value||"";
  const periods=[...new Set(records.map(r=>r.period).filter(Boolean))].sort().reverse(),sel=document.getElementById("evalPeriod"),old=sel.value;
- if(sel.options.length!==periods.length+1){sel.innerHTML='<option value="">Semua periode</option>'+periods.map(p=>'<option value="'+esc(p)+'">'+esc(/^\\d{4}-\\d{2}-\\d{2}$/.test(p)?formatDate(p):p)+'</option>').join("");sel.value=periods.includes(old)?old:""}
+ if(sel.options.length!==periods.length+1){sel.innerHTML='<option value="">Semua periode</option>'+periods.map(p=>'<option value="'+esc(p)+'">'+esc(/^\d{4}-\d{2}-\d{2}$/.test(p)?formatDate(p):p)+'</option>').join("");sel.value=periods.includes(old)?old:""}
  const list=records.filter(r=>(!q||[r.staffName,r.staffUsername,r.division,r.period,r.evaluatorName].join(" ").toLowerCase().includes(q))&&(!period||r.period===period)).sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
  const summary=document.getElementById("evalSummary");if(summary)summary.innerHTML='<div><strong>'+records.length+'</strong><span>Total penilaian</span></div><div><strong>'+(records.length?(records.reduce((s,r)=>s+Number(r.average||0),0)/records.length).toFixed(2):"0.00")+'</strong><span>Rata-rata keseluruhan</span></div>';
  if(!list.length){box.innerHTML='<div class="eval-empty">Belum ada penilaian yang sesuai.</div>';return}
- box.innerHTML=list.map(r=>'<article class="eval-card"><div class="eval-card-head"><div><h4>'+esc(r.staffName||"-")+'</h4><p>'+esc(r.division||"-")+' • '+esc(r.period||"-")+'</p></div><div class="eval-average"><strong>'+Number(r.average||0).toFixed(2)+'</strong><span>/ 5.00</span></div></div><div class="eval-scores">'+criteria.map(([k,label])=>'<div><span>'+label+'</span><strong>'+esc(r[k])+'/5</strong><i><b style="width:'+Math.max(0,Math.min(5,Number(r[k])||0))*20+'%"></b></i></div>').join("")+'</div><div class="eval-notes">'+(r.strengths?'<p><strong>Keunggulan:</strong> '+esc(r.strengths)+'</p>':'')+(r.improvement?'<p><strong>Perlu ditingkatkan:</strong> '+esc(r.improvement)+'</p>':'')+'</div><footer>Dinilai oleh '+esc(r.evaluatorName||"-")+' ('+esc(r.evaluatorRole||"-")+') • '+esc(formatDate(r.createdAt))+'</footer></article>').join("");
+ box.innerHTML=list.map(r=>'<article class="eval-card"><div class="eval-card-head"><div><h4>'+esc(r.staffName||"-")+'</h4><p>'+esc(r.division||"-")+' • '+esc(/^\d{4}-\d{2}-\d{2}$/.test(String(r.period||""))?formatDate(r.period):r.period||"-")+'</p></div><div class="eval-average"><strong>'+Number(r.average||0).toFixed(2)+'</strong><span>/ 5.00</span></div></div><div class="eval-scores">'+criteria.map(([k,label])=>'<div><span>'+label+'</span><strong>'+esc(r[k])+'/5</strong><i><b style="width:'+Math.max(0,Math.min(5,Number(r[k])||0))*20+'%"></b></i></div>').join("")+'</div><div class="eval-notes">'+(r.strengths?'<p><strong>Keunggulan:</strong> '+esc(r.strengths)+'</p>':'')+(r.improvement?'<p><strong>Perlu ditingkatkan:</strong> '+esc(r.improvement)+'</p>':'')+'</div><footer>Dinilai oleh '+esc(r.evaluatorName||"-")+' ('+esc(r.evaluatorRole||"-")+') • '+esc(formatDate(r.createdAt))+'</footer></article>').join("");
 }
 function formatDate(v){if(!v)return"-";try{return new Intl.DateTimeFormat("id-ID",{dateStyle:"medium",timeZone:"Asia/Jakarta"}).format(new Date(v))}catch(e){return String(v)}}
 function renderStaffEvaluations(){mount();loadRecords()}
