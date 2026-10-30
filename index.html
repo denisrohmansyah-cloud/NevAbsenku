@@ -5527,7 +5527,7 @@ function renderSessionStaffStatus(){
         return;
     }
 
-    const attendance=load(DB.attendance).filter(a=>a.sessionId===session.id);
+    const attendance=hrdVisibleAttendance().filter(a=>a.sessionId===session.id);
     const hadirCount=relevantStaff.filter(u=> attendance.find(a=>a.userId===u.id)).length;
 
     container.innerHTML=`
@@ -5579,7 +5579,7 @@ function getSessionAttendanceExportData(sessionId){
     }
     const users=load(DB.users);
     const relevantStaff=session.division && session.division!=="-" ? users.filter(u=>u.role==="STAF" && u.division===session.division) : users.filter(u=>u.role==="STAF");
-    const attendance=load(DB.attendance).filter(a=>String(a.sessionId)===String(session.id));
+    const attendance=(role==="HRD" ? hrdVisibleAttendance() : load(DB.attendance)).filter(a=>String(a.sessionId)===String(session.id));
     const ended=isSessionEnded(session);
     const rows=relevantStaff.map(u=>{
         const record=attendance.find(a=>String(a.userId)===String(u.id));
