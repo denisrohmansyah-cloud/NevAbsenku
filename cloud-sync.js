@@ -240,40 +240,61 @@ function friendlyCloudError(err){
     return msg.slice(0, 220) || "kesalahan tidak diketahui";
 }
 
+// Semua request ke Apps Script dalam satu tab dijalankan berurutan.
+// Ini mencegah getAll dan beberapa operasi save saling menumpuk.
+let cloudRequestTail = Promise.resolve();
+function serializeCloudRequest(task){
+    const run = cloudRequestTail.then(task, task);
+    cloudRequestTail = run.then(()=>undefined, ()=>undefined);
+    return run;
+}
+function isTransientCloudError(err){
+    const msg=String((err && err.message) || err || "");
+    return /batas waktu penguncian habis|lock.*timeout|try again|temporar|server busy|too many requests|service invoked too many times/i.test(msg);
+}
+
 async function cloudPost(action, data, retries){
     const maxRetry = retries ?? 1;
     let lastErr;
 
     for(let attempt=0; attempt<=maxRetry; attempt++){
         try{
-            const res = await fetch(cacheBust(CLOUD_SCRIPT_URL), {
-                method:"POST",
-                cache:"no-store",
-                headers:{"Content-Type":"text/plain;charset=utf-8"},
-                body:cloudPayload(action,data)
-            });
-            const text = await res.text();
-            let json;
-            try{ json = JSON.parse(text); }
-            catch(e){ throw new Error("Respons server bukan JSON. Periksa Deployment Apps Script dan akses 'Anyone'."); }
+            return await serializeCloudRequest(async()=>{
+                const res = await fetch(cacheBust(CLOUD_SCRIPT_URL), {
+                    method:"POST",
+                    cache:"no-store",
+                    headers:{"Content-Type":"text/plain;charset=utf-8"},
+                    body:cloudPayload(action,data)
+                });
+                const text = await res.text();
+                let json;
+                try{ json = JSON.parse(text); }
+                catch(e){ throw new Error("Respons server bukan JSON. Periksa Deployment Apps Script dan akses 'Anyone'."); }
 
-            if(json && json.authExpired){
-                const e = new Error(json.error || "Sesi login sudah kedaluwarsa.");
-                e.authExpired = true;
-                e.fatal = true;
-                throw e;
-            }
-            if(!json || !json.ok){
-                const e = new Error((json && json.error) || (res.status ? "HTTP "+res.status : "Server menolak permintaan."));
-                e.fatal = true;
-                throw e;
-            }
-            return json;
+                if(json && json.authExpired){
+                    const e = new Error(json.error || "Sesi login sudah kedaluwarsa.");
+                    e.authExpired = true;
+                    e.fatal = true;
+                    throw e;
+                }
+                if(!json || !json.ok){
+                    const message=(json && json.error) || (res.status ? "HTTP "+res.status : "Server menolak permintaan.");
+                    const e = new Error(message);
+                    // Konflik lock adalah kegagalan sementara, bukan penolakan data.
+                    if(isTransientCloudError(e)) e.retryable = true;
+                    else e.fatal = true;
+                    throw e;
+                }
+                return json;
+            });
         }catch(err){
             lastErr = err;
             if(err.authExpired) handleSessionExpired(err.message);
             if(err.fatal) break;
-            if(attempt < maxRetry) await new Promise(r=>setTimeout(r,1500));
+            if(attempt < maxRetry){
+                const delay=err.retryable ? 5000 : 1500;
+                await new Promise(r=>setTimeout(r,delay));
+            }
         }
     }
     throw lastErr || new Error("Cloud request gagal.");
@@ -391,20 +412,27 @@ async function fetchCloudAll(){
     const token=getAuthToken();
     if(!token) return false;
     try{
-        const res=await fetch(cacheBust(CLOUD_SCRIPT_URL),{
-            method:"POST",
-            cache:"no-store",
-            headers:{"Content-Type":"text/plain;charset=utf-8"},
-            body:cloudPayload("getAll",{})
+        const json=await serializeCloudRequest(async()=>{
+            const res=await fetch(cacheBust(CLOUD_SCRIPT_URL),{
+                method:"POST",
+                cache:"no-store",
+                headers:{"Content-Type":"text/plain;charset=utf-8"},
+                body:cloudPayload("getAll",{})
+            });
+            const text=await res.text();
+            let parsed;
+            try{parsed=JSON.parse(text);}catch(e){throw new Error("Respons getAll bukan JSON. Periksa Deployment Apps Script dan akses 'Anyone'.");}
+            if(parsed && parsed.authExpired){
+                handleSessionExpired(parsed.error||"Sesi login kedaluwarsa. Silakan login kembali.");
+                throw new Error(parsed.error||"Sesi login kedaluwarsa.");
+            }
+            if(!parsed || !parsed.ok){
+                const e=new Error((parsed&&parsed.error)||("HTTP "+(res.status||"?")));
+                if(isTransientCloudError(e))e.retryable=true;
+                throw e;
+            }
+            return parsed;
         });
-        const text=await res.text();
-        let json;
-        try{json=JSON.parse(text);}catch(e){throw new Error("Respons getAll bukan JSON. Periksa Deployment Apps Script dan akses 'Anyone'.");}
-        if(json && json.authExpired){
-            handleSessionExpired(json.error||"Sesi login kedaluwarsa. Silakan login kembali.");
-            throw new Error(json.error||"Sesi login kedaluwarsa.");
-        }
-        if(!json || !json.ok) throw new Error((json&&json.error)||("HTTP "+(res.status||"?")));
         applyCloudAll(json);
 
         if(cloudUnsynced) await flushCloudQueue();
@@ -430,7 +458,12 @@ async function flushCloudQueue(){
             }catch(err){
                 if(err.authExpired) break;
                 console.error("Queue cloud gagal:",err);
-                // Penolakan dari server (validasi/izin) tidak akan berhasil bila diulang: buang dari antrean.
+                // Lock timeout dan gangguan sementara tidak boleh dianggap data invalid/diarsipkan.
+                if(err.retryable || isTransientCloudError(err)){
+                    cloudLastError="Sinkronisasi tertunda karena backend sedang sibuk mengunci data. Antrean dipertahankan untuk dicoba lagi.";
+                    break;
+                }
+                // Hanya penolakan permanen (validasi/izin) yang masuk arsip pemulihan.
                 if(err.fatal){
                     if(archiveCloudQueueItem(item,err)){
                         cloudLastError="Server menolak data. Data dipindahkan ke arsip pemulihan: "+friendlyCloudError(err);
