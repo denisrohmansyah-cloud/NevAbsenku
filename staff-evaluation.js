@@ -5,10 +5,10 @@ let records=[],loading=false,saving=false;
 const criteria=[["discipline","Disiplin"],["responsibility","Tanggung jawab"],["teamwork","Kerja sama"],["initiative","Inisiatif"],["performance","Kinerja"]];
 const esc=v=>String(v==null?"":v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function mount(){
- const main=document.querySelector("main.main");if(!main||document.getElementById("page-staff-evaluation"))return;
+ const content=document.querySelector("main.main > .content");if(!content||document.getElementById("page-staff-evaluation"))return;
  const section=document.createElement("section");section.id="page-staff-evaluation";section.className="page";
- section.innerHTML='<div class="eval-header"><div><h3>Penilaian Kinerja Staf</h3><p>Penilaian berkala oleh HRD atau Koor KP sesuai divisi.</p></div><button class="btn btn-outline" id="evalRefresh"><i class="fa-solid fa-rotate"></i> Segarkan</button></div><div id="evalFormWrap"></div><div class="eval-summary" id="evalSummary"></div><div class="eval-filters" id="evalFilters"><input id="evalSearch" class="form-control" placeholder="Cari nama staf atau periode"><select id="evalPeriod" class="form-control"><option value="">Semua periode</option></select></div><div id="evalStatus" class="eval-status">Memuat data…</div><div id="evalList"></div>';
- main.appendChild(section);
+ section.innerHTML='<div class="eval-header"><div><h3 id="evalPageHeading">Penilaian Kinerja Staf</h3><p id="evalPageDescription">Penilaian berkala oleh HRD atau Koor KP sesuai divisi.</p></div><button class="btn btn-outline" id="evalRefresh"><i class="fa-solid fa-rotate"></i> Segarkan</button></div><div id="evalFormWrap"></div><div class="eval-summary" id="evalSummary"></div><div class="eval-filters" id="evalFilters"><input id="evalSearch" class="form-control" placeholder="Cari nama staf atau periode"><select id="evalPeriod" class="form-control"><option value="">Semua periode</option></select></div><div id="evalStatus" class="eval-status">Memuat data…</div><div id="evalList"></div>';
+ content.appendChild(section);
  section.querySelector("#evalRefresh").addEventListener("click",loadRecords);
  ["evalSearch","evalPeriod"].forEach(id=>section.querySelector("#"+id).addEventListener("input",render));
 }
@@ -23,7 +23,9 @@ async function loadRecords(){
 }
 function renderForm(){
  const wrap=document.getElementById("evalFormWrap");if(!wrap)return;
- if(!isEvaluator()){wrap.innerHTML="";return}
+ const heading=document.getElementById("evalPageHeading"),description=document.getElementById("evalPageDescription");
+ if(!isEvaluator()){if(heading)heading.textContent="Penilaian Saya";if(description)description.textContent="Lihat hasil evaluasi kinerja yang diberikan kepada Anda.";wrap.innerHTML="";return}
+ if(heading)heading.textContent="Penilaian Kinerja Staf";if(description)description.textContent="Penilaian berkala oleh HRD atau Koor KP sesuai divisi.";
  const users=(load(DB.users)||[]).filter(u=>u.role==="STAF"&&(currentUser.role==="HRD"||u.division===currentUser.division)).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
  wrap.innerHTML='<form id="evalForm" class="eval-form"><h4><i class="fa-solid fa-clipboard-check"></i> Buat Penilaian Baru</h4><div class="eval-form-grid"><label>Nama staf<select class="form-control" name="staffId" required><option value="">Pilih staf…</option>'+users.map(u=>'<option value="'+esc(u.id)+'">'+esc(u.name)+' • '+esc(u.division||"-")+'</option>').join("")+'</select></label><label>Periode penilaian<input class="form-control" name="period" placeholder="Contoh: Oktober 2026" maxlength="40" required></label></div><div class="eval-score-grid">'+criteria.map(([k,label])=>'<label>'+label+'<select class="form-control" name="'+k+'" required><option value="">Pilih nilai</option><option value="1">1 — Perlu pembinaan</option><option value="2">2 — Kurang</option><option value="3">3 — Cukup</option><option value="4">4 — Baik</option><option value="5">5 — Sangat baik</option></select></label>').join("")+'</div><div class="eval-form-grid"><label>Keunggulan / catatan positif<textarea class="form-control" name="strengths" rows="2" maxlength="1000" placeholder="Catat hal yang sudah baik…"></textarea></label><label>Area yang perlu ditingkatkan<textarea class="form-control" name="improvement" rows="2" maxlength="1000" placeholder="Catat saran pengembangan…"></textarea></label></div><div class="eval-form-foot"><small>Skala 1–5. Nilai rata-rata dihitung otomatis oleh server.</small><button class="btn btn-primary" type="submit" '+(!users.length?'disabled':'')+'><i class="fa-solid fa-floppy-disk"></i> Simpan Penilaian</button></div></form>';
  const form=wrap.querySelector("#evalForm");form.addEventListener("submit",submitForm);
