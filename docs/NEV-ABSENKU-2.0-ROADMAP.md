@@ -122,3 +122,14 @@ Dokumen ini menjadi urutan kerja dan gerbang kualitas untuk pengembangan NEV Abs
 - [ ] Audit detail seluruh jalur data frontend.
 - [ ] Audit dan uji source Google Apps Script bersama pemilik.
 - [ ] Implementasi tahap 1 setelah audit membuktikan perubahan yang aman.
+
+
+## Implementasi paket prioritas HRD (branch feature/priority-hrd-suite)
+- [x] Dashboard analitik kehadiran berbasis data tersinkron dan pembatasan role.
+- [x] Pengembangan penilaian kinerja: riwayat, nilai per kriteria, dan pencegahan duplikasi evaluator-periode.
+- [x] Pengajuan koreksi absensi oleh staf dan persetujuan akhir HRD melalui sheet terpisah.
+- [x] Profil dan riwayat staf dengan pembatasan akses role.
+- [x] Laporan HRD dengan filter rentang tanggal/divisi dan ekspor Excel.
+- [ ] Uji runtime end-to-end pada salinan spreadsheet dan akun uji.
+- [ ] Cocokkan angka analitik/laporan secara manual dan tinjau keputusan koreksi sebelum deployment.
+- [ ] Persetujuan pemilik untuk deployment Apps Script dan GitHub Pages.
