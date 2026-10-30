@@ -5911,23 +5911,48 @@ function renderHRDReport(){
 }
 
 function renderHRDDashboard(){
-    const safeLoad=(key)=>{const value=load(key,[]);return Array.isArray(value)?value:[]};
-    const users=safeLoad(DB.users),attendance=hrdVisibleAttendance();
-    const staff=users.filter(u=>u&&u.role==="STAF");
+    const safeArray=(key)=>{const value=load(key,[]);return Array.isArray(value)?value.filter(Boolean):[]};
     const set=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=String(value)};
-    set("hrdTotalStaff",staff.length);
-    set("hrdHadir",attendance.filter(a=>a&&a.status==="Hadir").length);
-    set("hrdIzinSakit",attendance.filter(a=>a&&(a.status==="Izin"||a.status==="Sakit")).length);
-    set("hrdAlpha",attendance.filter(a=>a&&a.status==="Alpha").length+implicitAlphaCount(staff,hrdVisibleSessions(),attendance));
-    set("hrdDispen",attendance.filter(a=>a&&a.status==="Dispen").length);
-    const recent=attendance.slice().sort((a,b)=>{
-        const ta=Date.parse(a.checkIn||a.date||"")||0,tb=Date.parse(b.checkIn||b.date||"")||0;
-        return tb-ta;
-    }).slice(0,8);
     const container=document.getElementById("hrdRecentAttendance");
-    if(container){
-        try{container.innerHTML=recent.length?attendanceTable(recent,false):emptyHTML("fa-clipboard","Belum ada absensi.");}
-        catch(err){console.error("HRD recent attendance render:",err);container.innerHTML=emptyHTML("fa-clipboard","Data absensi terbaru belum dapat ditampilkan.");}
+    try{
+        const users=safeArray(DB.users),sessions=safeArray(DB.sessions),allAttendance=safeArray(DB.attendance);
+        const staff=users.filter(u=>u.role==="STAF");
+        const draftIds=new Set(sessions.filter(s=>s.creatorRole==="KOOR KP"&&s.attendanceSubmitted!==true).map(s=>s.id));
+        const attendance=allAttendance.filter(a=>!draftIds.has(a.sessionId));
+        let implicitAlpha=0;
+        try{
+            const nowSessions=sessions.filter(s=>{
+                const draft=s.creatorRole==="KOOR KP"&&s.attendanceSubmitted!==true;
+                const ended=typeof isSessionEnded==="function"&&isSessionEnded(s);
+                const deactivated=s.active===false&&s.date&&s.date<=getTodayWIB();
+                return draft||ended||deactivated;
+            });
+            const recorded=new Set(attendance.map(a=>a.sessionId+"|"+a.userId));
+            nowSessions.forEach(s=>staff.forEach(u=>{
+                const general=!s.division||s.division==="-";
+                if((general||s.division===u.division)&&!recorded.has(s.id+"|"+u.id))implicitAlpha++;
+            }));
+        }catch(alphaError){console.warn("HRD dashboard Alpha calculation:",alphaError)}
+        set("hrdTotalStaff",staff.length);
+        set("hrdHadir",attendance.filter(a=>a.status==="Hadir").length);
+        set("hrdIzinSakit",attendance.filter(a=>a.status==="Izin"||a.status==="Sakit").length);
+        set("hrdAlpha",attendance.filter(a=>a.status==="Alpha").length+implicitAlpha);
+        set("hrdDispen",attendance.filter(a=>a.status==="Dispen").length);
+        const recent=attendance.slice().sort((a,b)=>{
+            const time=x=>Date.parse(x.checkIn||x.date||"")||0;
+            return time(b)-time(a);
+        }).slice(0,8);
+        if(container){
+            if(!recent.length)container.innerHTML=emptyHTML("fa-clipboard","Belum ada absensi.");
+            else{
+                try{container.innerHTML=attendanceTable(recent,false)}
+                catch(tableError){console.error("HRD attendance table:",tableError);container.innerHTML=emptyHTML("fa-clipboard","Data absensi terbaru belum dapat ditampilkan.");}
+            }
+        }
+    }catch(error){
+        console.error("HRD dashboard render failed:",error);
+        ["hrdTotalStaff","hrdHadir","hrdIzinSakit","hrdAlpha","hrdDispen"].forEach(id=>set(id,"—"));
+        if(container)container.innerHTML='<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><p>Dashboard HRD belum dapat dimuat. Periksa sinkronisasi data lalu tekan Segarkan.</p><button class="btn btn-outline" onclick="renderHRDDashboard()">Coba lagi</button></div>';
     }
 }
 
@@ -7608,7 +7633,7 @@ function consumePendingAttendance(){
 <!-- File tambahan: Surat Peringatan (SP) dari HRD ke staf / Koor KP -->
 <script src="sp-warning.js"></script>
 <script src="notifications.js?v=2"></script>
-<script src="staff-evaluation.js?v=2"></script>
+<script src="staff-evaluation.js?v=3"></script>
 <script src="priority-suite.js?v=1"></script>
 
 </body>
