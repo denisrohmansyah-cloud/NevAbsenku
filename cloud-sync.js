@@ -221,6 +221,7 @@ function queueCloudAction(action, data){
     setCloudQueue(q);
     cloudUnsynced = q.length;
     updateCloudBadge();
+    return replaceable ? q.find(x=>x.action===action)?.id : q[q.length-1]?.id;
 }
 
 function removeCloudQueueItem(id){
@@ -280,9 +281,19 @@ async function cloudPost(action, data, retries){
                 if(!json || !json.ok){
                     const message=(json && json.error) || (res.status ? "HTTP "+res.status : "Server menolak permintaan.");
                     const e = new Error(message);
-                    // Konflik lock adalah kegagalan sementara, bukan penolakan data.
                     if(isTransientCloudError(e)) e.retryable = true;
                     else e.fatal = true;
+                    throw e;
+                }
+                if(["saveAttendance","saveSessions","savePermits"].includes(action) && Number(json.skipped||0)>0){
+                    const e=new Error("Server melewati "+Number(json.skipped)+" record pada "+action+". Data lokal dipertahankan untuk pemeriksaan.");
+                    e.fatal=true;
+                    e.partial=true;
+                    throw e;
+                }
+                if(action==="saveAttendance" && json.ignored){
+                    const e=new Error("Server mengabaikan penyimpanan massal absensi untuk role STAF. Gunakan endpoint addAttendance.");
+                    e.fatal=true;
                     throw e;
                 }
                 return json;
@@ -320,7 +331,7 @@ save = function(key,data){
     sanitizeList(key,data);
     _localSave(key,data);
     try{ window.dispatchEvent(new Event("nev-cloud-updated")); }catch(e){}
-    pushToCloud(key,data);
+    return pushToCloud(key,data);
 };
 
 function sanitizeList(key,data){
@@ -334,19 +345,23 @@ function sanitizeList(key,data){
 }
 
 function pushToCloud(key,data){
-    if(!cloudSyncEnabled || !getAuthToken()) return;
-    const action = CLOUD_ACTION_BY_KEY[key];
-    if(!action) return;
-    cloudPost(action,data,1).then(()=>{
+    if(!cloudSyncEnabled || !getAuthToken()) return Promise.resolve(false);
+    const action=CLOUD_ACTION_BY_KEY[key];
+    if(!action) return Promise.resolve(false);
+    const queuedId=queueCloudAction(action,data);
+    return flushCloudQueue().then(()=>{
+        const pending=getCloudQueue().some(x=>x.id===queuedId || x.action===action);
+        const archived=getCloudDeadLetters().find(x=>x.id===queuedId);
+        if(archived) throw new Error(archived.failureReason || "Server menolak data. Data dipertahankan di arsip pemulihan.");
+        if(pending) throw new Error("Perubahan tersimpan di perangkat, tetapi masih menunggu sinkronisasi ke server.");
         cloudLastError=null;
         cloudUnsynced=getCloudQueue().length;
         updateCloudBadge();
+        return true;
     }).catch(err=>{
-        if(err.authExpired) return;
-        console.error("Gagal sinkron ke Google Sheets:",err);
-        queueCloudAction(action,data);
         cloudLastError=friendlyCloudError(err);
         updateCloudBadge();
+        throw err;
     });
 }
 
@@ -386,6 +401,7 @@ function applyCloudAll(json){
     // Rekonsiliasi record-level memerlukan kontrak revision dari backend; untuk sementara
     // pertahankan snapshot lokal pada key tersebut sampai antrean selesai diproses.
     const pending=new Set(getCloudQueue().map(x=>x.action));
+    getCloudDeadLetters().forEach(x=>{if(x && x.action) pending.add(x.action);});
     const preserve=new Set();
     Object.keys(CLOUD_ACTION_BY_KEY).forEach(key=>{
         if(pending.has(CLOUD_ACTION_BY_KEY[key]))preserve.add(key);
@@ -446,24 +462,23 @@ async function fetchCloudAll(){
 }
 
 async function flushCloudQueue(){
-    if(cloudFlushing || !getAuthToken()) return;
+    if(cloudFlushing || !getAuthToken()) return false;
     const q=getCloudQueue();
-    if(!q.length){cloudUnsynced=0;updateCloudBadge();return;}
+    if(!q.length){cloudUnsynced=0;updateCloudBadge();return true;}
     cloudFlushing=true;
     try{
         for(const item of q.slice()){
             try{
-                await cloudPost(item.action,item.data,1);
+                const result=await cloudPost(item.action,item.data,1);
+                if(result && result.ignored) throw Object.assign(new Error("Server mengabaikan operasi "+item.action+"."),{fatal:true});
                 removeCloudQueueItem(item.id);
             }catch(err){
                 if(err.authExpired) break;
                 console.error("Queue cloud gagal:",err);
-                // Lock timeout dan gangguan sementara tidak boleh dianggap data invalid/diarsipkan.
                 if(err.retryable || isTransientCloudError(err)){
                     cloudLastError="Sinkronisasi tertunda karena backend sedang sibuk mengunci data. Antrean dipertahankan untuk dicoba lagi.";
                     break;
                 }
-                // Hanya penolakan permanen (validasi/izin) yang masuk arsip pemulihan.
                 if(err.fatal){
                     if(archiveCloudQueueItem(item,err)){
                         cloudLastError="Server menolak data. Data dipindahkan ke arsip pemulihan: "+friendlyCloudError(err);
@@ -471,8 +486,10 @@ async function flushCloudQueue(){
                         cloudLastError="Server menolak data, tetapi antrean tetap dipertahankan karena arsip gagal disimpan.";
                     }
                 }
+                break;
             }
         }
+        return getCloudQueue().length===0;
     }finally{
         cloudFlushing=false;
         cloudUnsynced=getCloudQueue().length;
