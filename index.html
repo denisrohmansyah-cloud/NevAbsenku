@@ -5222,8 +5222,14 @@ async function withQRButtonLoading(button,label,action){
     button.dataset.loading="true"; button.disabled=true;
     button.setAttribute("aria-busy","true"); button.style.cursor="wait";
     button.innerHTML='<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> '+label;
-    try{return await action();}
-    finally{button.innerHTML=original;button.disabled=wasDisabled;button.removeAttribute("aria-busy");button.style.cursor="";delete button.dataset.loading;}
+    const startedAt=Date.now();
+    try{
+        return await action();
+    }finally{
+        // Keep feedback visible briefly even for instant local actions (download/copy).
+        const remaining=250-(Date.now()-startedAt);
+        if(remaining>0) await new Promise(resolve=>setTimeout(resolve,remaining));
+        button.innerHTML=original;button.disabled=wasDisabled;button.removeAttribute("aria-busy");button.style.cursor="";delete button.dataset.loading;}
 }
 function getQRCanvas(type){
     const box = document.getElementById(type==="hrd" ? "hrdQrBox" : "koorQrBox");
