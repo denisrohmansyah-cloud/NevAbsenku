@@ -17,7 +17,6 @@ const CLOUD_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby5iQt8AxuGmH6
 const CLOUD_POLL_MS = 30000;
 const CLOUD_QUEUE_KEY = "nev_cloud_queue_v14_1";
 const CLOUD_DEAD_LETTER_KEY = "nev_cloud_dead_letter_v1";
-const CLOUD_DEAD_LETTER_LIMIT = 100;
 const cloudSyncEnabled = typeof CLOUD_SCRIPT_URL === "string" && CLOUD_SCRIPT_URL.startsWith("http");
 
 const CLOUD_ACTION_BY_KEY = {
@@ -175,14 +174,16 @@ function getCloudDeadLetters(){
     }catch(e){return[];}
 }
 function setCloudDeadLetters(items){
-    try{localStorage.setItem(CLOUD_DEAD_LETTER_KEY,JSON.stringify(items));}
-    catch(e){cloudLastError="Penyimpanan arsip gagal sinkron penuh. Ekspor data segera.";console.error(e);}
+    try{localStorage.setItem(CLOUD_DEAD_LETTER_KEY,JSON.stringify(items));return true;}
+    catch(e){cloudLastError="Arsip gagal sinkron tidak dapat disimpan. Antrean asli dipertahankan.";console.error(e);return false;}
 }
 function archiveCloudQueueItem(item,error){
     const archive=getCloudDeadLetters();
     archive.push({...item,failedAt:new Date().toISOString(),failureReason:friendlyCloudError(error)});
-    setCloudDeadLetters(archive);
+    // Hapus dari antrean aktif hanya setelah arsip berhasil ditulis.
+    if(!setCloudDeadLetters(archive))return false;
     removeCloudQueueItem(item.id);
+    return true;
 }
 function exportCloudDeadLetters(){
     const items=getCloudDeadLetters();
@@ -199,8 +200,10 @@ window.retryCloudDeadLetters=function(){
     if(!archived.length){if(typeof toast==="function")toast("Tidak ada data untuk dicoba ulang.","normal");return;}
     const queue=getCloudQueue();
     archived.forEach(item=>queue.push({id:item.id||("Q-RETRY-"+Date.now()+"-"+Math.random().toString(36).slice(2)),action:item.action,data:item.data,createdAt:item.createdAt||new Date().toISOString(),retryOf:item.id||null}));
-    setCloudQueue(queue);setCloudDeadLetters([]);cloudUnsynced=queue.length;updateCloudBadge();
-    flushCloudQueue();
+    try{localStorage.setItem(CLOUD_QUEUE_KEY,JSON.stringify(queue));}
+    catch(e){cloudLastError="Antrean penuh; arsip pemulihan tetap disimpan.";updateCloudBadge();return;}
+    if(!setCloudDeadLetters([])){cloudLastError="Antrean dibuat tetapi arsip belum dapat dibersihkan.";updateCloudBadge();return;}
+    cloudUnsynced=queue.length;updateCloudBadge();flushCloudQueue();
 };
 
 function queueCloudAction(action, data){
@@ -429,8 +432,11 @@ async function flushCloudQueue(){
                 console.error("Queue cloud gagal:",err);
                 // Penolakan dari server (validasi/izin) tidak akan berhasil bila diulang: buang dari antrean.
                 if(err.fatal){
-                    archiveCloudQueueItem(item,err);
-                    cloudLastError="Server menolak data. Data dipindahkan ke arsip pemulihan: "+friendlyCloudError(err);
+                    if(archiveCloudQueueItem(item,err)){
+                        cloudLastError="Server menolak data. Data dipindahkan ke arsip pemulihan: "+friendlyCloudError(err);
+                    }else{
+                        cloudLastError="Server menolak data, tetapi antrean tetap dipertahankan karena arsip gagal disimpan.";
+                    }
                 }
             }
         }
