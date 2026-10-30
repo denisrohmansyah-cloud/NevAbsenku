@@ -4394,7 +4394,6 @@ function buildSidebar(){
         html+=menuItem("hrd-dashboard", "fa-chart-line", "Dashboard");
         html+=menuItem("hrd-qr", "fa-qrcode", "Buat QR Absensi");
         html+=menuItem("staff-recap", "fa-user-check", "Rekap per Staf");
-        html+=menuItem("hrd-analytics", "fa-chart-pie", "Analitik Kehadiran");
         html+=menuItem("hrd-permit", "fa-file-medical", "Persetujuan Izin/Sakit");
         html+=menuItem("hrd-warning", "fa-triangle-exclamation", "Surat Peringatan (SP)");
         html+=menuItem("hrd-location", "fa-location-dot", "Lokasi & Radius");
@@ -4438,7 +4437,7 @@ function showPage(page){
 
     const allowed = {
         "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "staf-activities", "my-warning", "staff-evaluation", "settings"],
-        "HRD":["hrd-dashboard", "hrd-qr", "staff-recap", "hrd-permit", "hrd-warning", "hrd-location", "users", "staff-evaluation", "hrd-analytics", "settings"],
+        "HRD":["hrd-dashboard", "hrd-qr", "staff-recap", "hrd-permit", "hrd-warning", "hrd-location", "users", "staff-evaluation", "settings"],
         "KOOR KP":["koor-dashboard", "koor-qr", "koor-attendance", "staff-recap", "koor-permit", "users", "my-warning", "settings"]
     };
 
@@ -4448,7 +4447,6 @@ function showPage(page){
     }
 
     document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
-    if(page==="hrd-analytics" && window.PrioritySuite) PrioritySuite.open(page);
     if(page==="staff-evaluation" && typeof renderStaffEvaluations==="function") renderStaffEvaluations();
     const target = document.getElementById("page-"+page);
     if(!target) return;
@@ -4474,7 +4472,6 @@ function showPage(page){
         "hrd-location":"Lokasi & Radius Kantor",
         "users":"Manajemen Akun",
         "staff-evaluation":"Penilaian Staf",
-        "hrd-analytics":"Analitik Kehadiran",
         
         "koor-dashboard":"Dashboard Koor KP",
         "koor-qr":"Buat QR Ngoprek",
