@@ -1292,6 +1292,7 @@ function markWarningRead_(actor,data){
     if(!w.readAt){
       w.readAt=new Date().toISOString();
       objectsToSheet_(SHEET_WARNINGS,list);
+      auditEvent_(actor,"warning.read","warning",id,"Penerima membaca surat peringatan.");
     }
     return {ok:true,readAt:w.readAt};
   });
