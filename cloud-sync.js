@@ -33,6 +33,7 @@ let cloudLastSyncAt = null;
 let cloudLastError = null;
 let cloudUnsynced = 0;
 let cloudFlushing = false;
+let cloudFlushPromise = null;
 
 const _localSave = save;
 
@@ -160,10 +161,14 @@ function getCloudQueue(){
 }
 
 function setCloudQueue(q){
-    try{ localStorage.setItem(CLOUD_QUEUE_KEY, JSON.stringify(q)); }
-    catch(e){
+    try{
+        const serialized=JSON.stringify(q);
+        localStorage.setItem(CLOUD_QUEUE_KEY,serialized);
+        return localStorage.getItem(CLOUD_QUEUE_KEY)===serialized;
+    }catch(e){
         console.error("Queue cloud penuh/tidak dapat disimpan:", e);
-        cloudLastError = "Queue sinkronisasi lokal penuh. Data belum dipastikan tersimpan.";
+        cloudLastError = "Queue sinkronisasi lokal penuh. Perubahan belum aman untuk dikirim.";
+        return false;
     }
 }
 
@@ -207,27 +212,26 @@ window.retryCloudDeadLetters=function(){
 };
 
 function queueCloudAction(action, data){
-    if(!action || data === undefined) return;
-    const q = getCloudQueue();
-    // Satu antrean terbaru untuk setiap save-* action agar tidak menumpuk.
-    const replaceable = ["saveSessions","saveAttendance","saveSettings","savePermits"].includes(action);
+    if(!action || data === undefined) return null;
+    const q=getCloudQueue();
+    const replaceable=["saveSessions","saveAttendance","saveSettings","savePermits"].includes(action);
+    const item={id:"Q-"+Date.now()+"-"+Math.random().toString(36).slice(2),action,data,createdAt:new Date().toISOString()};
     if(replaceable){
-        const idx = q.findIndex(x=>x.action===action);
-        const item = { id:"Q-"+Date.now()+"-"+Math.random().toString(36).slice(2), action, data, createdAt:new Date().toISOString() };
-        if(idx >= 0) q[idx] = item; else q.push(item);
-    }else{
-        q.push({ id:"Q-"+Date.now()+"-"+Math.random().toString(36).slice(2), action, data, createdAt:new Date().toISOString() });
-    }
-    setCloudQueue(q);
-    cloudUnsynced = q.length;
+        const idx=q.findIndex(x=>x.action===action);
+        if(idx>=0)q[idx]=item;else q.push(item);
+    }else q.push(item);
+    if(!setCloudQueue(q)) return null;
+    cloudUnsynced=q.length;
     updateCloudBadge();
-    return replaceable ? q.find(x=>x.action===action)?.id : q[q.length-1]?.id;
+    // Verify persisted queue before allowing caller to proceed.
+    return getCloudQueue().some(x=>x.id===item.id)?item.id:null;
 }
 
 function removeCloudQueueItem(id){
-    const q = getCloudQueue().filter(x=>x.id!==id);
-    setCloudQueue(q);
-    cloudUnsynced = q.length;
+    const q=getCloudQueue().filter(x=>x.id!==id);
+    if(!setCloudQueue(q)) return false;
+    cloudUnsynced=q.length;
+    return true;
 }
 
 function friendlyCloudError(err){
@@ -349,6 +353,12 @@ function pushToCloud(key,data){
     const action=CLOUD_ACTION_BY_KEY[key];
     if(!action) return Promise.resolve(false);
     const queuedId=queueCloudAction(action,data);
+    if(!queuedId){
+        const err=new Error("Perubahan tersimpan lokal, tetapi antrean sinkronisasi gagal disimpan. Jangan refresh atau tutup halaman sebelum mengekspor/menyalin data lokal.");
+        cloudLastError=err.message;
+        updateCloudBadge();
+        return Promise.reject(err);
+    }
     return flushCloudQueue().then(()=>{
         const pending=getCloudQueue().some(x=>x.id===queuedId || x.action===action);
         const archived=getCloudDeadLetters().find(x=>x.id===queuedId);
@@ -462,16 +472,21 @@ async function fetchCloudAll(){
 }
 
 async function flushCloudQueue(){
-    if(cloudFlushing || !getAuthToken()) return false;
-    const q=getCloudQueue();
-    if(!q.length){cloudUnsynced=0;updateCloudBadge();return true;}
+    if(!getAuthToken()) return false;
+    if(cloudFlushing) return cloudFlushPromise || false;
     cloudFlushing=true;
-    try{
-        for(const item of q.slice()){
+    cloudFlushPromise=(async()=>{
+        while(true){
+            const q=getCloudQueue();
+            if(!q.length) return true;
+            const item=q[0];
             try{
                 const result=await cloudPost(item.action,item.data,1);
                 if(result && result.ignored) throw Object.assign(new Error("Server mengabaikan operasi "+item.action+"."),{fatal:true});
-                removeCloudQueueItem(item.id);
+                if(!removeCloudQueueItem(item.id)){
+                    cloudLastError="Server menerima data, tetapi antrean lokal gagal diperbarui. Perlu verifikasi sebelum retry.";
+                    break;
+                }
             }catch(err){
                 if(err.authExpired) break;
                 console.error("Queue cloud gagal:",err);
@@ -490,8 +505,12 @@ async function flushCloudQueue(){
             }
         }
         return getCloudQueue().length===0;
+    })();
+    try{
+        return await cloudFlushPromise;
     }finally{
         cloudFlushing=false;
+        cloudFlushPromise=null;
         cloudUnsynced=getCloudQueue().length;
         updateCloudBadge();
     }
