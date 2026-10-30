@@ -4379,7 +4379,7 @@ function buildSidebar(){
     if(currentUser.role==="STAF"){
         html+=menuTitle("MENU UTAMA");
         html+=menuItem("staf-dashboard", "fa-house", "Dashboard");
-        html+=menuItem("my-evaluation", "fa-star", "Penilaian Saya");
+        html+=menuItem("staff-evaluation", "fa-star", "Penilaian Saya");
         html+=menuItem("staf-scan", "fa-qrcode", "Scan QR Absensi");
         html+=menuItem("staf-calendar", "fa-calendar-days", "Kalender");
         html+=menuItem("staf-history", "fa-clock-rotate-left", "Riwayat Absensi");
@@ -4437,7 +4437,7 @@ function showPage(page){
     if(!currentUser) return;
 
     const allowed = {
-        "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "staf-activities", "my-warning", "my-evaluation", "settings"],
+        "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "staf-activities", "my-warning", "staff-evaluation", "settings"],
         "HRD":["hrd-dashboard", "hrd-qr", "hrd-report", "staff-recap", "hrd-permit", "hrd-warning", "hrd-location", "users", "staff-evaluation", "settings"],
         "KOOR KP":["koor-dashboard", "koor-qr", "koor-attendance", "staff-recap", "koor-permit", "users", "my-warning", "settings"]
     };
@@ -4473,7 +4473,7 @@ function showPage(page){
         "hrd-location":"Lokasi & Radius Kantor",
         "users":"Manajemen Akun",
         "staff-evaluation":"Penilaian Staf",
-        "my-evaluation":"Penilaian Saya",
+        
         "koor-dashboard":"Dashboard Koor KP",
         "koor-qr":"Buat QR Ngoprek",
         "koor-attendance":"Absensi Ngoprek",
@@ -4495,7 +4495,7 @@ function showPage(page){
     if(page==="staff-recap") initStaffRecapPage();
     if(page==="hrd-permit") renderPermitApproval("hrd");
     if(page==="hrd-warning" && typeof renderHrdWarnings==="function") renderHrdWarnings();
-    if((page==="staff-evaluation"||page==="my-evaluation") && typeof renderStaffEvaluations==="function") renderStaffEvaluations();
+    if(page==="staff-evaluation" && typeof renderStaffEvaluations==="function") renderStaffEvaluations();
     if(page==="my-warning" && typeof renderMyWarnings==="function") renderMyWarnings();
     if(page==="hrd-location") setTimeout(initOfficeMap, 50);
     if(page==="users") renderUsers();
