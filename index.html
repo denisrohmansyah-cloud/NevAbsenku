@@ -1790,79 +1790,6 @@ APP
 
 
             <!-- =================================================
-            STAF ACTIVITIES
-            ================================================= -->
-
-            <section id="page-staf-activities" class="page">
-
-                <div class="section-card">
-
-                    <div class="section-header">
-
-                        <div>
-
-                            <h3>Kegiatan</h3>
-
-                            <p>
-                                Daftar kegiatan NEV
-                            </p>
-
-                        </div>
-
-                    </div>
-
-                    <div class="grid-3">
-
-                        <div class="activity-card">
-
-                            <div class="activity-icon">
-                                <i class="fa-solid fa-users"></i>
-                            </div>
-
-                            <h4>Rapat Rutin</h4>
-
-                            <p>
-                                Kegiatan rapat rutin organisasi.
-                            </p>
-
-                        </div>
-
-                        <div class="activity-card">
-
-                            <div class="activity-icon">
-                                <i class="fa-solid fa-laptop-code"></i>
-                            </div>
-
-                            <h4>Ngoprek</h4>
-
-                            <p>
-                                Kegiatan teknis berdasarkan divisi.
-                            </p>
-
-                        </div>
-
-                        <div class="activity-card">
-
-                            <div class="activity-icon">
-                                <i class="fa-solid fa-list-check"></i>
-                            </div>
-
-                            <h4>Kepanitiaan</h4>
-
-                            <p>
-                                Kegiatan kepanitiaan NEV.
-                            </p>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </section>
-
-
-            <!-- =================================================
             STAF - IZIN / SAKIT
             ================================================= -->
 
@@ -4385,7 +4312,6 @@ function buildSidebar(){
         html+=menuItem("staf-calendar", "fa-calendar-days", "Kalender");
         html+=menuItem("staf-history", "fa-clock-rotate-left", "Riwayat Absensi");
         html+=menuItem("staf-permit", "fa-file-medical", "Izin/Sakit");
-        html+=menuItem("staf-activities", "fa-list-check", "Kegiatan");
         html+=menuItem("my-warning", "fa-envelope-open-text", "Surat Peringatan");
     }
 
@@ -4436,7 +4362,7 @@ function showPage(page){
     if(!currentUser) return;
 
     const allowed = {
-        "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "staf-activities", "my-warning", "staff-evaluation", "settings"],
+        "STAF":["staf-dashboard", "staf-scan", "staf-calendar", "staf-history", "staf-permit", "my-warning", "staff-evaluation", "settings"],
         "HRD":["hrd-dashboard", "hrd-qr", "staff-recap", "hrd-permit", "hrd-warning", "hrd-location", "users", "staff-evaluation", "settings"],
         "KOOR KP":["koor-dashboard", "koor-qr", "koor-attendance", "staff-recap", "koor-permit", "users", "my-warning", "settings"]
     };
@@ -4462,7 +4388,6 @@ function showPage(page){
         "staf-calendar":"Kalender",
         "staf-history":"Riwayat Absensi",
         "staf-permit":"Izin/Sakit",
-        "staf-activities":"Kegiatan",
         "hrd-dashboard":"Dashboard HRD",
         "hrd-qr":"Buat QR Absensi",
         "staff-recap":"Rekap per Staf",
