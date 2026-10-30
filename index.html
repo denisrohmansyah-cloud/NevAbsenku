@@ -4462,6 +4462,7 @@ function showPage(page){
 
     document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
     if(window.PrioritySuite) PrioritySuite.open(page);
+    if(page==="staff-evaluation" && typeof renderStaffEvaluations==="function") renderStaffEvaluations();
     const target = document.getElementById("page-"+page);
     if(!target) return;
     target.classList.add("active");
