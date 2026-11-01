@@ -5112,6 +5112,14 @@ async function startScanner(){
 
     try{
         await ensureNevQrScanner();
+    }catch(error){
+        console.error("Gagal memuat library scanner QR:",error);
+        updateScannerStatus("Library scanner QR gagal dimuat. Periksa koneksi internet lalu coba lagi.","error");
+        toast("Scanner QR gagal dimuat. Periksa koneksi internet.","error");
+        return;
+    }
+
+    try{
         // Hanya baca QR + pakai BarcodeDetector bawaan browser bila ada (jauh lebih cepat).
         html5QrCode = new Html5Qrcode("reader", {
             formatsToSupport:[Html5QrcodeSupportedFormats.QR_CODE],
