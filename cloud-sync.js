@@ -48,33 +48,42 @@ const DATA_EPOCH = "clean-2026-10-01b";
     try{
         if(localStorage.getItem("nev_data_epoch") === DATA_EPOCH) return;
 
-        // Jangan pernah membersihkan cache saat ada perubahan yang belum tersinkron
-        // atau data gagal yang masih menunggu pemulihan. Jika format antrean rusak,
-        // anggap masih ada data penting dan hentikan reset secara aman (fail closed).
-        const queueRaw = localStorage.getItem(CLOUD_QUEUE_KEY);
-        const deadLetterRaw = localStorage.getItem(CLOUD_DEAD_LETTER_KEY);
-        let hasPendingChanges = false;
-        if(queueRaw !== null){
-            const queue = JSON.parse(queueRaw);
-            if(!Array.isArray(queue)) hasPendingChanges = true;
-            else if(queue.length > 0) hasPendingChanges = true;
-        }
-        if(deadLetterRaw !== null){
-            const deadLetters = JSON.parse(deadLetterRaw);
-            if(!Array.isArray(deadLetters)) hasPendingChanges = true;
-            else if(deadLetters.length > 0) hasPendingChanges = true;
-        }
-        if(hasPendingChanges){
-            console.warn("Reset cache lokal ditunda: antrean sinkronisasi atau arsip pemulihan masih berisi data.");
+        // A version marker must never authorize deletion of attendance data.
+        // Preserve caches whenever there are pending operations, recovery records,
+        // malformed queue contents, or any local business records.
+        const hasArrayData = key => {
+            const raw = localStorage.getItem(key);
+            if(raw === null) return false;
+            const parsed = JSON.parse(raw);
+            if(!Array.isArray(parsed)) return true; // unknown format: fail closed
+            return parsed.length > 0;
+        };
+        const hasPending = key => {
+            const raw = localStorage.getItem(key);
+            if(raw === null) return false;
+            const parsed = JSON.parse(raw);
+            if(!Array.isArray(parsed)) return true; // corrupt queue: fail closed
+            return parsed.length > 0;
+        };
+
+        const preserveData =
+            hasPending(CLOUD_QUEUE_KEY) ||
+            hasPending(CLOUD_DEAD_LETTER_KEY) ||
+            hasArrayData(DB.sessions) ||
+            hasArrayData(DB.attendance) ||
+            hasArrayData(DB.permits);
+
+        if(preserveData){
+            console.warn("Migrasi cache ditunda: data lokal atau antrean pemulihan masih tersedia. Tidak ada data yang dihapus.");
             return;
         }
 
-        [DB.sessions, DB.attendance, DB.permits].forEach(k=> localStorage.removeItem(k));
-        // CLOUD_QUEUE_KEY sengaja tidak dihapus. Kunci kosong boleh tetap ada.
+        // There is nothing to migrate or delete. Advance only the marker.
+        // Explicit data purges must be performed by the authorized HRD flow.
         localStorage.setItem("nev_data_epoch", DATA_EPOCH);
     }catch(e){
-        // JSON antrean yang rusak/tidak terbaca tidak boleh menyebabkan data dibuang.
-        console.warn("Reset data lokal ditunda demi keamanan data:", e);
+        // Invalid/unreadable local data must never trigger destructive cleanup.
+        console.warn("Migrasi cache ditunda demi keamanan data:", e);
     }
 })();
 
