@@ -47,10 +47,35 @@ const DATA_EPOCH = "clean-2026-10-01b";
 (function resetLocalOldData(){
     try{
         if(localStorage.getItem("nev_data_epoch") === DATA_EPOCH) return;
+
+        // Jangan pernah membersihkan cache saat ada perubahan yang belum tersinkron
+        // atau data gagal yang masih menunggu pemulihan. Jika format antrean rusak,
+        // anggap masih ada data penting dan hentikan reset secara aman (fail closed).
+        const queueRaw = localStorage.getItem(CLOUD_QUEUE_KEY);
+        const deadLetterRaw = localStorage.getItem(CLOUD_DEAD_LETTER_KEY);
+        let hasPendingChanges = false;
+        if(queueRaw !== null){
+            const queue = JSON.parse(queueRaw);
+            if(!Array.isArray(queue)) hasPendingChanges = true;
+            else if(queue.length > 0) hasPendingChanges = true;
+        }
+        if(deadLetterRaw !== null){
+            const deadLetters = JSON.parse(deadLetterRaw);
+            if(!Array.isArray(deadLetters)) hasPendingChanges = true;
+            else if(deadLetters.length > 0) hasPendingChanges = true;
+        }
+        if(hasPendingChanges){
+            console.warn("Reset cache lokal ditunda: antrean sinkronisasi atau arsip pemulihan masih berisi data.");
+            return;
+        }
+
         [DB.sessions, DB.attendance, DB.permits].forEach(k=> localStorage.removeItem(k));
-        localStorage.removeItem(CLOUD_QUEUE_KEY);
+        // CLOUD_QUEUE_KEY sengaja tidak dihapus. Kunci kosong boleh tetap ada.
         localStorage.setItem("nev_data_epoch", DATA_EPOCH);
-    }catch(e){ console.warn("Reset data lokal gagal:", e); }
+    }catch(e){
+        // JSON antrean yang rusak/tidak terbaca tidak boleh menyebabkan data dibuang.
+        console.warn("Reset data lokal ditunda demi keamanan data:", e);
+    }
 })();
 
 function getAuthToken(){
