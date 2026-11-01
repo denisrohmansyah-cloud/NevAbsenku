@@ -36,3 +36,6 @@ jobs:
 
       - name: Check inline JavaScript in index.html
         run: node scripts/check-inline-js.mjs
+
+      - name: Test non-destructive local data migration
+        run: node scripts/test-data-epoch-reset.mjs
