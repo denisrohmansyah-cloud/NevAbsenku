@@ -32,19 +32,54 @@ href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
 <!-- QR Generator -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
-<!-- QR Scanner -->
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" type="text/javascript"></script>
-
-<!-- Excel -->
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-
-<!-- PDF -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-
-<!-- Peta lokasi kantor (Geofencing) -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Library berat dimuat saat fiturnya benar-benar digunakan. -->
+<script>
+(function(){
+    const pending = Object.create(null);
+    window.nevLoadScript = function(key, src, ready){
+        if(ready && ready()) return Promise.resolve();
+        if(pending[key]) return pending[key];
+        pending[key] = new Promise((resolve,reject)=>{
+            const script=document.createElement("script");
+            script.src=src;
+            script.async=true;
+            script.onload=()=>{
+                if(ready && !ready()){
+                    delete pending[key];
+                    reject(new Error("Library selesai dimuat tetapi API tidak tersedia: "+key));
+                    return;
+                }
+                resolve();
+            };
+            script.onerror=()=>{
+                script.remove();
+                delete pending[key];
+                reject(new Error("Gagal memuat library "+key));
+            };
+            document.head.appendChild(script);
+        });
+        return pending[key];
+    };
+    window.ensureNevXlsx = ()=>window.nevLoadScript(
+        "xlsx","https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js",
+        ()=>!!window.XLSX
+    );
+    window.ensureNevPdf = async()=>{
+        await window.nevLoadScript(
+            "jspdf","https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
+            ()=>!!(window.jspdf && window.jspdf.jsPDF)
+        );
+        await window.nevLoadScript(
+            "jspdf-autotable","https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js",
+            ()=>!!(window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API.autoTable)
+        );
+    };
+    window.ensureNevQrScanner = ()=>window.nevLoadScript(
+        "html5-qrcode","https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js",
+        ()=>!!(window.Html5Qrcode && window.Html5QrcodeSupportedFormats)
+    );
+})();
+</script>
 
 <!-- File tambahan: lokasi (geofencing) & selfie -->
 <link rel="stylesheet" href="geo-selfie.css">
@@ -5050,7 +5085,7 @@ async function finalizeAttendance(session, token, location, photo){
 SCANNER
 ========================================================= */
 
-function startScanner(){
+async function startScanner(){
     if(currentUser?.role!=="STAF"){
         toast("Fitur scanner hanya tersedia untuk STAF.", "error"); return;
     }
@@ -5076,6 +5111,7 @@ function startScanner(){
     }
 
     try{
+        await ensureNevQrScanner();
         // Hanya baca QR + pakai BarcodeDetector bawaan browser bila ada (jauh lebih cepat).
         html5QrCode = new Html5Qrcode("reader", {
             formatsToSupport:[Html5QrcodeSupportedFormats.QR_CODE],
@@ -5573,9 +5609,9 @@ function getSessionAttendanceExportData(sessionId){
     return {session,rows};
 }
 
-function exportSessionAttendanceExcel(sessionId){
+async function exportSessionAttendanceExcel(sessionId){
     const result=getSessionAttendanceExportData(sessionId); if(!result)return;
-    if(!window.XLSX){ toast("Fitur Excel belum termuat. Muat ulang halaman lalu coba lagi.","error"); return; }
+    try{ await ensureNevXlsx(); }catch(e){ console.error(e); toast("Library Excel gagal dimuat. Periksa koneksi lalu coba lagi.","error"); return; }
     const ws=XLSX.utils.json_to_sheet(result.rows);
     ws["!cols"]=[{wch:30},{wch:18},{wch:18},{wch:14},{wch:20},{wch:20},{wch:14},{wch:14}];
     const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Kehadiran Sesi");
@@ -5584,9 +5620,9 @@ function exportSessionAttendanceExcel(sessionId){
     toast("Excel kehadiran sesi berhasil dibuat.","success");
 }
 
-function exportSessionAttendancePDF(sessionId){
+async function exportSessionAttendancePDF(sessionId){
     const result=getSessionAttendanceExportData(sessionId); if(!result)return;
-    if(!window.jspdf || !window.jspdf.jsPDF){ toast("Fitur PDF belum termuat. Muat ulang halaman lalu coba lagi.","error"); return; }
+    try{ await ensureNevPdf(); }catch(e){ console.error(e); toast("Library PDF gagal dimuat. Periksa koneksi lalu coba lagi.","error"); return; }
     const {jsPDF}=window.jspdf; const doc=new jsPDF("landscape","mm","a4");
     doc.setFontSize(16); doc.text("NEV Absenku - Laporan Kehadiran per Sesi",14,15);
     doc.setFontSize(10); doc.text("Kegiatan: "+String(result.session.activity||"-"),14,23);
@@ -6822,9 +6858,10 @@ function recapExportRows(){
     }));
 }
 
-function exportRecapExcel(){
+async function exportRecapExcel(){
     if(currentUser?.role!=="HRD" && currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
     if(!recapRows.length){ toast("Tidak ada data untuk diexport.","error"); return; }
+    try{ await ensureNevXlsx(); }catch(e){ console.error(e); toast("Library Excel gagal dimuat. Periksa koneksi lalu coba lagi.","error"); return; }
     const ws = XLSX.utils.json_to_sheet(recapExportRows());
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Rekap per Staf");
@@ -6832,9 +6869,10 @@ function exportRecapExcel(){
     toast("Rekap per staf berhasil dibuat.","success");
 }
 
-function exportRecapPDF(){
+async function exportRecapPDF(){
     if(currentUser?.role!=="HRD" && currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
     if(!recapRows.length){ toast("Tidak ada data untuk diexport.","error"); return; }
+    try{ await ensureNevPdf(); }catch(e){ console.error(e); toast("Library PDF gagal dimuat. Periksa koneksi lalu coba lagi.","error"); return; }
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF("landscape");
     doc.setFontSize(18);
@@ -7320,7 +7358,7 @@ function getKoorFilteredAttendance(){
     return data;
 }
 
-function exportKoorExcel(){
+async function exportKoorExcel(){
     if(currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
     const data=getKoorFilteredAttendance();
     const rows=data.map(a=>({
@@ -7328,6 +7366,7 @@ function exportKoorExcel(){
         "Divisi":a.division, "Tanggal":a.date, "Jam":formatTime(a.checkIn),
         "Status":a.status
     }));
+    try{ await ensureNevXlsx(); }catch(e){ console.error(e); toast("Library Excel gagal dimuat. Periksa koneksi lalu coba lagi.","error"); return; }
     const worksheet=XLSX.utils.json_to_sheet(rows);
     const workbook=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook,worksheet,"Ngoprek");
@@ -7335,9 +7374,10 @@ function exportKoorExcel(){
     toast("Rekap Ngoprek berhasil dibuat.","success");
 }
 
-function exportKoorPDF(){
+async function exportKoorPDF(){
     if(currentUser?.role!=="KOOR KP"){ toast("Akses ditolak.","error"); return; }
     const data=getKoorFilteredAttendance();
+    try{ await ensureNevPdf(); }catch(e){ console.error(e); toast("Library PDF gagal dimuat. Periksa koneksi lalu coba lagi.","error"); return; }
     const {jsPDF}=window.jspdf;
     const doc=new jsPDF("landscape");
     doc.setFontSize(18);
@@ -7353,9 +7393,10 @@ function exportKoorPDF(){
     toast("PDF rekap Ngoprek berhasil dibuat.","success");
 }
 
-function exportExcel(){
+async function exportExcel(){
     if(currentUser.role!=="HRD"){ toast("Hanya HRD yang dapat export data.", "error"); return; }
     const data=hrdReportData();
+    try{ await ensureNevXlsx(); }catch(e){ console.error(e); toast("Library Excel gagal dimuat. Periksa koneksi lalu coba lagi.","error"); return; }
 
     const rows=data.map(a=>({
         "Nama":a.userName, "Username/NIM":a.username, "Kegiatan":a.activity,
@@ -7376,9 +7417,10 @@ function exportExcel(){
 EXPORT PDF
 ========================================================= */
 
-function exportPDF(){
+async function exportPDF(){
     if(currentUser.role!=="HRD"){ toast("Hanya HRD yang dapat export PDF.", "error"); return; }
     const data=hrdReportData();
+    try{ await ensureNevPdf(); }catch(e){ console.error(e); toast("Library PDF gagal dimuat. Periksa koneksi lalu coba lagi.","error"); return; }
 
     const { jsPDF } = window.jspdf;
     const doc=new jsPDF("landscape");
