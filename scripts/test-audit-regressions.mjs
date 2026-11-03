@@ -56,7 +56,7 @@ assert.equal(forged.creatorRole,"HRD",
 assert.equal(forged.attendanceSubmitted,false);
 assert.equal(forged.submittedAt,null);
 
-const koor={id:"S-2",creatorId:"KOOR-FAKE",creatorName:"Fake",creatorRole:"HRD",
+const koor={id:"S-2",creatorId:"KOOR-1",creatorName:"Koor",creatorRole:"HRD",
   activity:"Ngoprek",division:"Networking",attendanceSubmitted:false};
 policyContext.sessionPolicy_(null,koor,{id:"KOOR-1",name:"Koor",role:"KOOR KP",division:"Networking"});
 assert.equal(koor.creatorId,"KOOR-1");
