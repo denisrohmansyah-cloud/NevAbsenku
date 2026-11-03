@@ -42,3 +42,6 @@ jobs:
 
       - name: Test idempotent dead-letter recovery
         run: node scripts/test-dead-letter-retry.mjs
+      - name: Test corrupted sync storage preservation
+        run: node scripts/test-sync-storage-integrity.mjs
+

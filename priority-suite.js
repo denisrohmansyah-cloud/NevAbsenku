@@ -9,7 +9,11 @@ function scopedStaff(){let u=data("users").filter(x=>x.role==="STAF");if(current
 function scopedRecords(){let ss=data("sessions"),aa=data("attendance");if(currentUser.role==="KOOR KP"){ss=ss.filter(x=>x.creatorId===currentUser.id&&x.activity==="Ngoprek"&&x.division===currentUser.division);const ids=new Set(ss.map(x=>x.id));aa=aa.filter(x=>ids.has(x.sessionId)&&x.creatorId===currentUser.id)}else{ss=hrdVisibleSessions();aa=hrdVisibleAttendance()}return{ss,aa}}
 function analytics(){
  const el=ensurePage("hrd-analytics","Dashboard Analitik Kehadiran","Ringkasan kehadiran berdasarkan data yang tersedia dan hak akses akun.");if(!el)return;
- const {ss,aa}=scopedRecords(),staff=scopedStaff(),today=new Date().toISOString().slice(0,10),month=today.slice(0,7);
+ const {ss,aa}=scopedRecords(),staff=scopedStaff();
+ const wibParts=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jakarta",year:"numeric",month:"2-digit"}).formatToParts(new Date());
+ const wibYear=wibParts.find(p=>p.type==="year")?.value||"";
+ const wibMonth=wibParts.find(p=>p.type==="month")?.value||"";
+ const month=wibYear+"-"+wibMonth;
  const period=$("analyticsPeriod")?.value||month,filtered=ss.filter(s=>String(s.date||"").startsWith(period));
  const bySession=new Map(filtered.map(s=>[s.id,s])),byAttendance=new Map();
  aa.forEach(a=>{if(bySession.has(a.sessionId)&&!byAttendance.has(a.sessionId+"|"+a.userId))byAttendance.set(a.sessionId+"|"+a.userId,a)});
