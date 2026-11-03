@@ -548,7 +548,12 @@ function permitPolicy_(old,clean,actor){
   if(actor.role==="KOOR KP" && old.sessionCreatorId!==actor.id){
     throw new Error("Koor KP hanya dapat mengelola pengajuan miliknya.");
   }
+  // Status Menunggu adalah satu-satunya state yang boleh diproses.
+  // Status final Disetujui/Ditolak bersifat terminal agar snapshot perangkat
+  // yang tertinggal tidak dapat membuka ulang pengajuan yang sudah diputus.
+  if(old.status!=="Menunggu") return old;
   if(clean.status===old.status && (clean.reviewNote||null)===(old.reviewNote||null)) return old;
+  if(clean.status!=="Disetujui" && clean.status!=="Ditolak") return old;
   if(actor.role==="KOOR KP" && isSubmittedSession_(old.sessionId)) return old;   // sudah di-submit: hanya HRD
   if(actor.role==="HRD" && isDraftKoorSession_(old.sessionId)) return old;       // draft Koor belum diserahkan
   const out=Object.assign({},old);
