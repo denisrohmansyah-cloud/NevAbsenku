@@ -48,3 +48,6 @@ jobs:
       - name: Test sync queue diagnostics
         run: node scripts/test-sync-queue-diagnostics.mjs
 
+      - name: Test audit regression fixes
+        run: node scripts/test-audit-regressions.mjs
+
