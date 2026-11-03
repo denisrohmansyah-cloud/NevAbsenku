@@ -4795,7 +4795,10 @@ function hrdReportRows(){
     const recorded=new Set(attendance.map(a=>a.sessionId+"|"+a.userId));
     const rows=attendance.slice();
     sessions.forEach(s=>{
-        if(!isDraftKoorSession(s) && !isDeactivatedSession(s)) return;
+        // Sesi KOOR KP yang belum disubmit adalah draft, bukan dasar penetapan Alpha.
+        // Alpha baru dihitung setelah sesi berakhir atau dinonaktifkan.
+        if(isDraftKoorSession(s)) return;
+        if(!(isSessionEnded(s) || isDeactivatedSession(s))) return;
         const general=!s.division || s.division==="-";
         staff.forEach(u=>{
             if(!general && s.division!==u.division) return;
@@ -5935,10 +5938,11 @@ function renderHRDDashboard(){
         let implicitAlpha=0;
         try{
             const nowSessions=sessions.filter(s=>{
-                const draft=s.creatorRole==="KOOR KP"&&s.attendanceSubmitted!==true;
+                // Jangan hitung Alpha dari sesi KOOR KP yang masih berupa draft.
+                if(isDraftKoorSession(s)) return false;
                 const ended=typeof isSessionEnded==="function"&&isSessionEnded(s);
-                const deactivated=s.active===false&&s.date&&s.date<=getTodayWIB();
-                return draft||ended||deactivated;
+                const deactivated=isDeactivatedSession(s);
+                return ended||deactivated;
             });
             const recorded=new Set(attendance.map(a=>a.sessionId+"|"+a.userId));
             nowSessions.forEach(s=>staff.forEach(u=>{
@@ -6682,7 +6686,9 @@ function isSessionEnded(session){
 function implicitAlphaCount(staffList, sessions, attendance){
     let n = 0;
     sessions.forEach(s=>{
-        if(!isDraftKoorSession(s) && !isSessionEnded(s) && !isDeactivatedSession(s)) return;
+        // Draft KOOR KP belum boleh menghasilkan Alpha.
+        if(isDraftKoorSession(s)) return;
+        if(!isSessionEnded(s) && !isDeactivatedSession(s)) return;
         const general = !s.division || s.division==="-";
         staffList.forEach(u=>{
             if(!general && s.division!==u.division) return;
