@@ -218,11 +218,17 @@ function setCloudDeadLetters(items){
 }
 function archiveCloudQueueItem(item,error){
     const archive=getCloudDeadLetters();
-    archive.push({...item,failedAt:new Date().toISOString(),failureReason:friendlyCloudError(error)});
-    // Hapus dari antrean aktif hanya setelah arsip berhasil ditulis.
-    if(!setCloudDeadLetters(archive))return false;
-    removeCloudQueueItem(item.id);
-    return true;
+    // Satu item antrean hanya boleh memiliki satu arsip, termasuk bila penghapusan
+    // dari antrean aktif gagal dan flush berikutnya mencoba mengarsipkannya lagi.
+    const existing=archive.find(x=>x && x.id===item.id);
+    if(!existing){
+        archive.push({...item,failedAt:new Date().toISOString(),failureReason:friendlyCloudError(error)});
+        if(!setCloudDeadLetters(archive))return false;
+    }
+    // Jangan menganggap arsip selesai bila item aktif belum benar-benar terhapus.
+    // Jika gagal, item tetap ada di kedua tempat dan deduplikasi di atas mencegah
+    // arsip membengkak pada percobaan berikutnya.
+    return removeCloudQueueItem(item.id);
 }
 function exportCloudDeadLetters(){
     const items=getCloudDeadLetters();
@@ -238,10 +244,23 @@ window.retryCloudDeadLetters=function(){
     const archived=getCloudDeadLetters();
     if(!archived.length){if(typeof toast==="function")toast("Tidak ada data untuk dicoba ulang.","normal");return;}
     const queue=getCloudQueue();
-    archived.forEach(item=>queue.push({id:item.id||("Q-RETRY-"+Date.now()+"-"+Math.random().toString(36).slice(2)),action:item.action,data:item.data,createdAt:item.createdAt||new Date().toISOString(),retryOf:item.id||null}));
-    try{localStorage.setItem(CLOUD_QUEUE_KEY,JSON.stringify(queue));}
-    catch(e){cloudLastError="Antrean penuh; arsip pemulihan tetap disimpan.";updateCloudBadge();return;}
-    if(!setCloudDeadLetters([])){cloudLastError="Antrean dibuat tetapi arsip belum dapat dibersihkan.";updateCloudBadge();return;}
+    // Gunakan retryOf sebagai kunci idempotensi lokal. Jika penghapusan arsip gagal,
+    // klik ulang tidak boleh menambahkan salinan kedua dari item yang sama.
+    archived.forEach(item=>{
+        if(!item || !item.action) return;
+        const sourceId=item.id||null;
+        const alreadyQueued=sourceId && queue.some(q=>q && q.retryOf===sourceId);
+        if(alreadyQueued) return;
+        queue.push({
+            id:sourceId ? "Q-RETRY-"+sourceId : ("Q-RETRY-"+Date.now()+"-"+Math.random().toString(36).slice(2)),
+            action:item.action,
+            data:item.data,
+            createdAt:item.createdAt||new Date().toISOString(),
+            retryOf:sourceId
+        });
+    });
+    if(!setCloudQueue(queue)){cloudLastError="Antrean penuh; arsip pemulihan tetap disimpan.";updateCloudBadge();return;}
+    if(!setCloudDeadLetters([])){cloudLastError="Antrean dibuat tetapi arsip belum dapat dibersihkan. Percobaan ulang aman dilakukan kembali.";updateCloudBadge();return;}
     cloudUnsynced=queue.length;updateCloudBadge();flushCloudQueue();
 };
 
