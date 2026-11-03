@@ -69,6 +69,8 @@ let trashed=[],savedRecord=null,mode="success";
 const latestSession={id:"SES-1",division:"Networking",date:"2026-11-03",
   activity:"Ngoprek",location:"Lab",creatorId:"KOOR-1",creatorRole:"KOOR KP"};
 const permitContext={
+  SHEET_SESSIONS:"Sessions",
+  SHEET_PERMITS:"Permits",
   PERMIT_TYPES:["Izin","Sakit","Dispen"],
   idOk_:v=>!!v,
   str_:(v,n)=>String(v||"").slice(0,n),
