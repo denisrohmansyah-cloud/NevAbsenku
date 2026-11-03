@@ -201,7 +201,7 @@ async function fetchCloudText(url,options,timeoutMs){
         return {response,text};
     }catch(error){
         if(timedOut || (controller&&controller.signal.aborted)){
-            const timeoutError=new Error("Request ke Google Apps Script melewati batas "+Math.round(timeout/1000)+" detik.");
+            const timeoutError=new Error("Request ke Google Apps Script melewati batas "+Math.max(1,Math.ceil(timeout/1000))+" detik.");
             timeoutError.retryable=true;
             throw timeoutError;
         }
