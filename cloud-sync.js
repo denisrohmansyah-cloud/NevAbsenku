@@ -47,10 +47,44 @@ const DATA_EPOCH = "clean-2026-10-01b";
 (function resetLocalOldData(){
     try{
         if(localStorage.getItem("nev_data_epoch") === DATA_EPOCH) return;
-        [DB.sessions, DB.attendance, DB.permits].forEach(k=> localStorage.removeItem(k));
-        localStorage.removeItem(CLOUD_QUEUE_KEY);
+
+        // A version marker must never authorize deletion of attendance data.
+        // Preserve caches whenever there are pending operations, recovery records,
+        // malformed queue contents, or any local business records.
+        const hasArrayData = key => {
+            const raw = localStorage.getItem(key);
+            if(raw === null) return false;
+            const parsed = JSON.parse(raw);
+            if(!Array.isArray(parsed)) return true; // unknown format: fail closed
+            return parsed.length > 0;
+        };
+        const hasPending = key => {
+            const raw = localStorage.getItem(key);
+            if(raw === null) return false;
+            const parsed = JSON.parse(raw);
+            if(!Array.isArray(parsed)) return true; // corrupt queue: fail closed
+            return parsed.length > 0;
+        };
+
+        const preserveData =
+            hasPending(CLOUD_QUEUE_KEY) ||
+            hasPending(CLOUD_DEAD_LETTER_KEY) ||
+            hasArrayData(DB.sessions) ||
+            hasArrayData(DB.attendance) ||
+            hasArrayData(DB.permits);
+
+        if(preserveData){
+            console.warn("Migrasi cache ditunda: data lokal atau antrean pemulihan masih tersedia. Tidak ada data yang dihapus.");
+            return;
+        }
+
+        // There is nothing to migrate or delete. Advance only the marker.
+        // Explicit data purges must be performed by the authorized HRD flow.
         localStorage.setItem("nev_data_epoch", DATA_EPOCH);
-    }catch(e){ console.warn("Reset data lokal gagal:", e); }
+    }catch(e){
+        // Invalid/unreadable local data must never trigger destructive cleanup.
+        console.warn("Migrasi cache ditunda demi keamanan data:", e);
+    }
 })();
 
 function getAuthToken(){
