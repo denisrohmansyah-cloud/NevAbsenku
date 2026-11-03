@@ -120,4 +120,27 @@ await assert.rejects(
   err=>/melewati batas 1 detik/.test(err.message)&&err.retryable===true
 );
 
-console.log("PASS: Alpha eligibility, server-owned session identity, permit photo cleanup, and cloud request timeout.");
+// 5. Approved/rejected permits are terminal and cannot be reopened by stale snapshots.
+const permitPolicy=extract(backend,"function permitPolicy_(old,clean,actor){","\nfunction settingsToObject_", "permitPolicy");
+const policyPermitContext={isSubmittedSession_:()=>false,isDraftKoorSession_:()=>false};
+vm.runInNewContext(permitPolicy,policyPermitContext);
+const approved={id:"P-1",sessionId:"S-1",sessionCreatorId:"KOOR-1",status:"Disetujui",reviewNote:null,reviewedBy:"HRD-1"};
+const stale={...approved,status:"Menunggu",reviewNote:null};
+const preserved=policyPermitContext.permitPolicy_(approved,stale,{id:"HRD-1",role:"HRD"});
+assert.equal(preserved.status,"Disetujui","approved permit must not be reopened by stale save snapshot");
+const pending={id:"P-2",sessionId:"S-2",sessionCreatorId:"KOOR-1",status:"Menunggu",reviewNote:null};
+const approvedNow=policyPermitContext.permitPolicy_(pending,{...pending,status:"Disetujui",reviewNote:null},{id:"HRD-1",name:"HRD",role:"HRD"});
+assert.equal(approvedNow.status,"Disetujui");
+assert.equal(approvedNow.reviewedBy,"HRD-1");
+
+// 6. Server enforces evidence and date constraints even if a browser bypasses UI.
+const addAttendance=extract(backend,"function addAttendance_(actor,data){","\n/* Staf memindai QR", "addAttendance");
+const addPermitBackend=extract(backend,"function addPermit_(actor,data){","\n/* =========================================================\nSURAT PERINGATAN", "addPermit");
+const evalBackend=extract(backend,"function submitEvaluation_(actor,data){","\nconst CORRECTION_HEADERS_", "submitEvaluation");
+assert.ok(addAttendance.includes("if(!data.photo)"),"server must require selfie before writing attendance");
+assert.ok(addPermitBackend.includes("if(!data.photo)"),"server must require permit proof before writing request");
+assert.ok(evalBackend.includes("if(!DATE_RE.test(period))"),"server must validate evaluation date format");
+assert.ok(cloud.includes("fetchCloudText(cacheBust(`${CLOUD_SCRIPT_URL}?action=bootstrap`)"),
+  "startup bootstrap must use the timeout-protected request helper");
+
+console.log("PASS: Alpha eligibility, session identity, photo cleanup, terminal permit reviews, server-side proof/date checks, and cloud timeouts.");
