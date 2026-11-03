@@ -431,7 +431,16 @@ async function purgeCloudData(options){
         throw new Error("Purge dibatalkan: antrean/arsip sinkronisasi lokal rusak dan belum dapat diverifikasi. Ekspor data pemulihan terlebih dahulu.");
     }
     const json = await cloudPost("purgeData", options || {}, 0);
-    setCloudQueue([]);
+
+    // Arsip gagal juga dapat berisi absensi lama. Hapus bersama queue setelah
+    // server mengonfirmasi purge agar retry manual tidak menghidupkan data lama.
+    const queueCleared=setCloudQueue([]);
+    const archiveCleared=setCloudDeadLetters([]);
+    if(!queueCleared || !archiveCleared){
+        cloudLastError="Server telah menjalankan purge, tetapi penyimpanan antrean lokal belum berhasil dibersihkan. Jangan klik retry arsip; ekspor data pemulihan dan periksa perangkat ini.";
+        updateCloudBadge();
+        throw new Error(cloudLastError);
+    }
     cloudUnsynced = 0;
     [DB.sessions, DB.attendance, DB.permits].forEach(k=> _localSave(k, []));
     updateCloudBadge();
@@ -586,6 +595,7 @@ async function fetchCloudAll(){
             return parsed;
         });
         applyCloudAll(json);
+        if(cloudQueueCorrupt || cloudDeadLettersCorrupt) return false;
 
         if(cloudUnsynced) await flushCloudQueue();
         return true;
