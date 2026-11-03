@@ -45,3 +45,6 @@ jobs:
       - name: Test corrupted sync storage preservation
         run: node scripts/test-sync-storage-integrity.mjs
 
+      - name: Test sync queue diagnostics
+        run: node scripts/test-sync-queue-diagnostics.mjs
+

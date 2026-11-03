@@ -341,11 +341,14 @@ function removeCloudQueueItem(id){
 
 function friendlyCloudError(err){
     const msg = String((err && err.message) || err || "");
-    if(/failed to fetch|networkerror|load failed|network request failed/i.test(msg)){
-        return "koneksi ke Google terputus atau terlalu lambat";
+    if(/failed to fetch|networkerror|load failed|network request failed|err_network|err_connection/i.test(msg)){
+        return "Browser gagal menyelesaikan request ke endpoint Google Apps Script. Ini tidak otomatis berarti internet perangkat putus; periksa respons/deployment endpoint.";
     }
     if(/respons server bukan json/i.test(msg)){
-        return "Web App Apps Script tidak mengembalikan JSON; periksa Deployment dan akses Anyone";
+        return "Endpoint Apps Script mengembalikan respons non-JSON. Periksa akses Web App, URL deployment, dan apakah endpoint masih aktif.";
+    }
+    if(/batas waktu penguncian habis|lock.*timeout/i.test(msg)){
+        return "Google Apps Script gagal memperoleh LockService tepat waktu.";
     }
     return msg.slice(0, 220) || "kesalahan tidak diketahui";
 }
@@ -360,7 +363,31 @@ function serializeCloudRequest(task){
 }
 function isTransientCloudError(err){
     const msg=String((err && err.message) || err || "");
-    return /batas waktu penguncian habis|lock.*timeout|try again|temporar|server busy|too many requests|service invoked too many times/i.test(msg);
+    return /batas waktu penguncian habis|lock.*timeout|try again|temporar|server busy|too many requests|service invoked too many times|failed to fetch|networkerror|load failed|network request failed|err_network|err_connection|timed? ?out|timeout|http 429|http 5\d\d/i.test(msg);
+}
+
+function queueActionLabel(action){
+    const labels={
+        saveSessions:"perubahan kegiatan",
+        saveAttendance:"perubahan data absensi",
+        saveSettings:"perubahan pengaturan",
+        savePermits:"perubahan data izin",
+        addAttendance:"pengiriman absensi",
+        addPermit:"pengajuan izin"
+    };
+    return labels[action]||String(action||"operasi sinkronisasi");
+}
+
+function rememberCloudQueueFailure(item,err){
+    const message=friendlyCloudError(err);
+    const q=getCloudQueue();
+    const index=q.findIndex(x=>x && x.id===item.id);
+    if(index>=0){
+        q[index]={...q[index],lastError:message,lastAttemptAt:new Date().toISOString(),attemptCount:(Number(q[index].attemptCount)||0)+1};
+        setCloudQueue(q);
+    }
+    cloudLastError=queueActionLabel(item.action)+": "+message;
+    updateCloudBadge();
 }
 
 async function cloudPost(action, data, retries){
@@ -410,6 +437,7 @@ async function cloudPost(action, data, retries){
         }catch(err){
             lastErr = err;
             if(err.authExpired) handleSessionExpired(err.message);
+            if(!err.fatal && !err.retryable && isTransientCloudError(err)) err.retryable=true;
             if(err.fatal) break;
             if(attempt < maxRetry){
                 const delay=err.retryable ? 5000 : 1500;
@@ -597,7 +625,14 @@ async function fetchCloudAll(){
         applyCloudAll(json);
         if(cloudQueueCorrupt || cloudDeadLettersCorrupt) return false;
 
-        if(cloudUnsynced) await flushCloudQueue();
+        if(cloudUnsynced){
+            const flushed=await flushCloudQueue();
+            if(!flushed || getCloudQueue().length){
+                if(!cloudLastError) cloudLastError="Masih ada data yang belum berhasil disinkronkan.";
+                updateCloudBadge();
+                return false;
+            }
+        }
         return true;
     }catch(err){
         console.error("Gagal mengambil data dari Google Sheets:",err);
@@ -629,16 +664,17 @@ async function flushCloudQueue(){
             }catch(err){
                 if(err.authExpired) break;
                 console.error("Queue cloud gagal:",err);
-                if(err.retryable || isTransientCloudError(err)){
-                    cloudLastError="Sinkronisasi tertunda karena backend sedang sibuk mengunci data. Antrean dipertahankan untuk dicoba lagi.";
-                    break;
-                }
                 if(err.fatal){
                     if(archiveCloudQueueItem(item,err)){
-                        cloudLastError="Server menolak data. Data dipindahkan ke arsip pemulihan: "+friendlyCloudError(err);
+                        cloudLastError=queueActionLabel(item.action)+" ditolak server dan dipindahkan ke arsip pemulihan: "+friendlyCloudError(err);
                     }else{
-                        cloudLastError="Server menolak data, tetapi antrean tetap dipertahankan karena arsip gagal disimpan.";
+                        rememberCloudQueueFailure(item,err);
+                        cloudLastError="Server menolak data, tetapi antrean tetap dipertahankan karena arsip gagal disimpan. "+friendlyCloudError(err);
                     }
+                }else{
+                    // Jangan biarkan antrean tertahan tanpa penyebab. Error transport,
+                    // timeout, atau respons tidak dikenal tetap disimpan untuk retry aman.
+                    rememberCloudQueueFailure(item,err);
                 }
                 break;
             }
@@ -651,6 +687,9 @@ async function flushCloudQueue(){
         cloudFlushing=false;
         cloudFlushPromise=null;
         cloudUnsynced=getCloudQueue().length;
+        if(!cloudUnsynced && !getCloudDeadLetters().length && !cloudQueueCorrupt && !cloudDeadLettersCorrupt){
+            cloudLastError=null;
+        }
         updateCloudBadge();
     }
 }
@@ -724,10 +763,18 @@ function updateCloudBadge(){
     getCloudQueue();getCloudDeadLetters();
     if(cloudQueueCorrupt || cloudDeadLettersCorrupt){text="⚠ Data pemulihan rusak — ketuk untuk ekspor";bg="#b71c1c";}
     else if(!cloudSyncEnabled){text="⚠ CLOUD OFFLINE";bg="#c62828";}
-    else if(cloudUnsynced>0){text="⏳ "+cloudUnsynced+" antrean sinkronisasi";bg="#ef6c00";}
+    else if(cloudUnsynced>0){
+        const first=getCloudQueue()[0];
+        const action=first?queueActionLabel(first.action):"data tertunda";
+        const reason=first&&(first.lastError||"");
+        text="⏳ "+cloudUnsynced+" antrean sinkronisasi";
+        if(el) el.title=action+(reason?" — "+reason:" — klik untuk mencoba sinkronisasi dan melihat hasil");
+        bg="#ef6c00";
+    }
     else if(getCloudDeadLetters().length){text="⚠ "+getCloudDeadLetters().length+" data gagal — ketuk untuk ekspor";bg="#c62828";}
     else if(cloudLastError){text="⚠ Gagal sinkron — ketuk untuk detail/retry";bg="#c62828";}
     else{const t=cloudLastSyncAt?cloudLastSyncAt.toLocaleTimeString("id-ID"):"-";text="☁ Tersinkron "+t+" · ketuk untuk segarkan";bg="#2e7d32";}
+    if(!cloudUnsynced && el) el.title=cloudLastError||"Data tersinkron. Klik untuk menyegarkan.";
     el.textContent=text;el.style.background=bg;el.style.color="#fff";
 }
 
