@@ -218,11 +218,17 @@ function setCloudDeadLetters(items){
 }
 function archiveCloudQueueItem(item,error){
     const archive=getCloudDeadLetters();
-    archive.push({...item,failedAt:new Date().toISOString(),failureReason:friendlyCloudError(error)});
-    // Hapus dari antrean aktif hanya setelah arsip berhasil ditulis.
-    if(!setCloudDeadLetters(archive))return false;
-    removeCloudQueueItem(item.id);
-    return true;
+    // Satu item antrean hanya boleh memiliki satu arsip, termasuk bila penghapusan
+    // dari antrean aktif gagal dan flush berikutnya mencoba mengarsipkannya lagi.
+    const existing=archive.find(x=>x && x.id===item.id);
+    if(!existing){
+        archive.push({...item,failedAt:new Date().toISOString(),failureReason:friendlyCloudError(error)});
+        if(!setCloudDeadLetters(archive))return false;
+    }
+    // Jangan menganggap arsip selesai bila item aktif belum benar-benar terhapus.
+    // Jika gagal, item tetap ada di kedua tempat dan deduplikasi di atas mencegah
+    // arsip membengkak pada percobaan berikutnya.
+    return removeCloudQueueItem(item.id);
 }
 function exportCloudDeadLetters(){
     const items=getCloudDeadLetters();
