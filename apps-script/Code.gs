@@ -290,7 +290,8 @@ function getEvaluations_(actor){
 function submitEvaluation_(actor,data){
   if(actor.role!=="HRD"&&actor.role!=="KOOR KP")throw new Error("Hanya HRD atau Koor KP yang dapat menilai staf.");
   const staffId=String(data.staffId||"").trim(),period=String(data.period||"").trim().slice(0,40);
-  if(!staffId||!period)throw new Error("Staf dan periode penilaian wajib diisi.");
+  if(!staffId||!period)throw new Error("Staf dan tanggal penilaian wajib diisi.");
+  if(!DATE_RE.test(period))throw new Error("Tanggal penilaian harus menggunakan format YYYY-MM-DD.");
   const staff=sheetToObjects_(SHEET_USERS).find(u=>u.id===staffId&&u.role==="STAF");
   if(!staff)throw new Error("Akun staf tidak ditemukan.");
   if(actor.role==="KOOR KP"&&staff.division!==actor.division)throw new Error("Koor KP hanya dapat menilai staf di divisinya.");
@@ -512,8 +513,15 @@ function sessionPolicy_(old,clean,actor){
     clean.submittedAt=old.submittedAt||null; clean.submittedBy=old.submittedBy||null;
     clean.submittedByName=old.submittedByName||null;
   }else{
-    // Sesi baru: pembuat selalu akun yang sedang login.
-    clean.creatorId=actor.id; clean.creatorName=actor.name; clean.creatorRole=actor.role;
+    // Sesi baru: seluruh identitas pembuat diambil dari token server,
+    // bukan dari creatorId/creatorName/creatorRole yang dikirim browser.
+    clean.creatorId=actor.id;
+    clean.creatorName=actor.name;
+    clean.creatorRole=actor.role;
+    clean.attendanceSubmitted=false;
+    clean.submittedAt=null;
+    clean.submittedBy=null;
+    clean.submittedByName=null;
   }
   return clean;
 }
@@ -540,7 +548,12 @@ function permitPolicy_(old,clean,actor){
   if(actor.role==="KOOR KP" && old.sessionCreatorId!==actor.id){
     throw new Error("Koor KP hanya dapat mengelola pengajuan miliknya.");
   }
+  // Status Menunggu adalah satu-satunya state yang boleh diproses.
+  // Status final Disetujui/Ditolak bersifat terminal agar snapshot perangkat
+  // yang tertinggal tidak dapat membuka ulang pengajuan yang sudah diputus.
+  if(old.status!=="Menunggu") return old;
   if(clean.status===old.status && (clean.reviewNote||null)===(old.reviewNote||null)) return old;
+  if(clean.status!=="Disetujui" && clean.status!=="Ditolak") return old;
   if(actor.role==="KOOR KP" && isSubmittedSession_(old.sessionId)) return old;   // sudah di-submit: hanya HRD
   if(actor.role==="HRD" && isDraftKoorSession_(old.sessionId)) return old;       // draft Koor belum diserahkan
   const out=Object.assign({},old);
@@ -1174,6 +1187,7 @@ function targetGeo_(session){
 function addAttendance_(actor,data){
   if(actor.role!=="STAF")throw new Error("Hanya STAF yang dapat mengirim absensi dirinya sendiri.");
   if(!data||!idOk_(data.sessionId))throw new Error("Data absensi tidak valid.");
+  if(!data.photo)throw new Error("Foto selfie wajib dilampirkan untuk melakukan absensi.");
   const lat=numOrNull_(data.lat,-90,90),lng=numOrNull_(data.lng,-180,180);
   return withLock_(function(){
     const session=sheetToObjects_(SHEET_SESSIONS).find(x=>x.id===data.sessionId);
@@ -1291,18 +1305,20 @@ function addPermit_(actor,data){
   if(PERMIT_TYPES.indexOf(type)<0) throw new Error("Jenis pengajuan harus Izin, Sakit, atau Dispen.");
   const reason=str_(data.reason,1000);
   if(!reason) throw new Error("Alasan wajib diisi.");
-
-  const session=findSession_(data.sessionId);
-  if(!session) throw new Error("Kegiatan tidak ditemukan di server.");
-  if(session.division && session.division!=="-" && session.division!==actor.division){
-    throw new Error("Kegiatan ini untuk divisi "+session.division+".");
-  }
+  if(!data.photo) throw new Error("Foto bukti izin/sakit wajib dilampirkan.");
 
   return withLock_(function(){
-    const currentSession=sheetToObjects_(SHEET_SESSIONS).find(x=>x.id===data.sessionId);
-    if(!currentSession||currentSession.id!==session.id||currentSession.division!==session.division)throw new Error("Kegiatan berubah atau tidak tersedia. Muat ulang lalu ajukan kembali.");
+    // Ambil sesi terbaru DI DALAM lock. Jangan memakai salinan sesi sebelum lock
+    // untuk menentukan divisi, tanggal, lokasi, atau metadata pengajuan.
+    const session=sheetToObjects_(SHEET_SESSIONS).find(x=>x.id===data.sessionId);
+    if(!session) throw new Error("Kegiatan tidak ditemukan di server.");
+    if(session.division && session.division!=="-" && session.division!==actor.division){
+      throw new Error("Kegiatan ini untuk divisi "+session.division+".");
+    }
+
     const dup=sheetToObjects_(SHEET_PERMITS).filter(validPermit_).find(r=>r.sessionId===session.id&&r.userId===actor.id&&r.status!=="Ditolak");
     if(dup)return {ok:true,record:dup,duplicate:true};
+
     const photoUrl=data.photo?savePhotoToDrive_(data.photo,(actor.username||"user")+"_"+session.date+"_"+Date.now(),"permit"):null;
     const record={
       id:newId_("PERMIT"), sessionId:session.id,
@@ -1314,7 +1330,20 @@ function addPermit_(actor,data){
       status:"Menunggu", submittedAt:new Date().toISOString(),
       reviewedBy:null, reviewedByName:null, reviewedAt:null, reviewNote:null
     };
-    appendObject_(SHEET_PERMITS,record);
+    try{
+      appendObject_(SHEET_PERMITS,record);
+    }catch(err){
+      // Jika Sheets gagal setelah Drive berhasil membuat foto, pindahkan
+      // file baru ke Trash agar tidak meninggalkan bukti yatim tanpa pengajuan.
+      if(photoUrl){
+        const match=photoUrl.match(/\/file\/d\/([A-Za-z0-9_-]{10,100})\/view/);
+        if(match){
+          try{DriveApp.getFileById(match[1]).setTrashed(true);}
+          catch(cleanupErr){Logger.log("Cleanup foto izin gagal: "+cleanupErr);}
+        }
+      }
+      throw err;
+    }
     auditEvent_(actor,"permit.create","permit",record.id,"Pengajuan "+record.type+" dibuat untuk sesi "+record.sessionId+".");
     return {ok:true,record:record};
   });
@@ -1352,11 +1381,13 @@ function issueWarning_(actor,data){
     validUntil=String(data.validUntil);
   }
 
-  const target=sheetToObjects_(SHEET_USERS).find(u=>u.id===data.targetId);
-  if(!target) throw new Error("Penerima tidak ditemukan.");
-  if(target.role!=="STAF" && target.role!=="KOOR KP") throw new Error("SP hanya dapat diberikan kepada STAF atau Koor KP.");
-
   return withLock_(function(){
+    // Cek penerima setelah lock untuk menghindari SP diterbitkan kepada akun
+    // yang role-nya berubah ketika request sedang menunggu lock.
+    const target=sheetToObjects_(SHEET_USERS).find(u=>u.id===data.targetId);
+    if(!target) throw new Error("Penerima tidak ditemukan.");
+    if(target.role!=="STAF" && target.role!=="KOOR KP") throw new Error("SP hanya dapat diberikan kepada STAF atau Koor KP.");
+
     // Pengiriman ulang dengan id yang sama (jaringan lambat) tidak menerbitkan SP dobel.
     const dup=sheetToObjects_(SHEET_WARNINGS).find(w=>w.id===data.id);
     if(dup) return {ok:true,record:dup,duplicate:true};

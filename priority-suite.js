@@ -14,7 +14,7 @@ function analytics(){
  const wibYear=wibParts.find(p=>p.type==="year")?.value||"";
  const wibMonth=wibParts.find(p=>p.type==="month")?.value||"";
  const month=wibYear+"-"+wibMonth;
- const period=$("analyticsPeriod")?.value||month,filtered=ss.filter(s=>String(s.date||"").startsWith(period));
+ const period=$("analyticsPeriod")?.value||month,filtered=ss.filter(s=>String(s.date||"").startsWith(period)&&isAlphaEligibleSession(s));
  const bySession=new Map(filtered.map(s=>[s.id,s])),byAttendance=new Map();
  aa.forEach(a=>{if(bySession.has(a.sessionId)&&!byAttendance.has(a.sessionId+"|"+a.userId))byAttendance.set(a.sessionId+"|"+a.userId,a)});
  const counts={Hadir:0,Izin:0,Sakit:0,Dispen:0,Alpha:0},expectedByDivision={};

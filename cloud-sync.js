@@ -180,6 +180,37 @@ function cacheBust(url){
     return url + (url.indexOf("?") >= 0 ? "&" : "?") + "_ts=" + Date.now();
 }
 
+/* Batasi waktu request + pembacaan body. Apps Script kadang menggantung tanpa
+   mengembalikan response; antrean harus mendapat timeout lalu retry terkontrol. */
+async function fetchCloudText(url,options,timeoutMs){
+    const timeout=Number(timeoutMs)||25000;
+    const controller=typeof AbortController!=="undefined"?new AbortController():null;
+    let timedOut=false,timer=null;
+    if(controller) timer=setTimeout(()=>{timedOut=true;controller.abort();},timeout);
+    try{
+        const requestOptions=Object.assign({},options||{});
+        if(controller) requestOptions.signal=controller.signal;
+        const response=await fetch(url,requestOptions);
+        const text=await response.text();
+        if(!response.ok){
+            const error=new Error("HTTP "+response.status+(response.statusText?" "+response.statusText:""));
+            if(isTransientCloudError(error)) error.retryable=true;
+            else error.fatal=true;
+            throw error;
+        }
+        return {response,text};
+    }catch(error){
+        if(timedOut || (controller&&controller.signal.aborted)){
+            const timeoutError=new Error("Request ke Google Apps Script melewati batas "+Math.max(1,Math.ceil(timeout/1000))+" detik.");
+            timeoutError.retryable=true;
+            throw timeoutError;
+        }
+        throw error;
+    }finally{
+        if(timer!==null) clearTimeout(timer);
+    }
+}
+
 function cloudPayload(action, data){
     const body = { action, data };
     if(action !== "login"){
@@ -397,13 +428,12 @@ async function cloudPost(action, data, retries){
     for(let attempt=0; attempt<=maxRetry; attempt++){
         try{
             return await serializeCloudRequest(async()=>{
-                const res = await fetch(cacheBust(CLOUD_SCRIPT_URL), {
+                const {response:res,text} = await fetchCloudText(cacheBust(CLOUD_SCRIPT_URL), {
                     method:"POST",
                     cache:"no-store",
                     headers:{"Content-Type":"text/plain;charset=utf-8"},
                     body:cloudPayload(action,data)
-                });
-                const text = await res.text();
+                },25000);
                 let json;
                 try{ json = JSON.parse(text); }
                 catch(e){ throw new Error("Respons server bukan JSON. Periksa Deployment Apps Script dan akses 'Anyone'."); }
@@ -602,13 +632,12 @@ async function fetchCloudAll(){
     if(!token) return false;
     try{
         const json=await serializeCloudRequest(async()=>{
-            const res=await fetch(cacheBust(CLOUD_SCRIPT_URL),{
+            const {response:res,text}=await fetchCloudText(cacheBust(CLOUD_SCRIPT_URL),{
                 method:"POST",
                 cache:"no-store",
                 headers:{"Content-Type":"text/plain;charset=utf-8"},
                 body:cloudPayload("getAll",{})
-            });
-            const text=await res.text();
+            },25000);
             let parsed;
             try{parsed=JSON.parse(text);}catch(e){throw new Error("Respons getAll bukan JSON. Periksa Deployment Apps Script dan akses 'Anyone'.");}
             if(parsed && parsed.authExpired){
@@ -930,8 +959,8 @@ async function submitPermit(event){
 // "Membangunkan" Apps Script di latar belakang + memastikan pengaturan lokal punya nilai awal.
 async function wakeCloudBootstrap(){
     try{
-        const res=await fetch(cacheBust(`${CLOUD_SCRIPT_URL}?action=bootstrap`),{cache:"no-store"});
-        const text=await res.text(); const boot=JSON.parse(text);
+        const {text}=await fetchCloudText(cacheBust(`${CLOUD_SCRIPT_URL}?action=bootstrap`),{cache:"no-store"},12000);
+        const boot=JSON.parse(text);
         if(boot&&boot.ok){
             cloudServerVersion=boot.version||null;
             // Lokasi/radius kantor baru diterima setelah login (getAll), bukan dari endpoint publik.
