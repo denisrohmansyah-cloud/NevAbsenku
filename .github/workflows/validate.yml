@@ -39,3 +39,6 @@ jobs:
 
       - name: Test non-destructive local data migration
         run: node scripts/test-data-epoch-reset.mjs
+
+      - name: Test idempotent dead-letter recovery
+        run: node scripts/test-dead-letter-retry.mjs
