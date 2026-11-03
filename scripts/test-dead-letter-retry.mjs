@@ -26,6 +26,8 @@ const context = {
     localStorage: { setItem() { throw new Error("direct writes should not be used"); } },
     cloudLastError: null,
     cloudUnsynced: 0,
+    cloudQueueCorrupt: false,
+    cloudDeadLettersCorrupt: false,
     updateCloudBadge() {},
     flushCloudQueue() { flushCount++; },
     toast() {},
