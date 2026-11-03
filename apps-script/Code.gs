@@ -512,8 +512,15 @@ function sessionPolicy_(old,clean,actor){
     clean.submittedAt=old.submittedAt||null; clean.submittedBy=old.submittedBy||null;
     clean.submittedByName=old.submittedByName||null;
   }else{
-    // Sesi baru: pembuat selalu akun yang sedang login.
-    clean.creatorId=actor.id; clean.creatorName=actor.name; clean.creatorRole=actor.role;
+    // Sesi baru: seluruh identitas pembuat diambil dari token server,
+    // bukan dari creatorId/creatorName/creatorRole yang dikirim browser.
+    clean.creatorId=actor.id;
+    clean.creatorName=actor.name;
+    clean.creatorRole=actor.role;
+    clean.attendanceSubmitted=false;
+    clean.submittedAt=null;
+    clean.submittedBy=null;
+    clean.submittedByName=null;
   }
   return clean;
 }
@@ -1292,17 +1299,18 @@ function addPermit_(actor,data){
   const reason=str_(data.reason,1000);
   if(!reason) throw new Error("Alasan wajib diisi.");
 
-  const session=findSession_(data.sessionId);
-  if(!session) throw new Error("Kegiatan tidak ditemukan di server.");
-  if(session.division && session.division!=="-" && session.division!==actor.division){
-    throw new Error("Kegiatan ini untuk divisi "+session.division+".");
-  }
-
   return withLock_(function(){
-    const currentSession=sheetToObjects_(SHEET_SESSIONS).find(x=>x.id===data.sessionId);
-    if(!currentSession||currentSession.id!==session.id||currentSession.division!==session.division)throw new Error("Kegiatan berubah atau tidak tersedia. Muat ulang lalu ajukan kembali.");
+    // Ambil sesi terbaru DI DALAM lock. Jangan memakai salinan sesi sebelum lock
+    // untuk menentukan divisi, tanggal, lokasi, atau metadata pengajuan.
+    const session=sheetToObjects_(SHEET_SESSIONS).find(x=>x.id===data.sessionId);
+    if(!session) throw new Error("Kegiatan tidak ditemukan di server.");
+    if(session.division && session.division!=="-" && session.division!==actor.division){
+      throw new Error("Kegiatan ini untuk divisi "+session.division+".");
+    }
+
     const dup=sheetToObjects_(SHEET_PERMITS).filter(validPermit_).find(r=>r.sessionId===session.id&&r.userId===actor.id&&r.status!=="Ditolak");
     if(dup)return {ok:true,record:dup,duplicate:true};
+
     const photoUrl=data.photo?savePhotoToDrive_(data.photo,(actor.username||"user")+"_"+session.date+"_"+Date.now(),"permit"):null;
     const record={
       id:newId_("PERMIT"), sessionId:session.id,
@@ -1314,7 +1322,20 @@ function addPermit_(actor,data){
       status:"Menunggu", submittedAt:new Date().toISOString(),
       reviewedBy:null, reviewedByName:null, reviewedAt:null, reviewNote:null
     };
-    appendObject_(SHEET_PERMITS,record);
+    try{
+      appendObject_(SHEET_PERMITS,record);
+    }catch(err){
+      // Jika Sheets gagal setelah Drive berhasil membuat foto, pindahkan
+      // file baru ke Trash agar tidak meninggalkan bukti yatim tanpa pengajuan.
+      if(photoUrl){
+        const match=photoUrl.match(/\/file\/d\/([A-Za-z0-9_-]{10,100})\/view/);
+        if(match){
+          try{DriveApp.getFileById(match[1]).setTrashed(true);}
+          catch(cleanupErr){Logger.log("Cleanup foto izin gagal: "+cleanupErr);}
+        }
+      }
+      throw err;
+    }
     auditEvent_(actor,"permit.create","permit",record.id,"Pengajuan "+record.type+" dibuat untuk sesi "+record.sessionId+".");
     return {ok:true,record:record};
   });
