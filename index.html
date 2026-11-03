@@ -4788,6 +4788,13 @@ function hrdVisibleAttendance(){
 function isDeactivatedSession(s){
     return !!(s && s.active===false && s.date && s.date<=getTodayWIB());
 }
+
+/* Satu aturan Alpha untuk dashboard, rekap, kalender, dan analitik:
+   sesi draft KOOR KP tidak dihitung; sesi lain baru Alpha setelah selesai
+   atau dinonaktifkan pada hari ini/masa lalu. */
+function isAlphaEligibleSession(s){
+    return !!(s && !isDraftKoorSession(s) && (isSessionEnded(s) || isDeactivatedSession(s)));
+}
 function hrdReportRows(){
     const sessions=hrdVisibleSessions();
     const attendance=hrdVisibleAttendance();
@@ -4795,10 +4802,7 @@ function hrdReportRows(){
     const recorded=new Set(attendance.map(a=>a.sessionId+"|"+a.userId));
     const rows=attendance.slice();
     sessions.forEach(s=>{
-        // Sesi KOOR KP yang belum disubmit adalah draft, bukan dasar penetapan Alpha.
-        // Alpha baru dihitung setelah sesi berakhir atau dinonaktifkan.
-        if(isDraftKoorSession(s)) return;
-        if(!(isSessionEnded(s) || isDeactivatedSession(s))) return;
+        if(!isAlphaEligibleSession(s)) return;
         const general=!s.division || s.division==="-";
         staff.forEach(u=>{
             if(!general && s.division!==u.division) return;
@@ -6686,9 +6690,7 @@ function isSessionEnded(session){
 function implicitAlphaCount(staffList, sessions, attendance){
     let n = 0;
     sessions.forEach(s=>{
-        // Draft KOOR KP belum boleh menghasilkan Alpha.
-        if(isDraftKoorSession(s)) return;
-        if(!isSessionEnded(s) && !isDeactivatedSession(s)) return;
+        if(!isAlphaEligibleSession(s)) return;
         const general = !s.division || s.division==="-";
         staffList.forEach(u=>{
             if(!general && s.division!==u.division) return;
@@ -6769,7 +6771,7 @@ function computeStaffRecap(){
             if(rec){ entries.push({ date:s.date, activity:s.activity, status:rec.status, checkIn:rec.checkIn }); return; }
             // Alpha hanya dihitung untuk sesi yang berlaku bagi divisi staf saat ini.
             if(!general && s.division!==u.division) return;
-            if(isDraftKoorSession(s) || isSessionEnded(s) || isDeactivatedSession(s)) entries.push({ date:s.date, activity:s.activity, status:"Alpha", checkIn:null });
+            if(isAlphaEligibleSession(s)) entries.push({ date:s.date, activity:s.activity, status:"Alpha", checkIn:null });
         });
 
         // Catatan absensi yang sesinya sudah tidak ada tetap dihitung.
@@ -6968,7 +6970,7 @@ function renderCalendar(){
  const details=selectedItems.length?selectedItems.map(s=>{
   const rec=mine.find(a=>a.sessionId===s.id);
   let status=rec?.status||"Belum absen";
-  if(!rec&&s.active===false&&s.date<=getTodayWIB())status="Alpha";
+  if(!rec&&isAlphaEligibleSession(s))status="Alpha";
   const badge=status==="Hadir"?"success":status==="Belum absen"?"neutral":status==="Alpha"?"danger":"warning";
   return '<article class="staff-cal-event"><div class="staff-cal-event-main"><strong>'+escapeHTML(s.activity||"Kegiatan")+'</strong><span>'+escapeHTML(s.start||"-")+' – '+escapeHTML(s.end||"-")+'</span><small>'+escapeHTML(s.division||"Umum")+' · '+escapeHTML(s.location||"-")+'</small></div><span class="staff-cal-status '+badge+'">'+escapeHTML(status)+'</span></article>';
  }).join(""):'<div class="staff-cal-empty">'+(sessions.length?'Tidak ada kegiatan pada tanggal ini.':'Belum ada jadwal kegiatan untuk divisi Anda.')+'</div>';
