@@ -358,9 +358,18 @@ async function markWarningRead(id){
     }
 }
 
-function downloadWarningPDF(id){
+async function downloadWarningPDF(id){
     const w = spAll().find(x=>x.id===id);
     if(!w) return;
+    try{
+        if(typeof window.ensureNevPdf !== "function") throw new Error("Loader PDF belum tersedia.");
+        await window.ensureNevPdf();
+        if(!window.jspdf || typeof window.jspdf.jsPDF !== "function") throw new Error("Library PDF tidak berhasil dimuat.");
+    }catch(err){
+        console.error("Gagal memuat library PDF surat peringatan:",err);
+        toast("PDF belum dapat dibuat. Periksa koneksi internet lalu coba lagi.","error");
+        return;
+    }
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF("portrait","mm","a4");
     const W = doc.internal.pageSize.getWidth();
