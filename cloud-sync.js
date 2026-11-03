@@ -463,19 +463,28 @@ function applyCloudAll(json){
     // Jangan menimpa key lokal yang masih memiliki perubahan tertunda.
     // Rekonsiliasi record-level memerlukan kontrak revision dari backend; untuk sementara
     // pertahankan snapshot lokal pada key tersebut sampai antrean selesai diproses.
-    const pending=new Set(getCloudQueue().map(x=>x.action));
-    getCloudDeadLetters().forEach(x=>{if(x && x.action) pending.add(x.action);});
+    // Snapshot cloud hanya boleh mengganti cache suatu domain bila tidak ada
+    // perubahan lokal yang belum terselesaikan (queue maupun dead-letter).
+    // Jika ada perubahan tertunda, pertahankan seluruh domain tersebut; kontrak
+    // backend belum menyediakan revision untuk merge record-level yang aman.
+    const queued=getCloudQueue();
+    const archived=getCloudDeadLetters();
+    const pending=new Set();
+    [...queued,...archived].forEach(item=>{
+        if(item && item.action) pending.add(item.action);
+    });
     const preserve=new Set();
     Object.keys(CLOUD_ACTION_BY_KEY).forEach(key=>{
-        if(pending.has(CLOUD_ACTION_BY_KEY[key]))preserve.add(key);
+        if(pending.has(CLOUD_ACTION_BY_KEY[key])) preserve.add(key);
     });
-    if(pending.has("addAttendance"))preserve.add(DB.attendance);
-    if(pending.has("addPermit"))preserve.add(DB.permits);
+    if(pending.has("addAttendance")) preserve.add(DB.attendance);
+    if(pending.has("addPermit")) preserve.add(DB.permits);
+
     _localSave(DB.users,json.users||[]);
-    if(!preserve.has(DB.sessions))_localSave(DB.sessions,json.sessions||[]);
-    if(!preserve.has(DB.attendance))_localSave(DB.attendance,json.attendance||[]);
-    if(!preserve.has(DB.settings))_localSave(DB.settings,json.settings||{officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
-    if(!preserve.has(DB.permits))_localSave(DB.permits,json.permits||[]);
+    if(!preserve.has(DB.sessions)) _localSave(DB.sessions,json.sessions||[]);
+    if(!preserve.has(DB.attendance)) _localSave(DB.attendance,json.attendance||[]);
+    if(!preserve.has(DB.settings)) _localSave(DB.settings,json.settings||{officeLat:null,officeLng:null,radius:100,geofenceEnabled:false});
+    if(!preserve.has(DB.permits)) _localSave(DB.permits,json.permits||[]);
     _localSave(DB.warnings,json.warnings||[]);
 
     cloudServerVersion=json.version||null;
@@ -512,9 +521,19 @@ async function fetchCloudAll(){
             }
             return parsed;
         });
+        // Jangan menampilkan snapshot server sebelum antrean lokal diproses.
+        // applyCloudAll juga mempertahankan domain yang masih punya queue/dead-letter.
+        const hadPending=getCloudQueue().length>0 || getCloudDeadLetters().length>0;
+        if(hadPending){
+            const flushed=await flushCloudQueue();
+            if(!flushed){
+                // Queue/dead-letter tetap menjadi sumber pemulihan lokal.
+                // Tetap tampilkan domain lain yang aman, tanpa menimpa domain tertunda.
+                applyCloudAll(json);
+                return false;
+            }
+        }
         applyCloudAll(json);
-
-        if(cloudUnsynced) await flushCloudQueue();
         return true;
     }catch(err){
         console.error("Gagal mengambil data dari Google Sheets:",err);
