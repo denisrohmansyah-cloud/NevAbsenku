@@ -290,7 +290,8 @@ function getEvaluations_(actor){
 function submitEvaluation_(actor,data){
   if(actor.role!=="HRD"&&actor.role!=="KOOR KP")throw new Error("Hanya HRD atau Koor KP yang dapat menilai staf.");
   const staffId=String(data.staffId||"").trim(),period=String(data.period||"").trim().slice(0,40);
-  if(!staffId||!period)throw new Error("Staf dan periode penilaian wajib diisi.");
+  if(!staffId||!period)throw new Error("Staf dan tanggal penilaian wajib diisi.");
+  if(!DATE_RE.test(period))throw new Error("Tanggal penilaian harus menggunakan format YYYY-MM-DD.");
   const staff=sheetToObjects_(SHEET_USERS).find(u=>u.id===staffId&&u.role==="STAF");
   if(!staff)throw new Error("Akun staf tidak ditemukan.");
   if(actor.role==="KOOR KP"&&staff.division!==actor.division)throw new Error("Koor KP hanya dapat menilai staf di divisinya.");
@@ -1181,6 +1182,7 @@ function targetGeo_(session){
 function addAttendance_(actor,data){
   if(actor.role!=="STAF")throw new Error("Hanya STAF yang dapat mengirim absensi dirinya sendiri.");
   if(!data||!idOk_(data.sessionId))throw new Error("Data absensi tidak valid.");
+  if(!data.photo)throw new Error("Foto selfie wajib dilampirkan untuk melakukan absensi.");
   const lat=numOrNull_(data.lat,-90,90),lng=numOrNull_(data.lng,-180,180);
   return withLock_(function(){
     const session=sheetToObjects_(SHEET_SESSIONS).find(x=>x.id===data.sessionId);
@@ -1298,6 +1300,7 @@ function addPermit_(actor,data){
   if(PERMIT_TYPES.indexOf(type)<0) throw new Error("Jenis pengajuan harus Izin, Sakit, atau Dispen.");
   const reason=str_(data.reason,1000);
   if(!reason) throw new Error("Alasan wajib diisi.");
+  if(!data.photo) throw new Error("Foto bukti izin/sakit wajib dilampirkan.");
 
   return withLock_(function(){
     // Ambil sesi terbaru DI DALAM lock. Jangan memakai salinan sesi sebelum lock
@@ -1373,11 +1376,13 @@ function issueWarning_(actor,data){
     validUntil=String(data.validUntil);
   }
 
-  const target=sheetToObjects_(SHEET_USERS).find(u=>u.id===data.targetId);
-  if(!target) throw new Error("Penerima tidak ditemukan.");
-  if(target.role!=="STAF" && target.role!=="KOOR KP") throw new Error("SP hanya dapat diberikan kepada STAF atau Koor KP.");
-
   return withLock_(function(){
+    // Cek penerima setelah lock untuk menghindari SP diterbitkan kepada akun
+    // yang role-nya berubah ketika request sedang menunggu lock.
+    const target=sheetToObjects_(SHEET_USERS).find(u=>u.id===data.targetId);
+    if(!target) throw new Error("Penerima tidak ditemukan.");
+    if(target.role!=="STAF" && target.role!=="KOOR KP") throw new Error("SP hanya dapat diberikan kepada STAF atau Koor KP.");
+
     // Pengiriman ulang dengan id yang sama (jaringan lambat) tidak menerbitkan SP dobel.
     const dup=sheetToObjects_(SHEET_WARNINGS).find(w=>w.id===data.id);
     if(dup) return {ok:true,record:dup,duplicate:true};
