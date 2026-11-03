@@ -959,8 +959,8 @@ async function submitPermit(event){
 // "Membangunkan" Apps Script di latar belakang + memastikan pengaturan lokal punya nilai awal.
 async function wakeCloudBootstrap(){
     try{
-        const res=await fetch(cacheBust(`${CLOUD_SCRIPT_URL}?action=bootstrap`),{cache:"no-store"});
-        const text=await res.text(); const boot=JSON.parse(text);
+        const {text}=await fetchCloudText(cacheBust(`${CLOUD_SCRIPT_URL}?action=bootstrap`),{cache:"no-store"},12000);
+        const boot=JSON.parse(text);
         if(boot&&boot.ok){
             cloudServerVersion=boot.version||null;
             // Lokasi/radius kantor baru diterima setelah login (getAll), bukan dari endpoint publik.
