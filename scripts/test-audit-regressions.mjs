@@ -117,7 +117,7 @@ const timeoutContext={
 vm.runInNewContext(fetchHelper,timeoutContext);
 await assert.rejects(
   timeoutContext.fetchCloudText("https://example.invalid",{method:"POST"},5),
-  err=>/melewati batas 0 detik/.test(err.message)&&err.retryable===true
+  err=>/melewati batas 1 detik/.test(err.message)&&err.retryable===true
 );
 
 console.log("PASS: Alpha eligibility, server-owned session identity, permit photo cleanup, and cloud request timeout.");
