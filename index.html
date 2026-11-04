@@ -3995,8 +3995,11 @@ EDIT ATTENDANCE MODAL
             </button>
 
             <button
+                id="saveAttendanceEditBtn"
                 class="btn btn-primary"
-                onclick="saveAttendanceEdit()">
+                onclick="saveAttendanceEdit()"
+                aria-label="Simpan perubahan status absensi"
+                aria-live="polite">
 
                 Simpan
 
@@ -6256,6 +6259,15 @@ function openEditAttendance(id){
 }
 
 async function saveAttendanceEdit(){
+    const button=document.getElementById("saveAttendanceEditBtn");
+    if(button && button.dataset.loading==="true") return;
+    if(typeof withQRButtonLoading==="function" && button){
+        return withQRButtonLoading(button,"Menyimpan...",()=>performSaveAttendanceEdit());
+    }
+    return performSaveAttendanceEdit();
+}
+
+async function performSaveAttendanceEdit(){
     const id=document.getElementById("editAttendanceId").value;
     const status=document.getElementById("editAttendanceStatus").value;
     const sessionId=document.getElementById("editAttendanceSessionId")?.value;
@@ -6312,8 +6324,9 @@ async function saveAttendanceEdit(){
             closeModal("editAttendanceModal");
             toast("Status absensi berhasil disimpan ke server.", "success");
         }catch(err){
-            closeModal("editAttendanceModal");
-            toast("Perubahan disimpan di perangkat, tetapi belum tersinkron: "+friendlyCloudError(err), "error");
+            // Modal tetap terbuka agar pengguna dapat melihat status dan mencoba lagi.
+            // Data lokal dipertahankan; tombol kembali aktif setelah indikator loading selesai.
+            toast("Perubahan tersimpan di perangkat, tetapi server belum mengonfirmasi: "+friendlyCloudError(err), "error");
         }
     }else{
         closeModal("editAttendanceModal");
