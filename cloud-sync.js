@@ -760,6 +760,20 @@ function scheduleCloudQueueRetry(){
     },delay);
 }
 
+async function hydrateQueuedPhotoRefs(action,data){
+    if(!data || typeof data!=="object") return data;
+    const clone=Array.isArray(data)?data.map(item=>item&&typeof item==="object"?{...item}:item):{...data};
+    const rows=Array.isArray(clone)?clone:[clone];
+    for(const row of rows){
+        if(row && typeof row.photo==="string" && isNevPhotoRef(row.photo)){
+            const restored=await getNevPhoto(row.photo);
+            if(!restored) throw Object.assign(new Error("Foto antrean tidak ditemukan di IndexedDB; data antrean dipertahankan untuk pemulihan."),{fatal:true});
+            row.photo=restored;
+        }
+    }
+    return clone;
+}
+
 async function flushCloudQueue(){
     if(cloudQueueRetryTimer){clearTimeout(cloudQueueRetryTimer);cloudQueueRetryTimer=null;}
     if(!getAuthToken()) return false;
@@ -774,7 +788,9 @@ async function flushCloudQueue(){
             if(!q.length) return true;
             const item=q[0];
             try{
-                const result=await cloudPost(item.action,item.data,1);
+                // Queue menyimpan referensi foto ringkas; pulihkan Base64 hanya di memori saat request.
+                const outboundData=await hydrateQueuedPhotoRefs(item.action,item.data);
+                const result=await cloudPost(item.action,outboundData,1);
                 if(result && result.ignored) throw Object.assign(new Error("Server mengabaikan operasi "+item.action+"."),{fatal:true});
                 if(!removeCloudQueueItem(item.id)){
                     cloudLastError="Server menerima data, tetapi antrean lokal gagal diperbarui. Perlu verifikasi sebelum retry.";
