@@ -456,6 +456,14 @@ function mergeSanitized_(name,incoming,actor,sanitize,policy){
     const clean=sanitize(raw);
     if(!clean){skipped++;return;}
     const old=byId[clean.id]||null;
+    // Cegah record baru ganda untuk kombinasi sesi + staf, termasuk retry dari perangkat lain.
+    if(name===SHEET_ATTENDANCE && !old){
+      const duplicatePair=Object.keys(byId).some(id=>{
+        const row=byId[id];
+        return row && row.sessionId===clean.sessionId && row.userId===clean.userId;
+      });
+      if(duplicatePair){skipped++;return;}
+    }
     const out=policy(old,clean,actor);
     if(!out){skipped++;return;}
     if(!old) order.push(out.id);
@@ -1170,7 +1178,8 @@ function deleteAttendance_(actor,id){
 ABSENSI & IZIN OLEH STAF (divalidasi penuh di server)
 ========================================================= */
 function findSession_(sessionId){
-  return sheetToObjects_(SHEET_SESSIONS).find(s=>s.id===sessionId) || null;
+  // Cache sesi untuk satu eksekusi Apps Script agar batch tidak membaca Sheet berulang.
+  return sessionMap_()[sessionId] || null;
 }
 
 function targetGeo_(session){
