@@ -2,6 +2,13 @@ import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 const html = readFileSync("index.html", "utf8");
+// An unclosed inline handler quote can make a button inert while leaving all
+// JavaScript blocks syntactically valid, so check it independently.
+const unclosedHandlers = [...html.matchAll(/\bonclick\s*=\s*"[^"]*(?=>)/gi)];
+if (unclosedHandlers.length) {
+  console.error("Found " + unclosedHandlers.length + " inline onclick attribute(s) with an unclosed quote.");
+  process.exit(1);
+}
 const blocks = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)]
   .filter((match) => !/\bsrc\s*=/i.test(match[1]) && match[2].trim().length > 0);
 
