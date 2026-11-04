@@ -4795,8 +4795,8 @@ function hrdReportRows(){
     const recorded=new Set(attendance.map(a=>a.sessionId+"|"+a.userId));
     const rows=attendance.slice();
     sessions.forEach(s=>{
-        // Alpha virtual hanya dibuat setelah sesi benar-benar ditutup.
-        if(isDraftKoorSession(s) || !isDeactivatedSession(s)) return;
+        // Alpha virtual hanya dibuat setelah sesi berakhir atau QR dinonaktifkan.
+        if(isDraftKoorSession(s) || (!isSessionEnded(s) && !isDeactivatedSession(s))) return;
         const general=!s.division || s.division==="-";
         staff.forEach(u=>{
             if(!general && s.division!==u.division) return;
