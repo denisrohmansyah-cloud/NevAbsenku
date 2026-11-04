@@ -40,6 +40,81 @@ let cloudQueueRetryTimer = null;
 
 const _localSave = save;
 
+/* Foto bukti disimpan terpisah dari localStorage agar kuota cache absensi tidak cepat habis. */
+const NEV_PHOTO_DB="nev-photo-store-v1";
+const NEV_PHOTO_STORE="photos";
+let nevPhotoDbPromise=null;
+function openNevPhotoDB(){
+  if(!("indexedDB" in window)) return Promise.reject(new Error("Browser tidak mendukung IndexedDB."));
+  if(nevPhotoDbPromise) return nevPhotoDbPromise;
+  nevPhotoDbPromise=new Promise((resolve,reject)=>{
+    const req=indexedDB.open(NEV_PHOTO_DB,1);
+    req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(NEV_PHOTO_STORE))db.createObjectStore(NEV_PHOTO_STORE);};
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error||new Error("Gagal membuka penyimpanan foto."));
+  });
+  return nevPhotoDbPromise;
+}
+function nevPhotoTransaction(mode,work){
+  return openNevPhotoDB().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(NEV_PHOTO_STORE,mode),store=tx.objectStore(NEV_PHOTO_STORE);
+    let result;
+    try{result=work(store);}catch(e){reject(e);return;}
+    tx.oncomplete=()=>resolve(result&&result.result!==undefined?result.result:result);
+    tx.onerror=()=>reject(tx.error||new Error("Transaksi foto gagal."));
+    tx.onabort=()=>reject(tx.error||new Error("Transaksi foto dibatalkan."));
+  }));
+}
+function storeNevPhoto(key,dataUrl){return nevPhotoTransaction("readwrite",store=>store.put(dataUrl,key));}
+function readNevPhoto(key){return nevPhotoTransaction("readonly",store=>store.get(key));}
+function isNevPhotoRef(value){return typeof value==="string"&&value.startsWith("nev-photo://");}
+async function getNevPhoto(value){
+  if(!isNevPhotoRef(value)) return value||"";
+  const key=value.slice("nev-photo://".length);
+  return await readNevPhoto(key)||"";
+}
+let nevPhotoMigrationPromise=null;
+function migrateNevLegacyPhotos(){
+  if(nevPhotoMigrationPromise) return nevPhotoMigrationPromise;
+  nevPhotoMigrationPromise=(async()=>{
+    const keys=[DB.attendance,DB.permits];
+    let moved=0;
+    for(const key of keys){
+      const raw=localStorage.getItem(key);
+      if(!raw) continue;
+      let rows;
+      try{rows=JSON.parse(raw);}catch(e){throw new Error("Data "+key+" tidak dapat dibaca; migrasi foto dihentikan tanpa mengubah data.");}
+      if(!Array.isArray(rows)) continue;
+      let changed=false;
+      const next=[];
+      for(let n=0;n<rows.length;n++){
+        const row=rows[n]&&typeof rows[n]==="object"?{...rows[n]}:rows[n];
+        if(row&&typeof row.photo==="string"&&/^data:image\/(jpeg|png|webp);base64,/i.test(row.photo)){
+          const photoKey=key+":"+String(row.id||n);
+          await storeNevPhoto(photoKey,row.photo);
+          row.photo="nev-photo://"+photoKey;
+          changed=true;moved++;
+        }
+        next.push(row);
+      }
+      if(changed){
+        // Commit the smaller metadata snapshot only after every original photo is safely in IndexedDB.
+        localStorage.setItem(key,JSON.stringify(next));
+        if(localStorage.getItem(key)!==JSON.stringify(next)) throw new Error("Verifikasi migrasi "+key+" gagal; data foto asli tetap tersedia di IndexedDB.");
+      }
+    }
+    return moved;
+  })().catch(err=>{nevPhotoMigrationPromise=null;console.error("Migrasi foto lokal:",err);throw err;});
+  return nevPhotoMigrationPromise;
+}
+window.getNevPhoto=getNevPhoto;
+window.isNevPhotoRef=isNevPhotoRef;
+window.addEventListener("DOMContentLoaded",()=>{
+  // Mulai migrasi lebih awal; login dan pemulihan sesi menunggu promise ini.
+  migrateNevLegacyPhotos().catch(()=>{});
+});
+
+
 /* =========================================================
    RESET DATA LOKAL LAMA (sekali per perangkat)
    Menghapus cache absensi/sesi/izin lama beserta antrean sinkronisasi,
@@ -997,6 +1072,10 @@ async function wakeCloudBootstrap(){
 }
 
 async function bootWithCloud(){
+    try{await migrateNevLegacyPhotos();}catch(photoErr){
+        cloudLastError="Migrasi foto lokal belum selesai: "+friendlyCloudError(photoErr);
+        console.error(cloudLastError);
+    }
     if(!cloudSyncEnabled){initializeDatabase();endRestoringState();startCloudPolling();return;}
 
     const savedUser = readSavedLogin();
