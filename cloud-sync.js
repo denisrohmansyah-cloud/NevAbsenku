@@ -36,6 +36,7 @@ let cloudQueueCorrupt = false;
 let cloudDeadLettersCorrupt = false;
 let cloudFlushing = false;
 let cloudFlushPromise = null;
+let cloudQueueRetryTimer = null;
 
 const _localSave = save;
 
@@ -470,7 +471,7 @@ async function cloudPost(action, data, retries){
             if(!err.fatal && !err.retryable && isTransientCloudError(err)) err.retryable=true;
             if(err.fatal) break;
             if(attempt < maxRetry){
-                const delay=err.retryable ? 5000 : 1500;
+                const delay=err.retryable ? 1800 : 900;
                 await new Promise(r=>setTimeout(r,delay));
             }
         }
@@ -671,7 +672,21 @@ async function fetchCloudAll(){
     }
 }
 
+function scheduleCloudQueueRetry(){
+    if(cloudQueueRetryTimer || !getAuthToken()) return;
+    const pending=getCloudQueue();
+    if(!pending.length || cloudQueueCorrupt || cloudDeadLettersCorrupt) return;
+    const attempts=Number(pending[0].attemptCount)||0;
+    // Retry otomatis dengan jeda bertahap agar lock Apps Script tidak makin padat.
+    const delay=Math.min(30000,2000*Math.pow(2,Math.min(attempts,4)));
+    cloudQueueRetryTimer=setTimeout(()=>{
+        cloudQueueRetryTimer=null;
+        flushCloudQueue();
+    },delay);
+}
+
 async function flushCloudQueue(){
+    if(cloudQueueRetryTimer){clearTimeout(cloudQueueRetryTimer);cloudQueueRetryTimer=null;}
     if(!getAuthToken()) return false;
     getCloudQueue();
     getCloudDeadLetters();
@@ -718,6 +733,8 @@ async function flushCloudQueue(){
         cloudUnsynced=getCloudQueue().length;
         if(!cloudUnsynced && !getCloudDeadLetters().length && !cloudQueueCorrupt && !cloudDeadLettersCorrupt){
             cloudLastError=null;
+        }else if(cloudUnsynced && !cloudQueueCorrupt && !cloudDeadLettersCorrupt){
+            scheduleCloudQueueRetry();
         }
         updateCloudBadge();
     }
@@ -792,12 +809,18 @@ function updateCloudBadge(){
     getCloudQueue();getCloudDeadLetters();
     if(cloudQueueCorrupt || cloudDeadLettersCorrupt){text="⚠ Data pemulihan rusak — ketuk untuk ekspor";bg="#b71c1c";}
     else if(!cloudSyncEnabled){text="⚠ CLOUD OFFLINE";bg="#c62828";}
+    else if(cloudFlushing){
+        const first=getCloudQueue()[0];
+        text="⏳ Menyinkronkan"+(cloudUnsynced>1?" ("+cloudUnsynced+")":"...");
+        if(el) el.title=(first?queueActionLabel(first.action):"Data sedang dikirim")+" — tunggu konfirmasi server";
+        bg="#ef6c00";
+    }
     else if(cloudUnsynced>0){
         const first=getCloudQueue()[0];
         const action=first?queueActionLabel(first.action):"data tertunda";
         const reason=first&&(first.lastError||"");
-        text="⏳ "+cloudUnsynced+" antrean sinkronisasi";
-        if(el) el.title=action+(reason?" — "+reason:" — klik untuk mencoba sinkronisasi dan melihat hasil");
+        text="⏳ "+cloudUnsynced+" data menunggu sinkronisasi";
+        if(el) el.title=action+(reason?" — "+reason:" — sistem akan mencoba ulang otomatis");
         bg="#ef6c00";
     }
     else if(getCloudDeadLetters().length){text="⚠ "+getCloudDeadLetters().length+" data gagal — ketuk untuk ekspor";bg="#c62828";}
