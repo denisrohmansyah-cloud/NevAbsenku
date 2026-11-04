@@ -21,7 +21,6 @@ Aplikasi absensi digital berbasis web untuk pengelolaan jadwal kegiatan, QR atte
 | `staff-evaluation.js` / `staff-evaluation.css` | Penilaian kinerja staf |
 | `priority-suite.js` / `priority-suite.css` | Analitik kehadiran HRD |
 | `nev-logo.png` | Logo aplikasi |
-| `persist-login-dan-fix-garis-tabel.patch` | Patch historis; bukan file yang dimuat oleh halaman |
 
 ## Menjalankan dan deploy
 
