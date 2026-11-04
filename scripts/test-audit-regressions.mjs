@@ -41,6 +41,12 @@ for(const [needle,label] of [
 ]) assert.ok(html.includes(needle),label+" uses shared Alpha rule");
 assert.ok(priority.includes('ss.filter(s=>String(s.date||"").startsWith(period)&&isAlphaEligibleSession(s))'),
   "monthly analytics excludes sessions that are not Alpha-eligible");
+assert.ok(priority.includes('async function withBusyButton(button,label,task)'),
+  "attendance-correction actions must provide a reusable busy guard");
+assert.ok(priority.includes('withBusyButton(button,"Mengirim..."'),
+  "correction submission must reject repeat clicks while saving");
+assert.ok(priority.includes('withBusyButton(b,"Memproses..."'),
+  "correction review must reject repeat clicks while saving");
 
 // 2. New session creator identity must be derived from the authenticated actor.
 const policy=extract(backend,"function sessionPolicy_(old,clean,actor){","\nfunction attendancePolicy_", "sessionPolicy");
@@ -78,6 +84,10 @@ const permitContext={
   sheetToObjects_:(name)=>name==="Sessions"?[latestSession]:[],
   validPermit_:()=>true,
   savePhotoToDrive_:()=>photoUrl,
+  trashNewPhoto_:url=>{
+    const id=String(url).match(/\/file\/d\/([^/]+)\//)?.[1];
+    if(id) trashed.push({id,value:true});
+  },
   newId_:()=>"PERMIT-1",
   appendObject_:(name,record)=>{
     if(mode==="fail")throw new Error("simulated Sheets write failure");
@@ -100,6 +110,16 @@ assert.equal(saved.ok,true);
 assert.equal(savedRecord.sessionDate,latestSession.date,
   "permit record must use latest session data read inside lock");
 assert.equal(savedRecord.sessionActivity,latestSession.activity);
+
+// 3b. Slow Drive uploads must happen before the Script Lock; a rejected write
+// cleans the freshly created private file rather than leaving it orphaned.
+assert.ok(addPermit.indexOf("const photoUrl=savePhotoToDrive_") < addPermit.indexOf("return withLock_"),
+  "permit photo upload must not run while the Script Lock is held");
+const addAttendanceForLock=extract(backend,"function addAttendance_(actor,data){","\n/* Staf memindai QR", "addAttendanceForLock");
+assert.ok(addAttendanceForLock.indexOf("const photoUrl=savePhotoToDrive_") < addAttendanceForLock.indexOf("return withLock_"),
+  "attendance selfie upload must not run while the Script Lock is held");
+assert.ok(backend.includes('if(!lock.tryLock(5000))'),
+  "lock acquisition must fail quickly so the client queue can retry with backoff");
 
 // 4. Apps Script calls must have an abortable deadline and timeout must be retryable.
 const fetchHelper=extract(cloud,"async function fetchCloudText(url,options,timeoutMs){",
