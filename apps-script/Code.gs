@@ -807,6 +807,15 @@ function savePhotoToDrive_(base64DataUrl,fileNameHint,kind){
   return "https://drive.google.com/file/d/"+file.getId()+"/view";
 }
 
+/* Hapus file baru bila transaksi Sheets tidak jadi. Helper ini sengaja menerima URL
+   yang sudah divalidasi oleh savePhotoToDrive_ agar cleanup tidak pernah menyentuh file lain. */
+function trashNewPhoto_(url){
+  const match=String(url||"").match(/^https:\/\/drive\.google\.com\/file\/d\/([A-Za-z0-9_-]{10,100})\/view$/);
+  if(!match) return;
+  try{ DriveApp.getFileById(match[1]).setTrashed(true); }
+  catch(cleanupErr){ Logger.log("Cleanup foto gagal: "+cleanupErr); }
+}
+
 /* Jalankan manual sekali: cabut akses link dari foto bukti izin/sakit yang sudah ada. */
 function privatkanFotoIzin(){
   const files=getPhotoFolder_("permit").getFiles();
@@ -853,7 +862,10 @@ function getPhoto_(actor,data){
 
 function withLock_(fn){
   const lock=LockService.getScriptLock();
-  lock.waitLock(30000);
+  // Jangan menahan execution selama 30 detik saat aplikasi sedang ramai.
+  // Klien mengenali pesan ini sebagai transient, lalu melakukan retry berurutan
+  // dengan backoff sehingga data tetap berada di antrean sampai terkonfirmasi.
+  if(!lock.tryLock(5000)) throw new Error("Batas waktu penguncian habis. Silakan coba lagi.");
   try{return fn();}finally{lock.releaseLock();}
 }
 
@@ -1198,6 +1210,10 @@ function addAttendance_(actor,data){
   if(!data||!idOk_(data.sessionId))throw new Error("Data absensi tidak valid.");
   if(!data.photo)throw new Error("Foto selfie wajib dilampirkan untuk melakukan absensi.");
   const lat=numOrNull_(data.lat,-90,90),lng=numOrNull_(data.lng,-180,180);
+  // Upload Drive dapat memakan waktu. Jangan melakukannya ketika Script Lock
+  // dipegang; hanya pemeriksaan duplikasi dan tulis Sheets yang perlu atomik.
+  const photoUrl=savePhotoToDrive_(data.photo,(actor.username||"user")+"_"+Date.now(),"selfie");
+  try{
   return withLock_(function(){
     const session=sheetToObjects_(SHEET_SESSIONS).find(x=>x.id===data.sessionId);
     if(!session)throw new Error("Kegiatan tidak ditemukan di server.");
@@ -1205,7 +1221,7 @@ function addAttendance_(actor,data){
     if(!data.token||String(data.token)!==String(session.token))throw new Error("Token QR tidak cocok. Pindai ulang QR kegiatan.");
     if(session.division&&session.division!=="-"&&session.division!==actor.division)throw new Error("Kegiatan ini untuk divisi "+session.division+".");
     const dup=sheetToObjects_(SHEET_ATTENDANCE).filter(validAttendance_).find(r=>r.sessionId===session.id&&r.userId===actor.id);
-    if(dup)return {ok:true,record:dup,duplicate:true};
+    if(dup){trashNewPhoto_(photoUrl);return {ok:true,record:dup,duplicate:true};}
     const now=nowWIB_();if(now.date!==session.date)throw new Error("QR belum atau sudah melewati tanggal kegiatan.");
     const nowMin=minutesOf_(now.time),startMin=minutesOf_(session.start),endMin=minutesOf_(session.end);
     const expire=Number(session.expireMinutes),expireAt=isFinite(expire)&&expire>0?startMin+expire:null;
@@ -1214,12 +1230,12 @@ function addAttendance_(actor,data){
     if(nowMin>deadline)throw new Error(limited?"QR sudah kadaluwarsa (batas pukul "+minutesToHHMM_(expireAt)+").":"Absensi hanya dapat dilakukan pukul "+session.start+" - "+session.end+".");
     const target=targetGeo_(session);
     if(target){if(lat===null||lng===null)throw new Error("Lokasi perangkat tidak terbaca. Aktifkan GPS lalu coba lagi.");const dist=distanceMeters_(lat,lng,target.lat,target.lng);if(dist>target.radius)throw new Error("Anda berada di luar radius "+target.label+" ("+Math.round(dist)+" m dari titik, batas "+target.radius+" m).");}
-    const photoUrl=data.photo?savePhotoToDrive_(data.photo,(actor.username||"user")+"_"+session.date+"_"+Date.now(),"selfie"):null;
     const record={id:newId_("ATT"),sessionId:session.id,token:session.token,userId:actor.id,userName:actor.name,username:actor.username,activity:session.activity,division:session.division,date:session.date,checkIn:now.iso,status:"Hadir",creatorId:session.creatorId,creatorRole:session.creatorRole,lat:lat,lng:lng,photo:photoUrl,permitId:null,approvedFromPermit:false};
-    try{appendObject_(SHEET_ATTENDANCE,record);}catch(err){if(photoUrl){const m=photoUrl.match(/\/file\/d\/([A-Za-z0-9_-]{10,100})\/view/);if(m){try{DriveApp.getFileById(m[1]).setTrashed(true);}catch(cleanupErr){Logger.log("Cleanup foto gagal: "+cleanupErr);}}}throw err;}
+    appendObject_(SHEET_ATTENDANCE,record);
     auditEvent_(actor,"attendance.checkin","attendance",record.id,"Check-in berhasil untuk sesi "+session.id+".");
     return {ok:true,record:record};
   });
+  }catch(err){trashNewPhoto_(photoUrl);throw err;}
 }
 
 /* Staf memindai QR berisi token pendek: server mengembalikan data kegiatan + status aktif dalam satu request. */
@@ -1316,6 +1332,10 @@ function addPermit_(actor,data){
   if(!reason) throw new Error("Alasan wajib diisi.");
   if(!data.photo) throw new Error("Foto bukti izin/sakit wajib dilampirkan.");
 
+  // Seperti selfie, upload bukti tidak boleh memperpanjang Script Lock.
+  // Bila sesi berubah atau penulisan gagal, file baru dipindahkan ke Trash.
+  const photoUrl=savePhotoToDrive_(data.photo,(actor.username||"user")+"_"+Date.now(),"permit");
+  try{
   return withLock_(function(){
     // Ambil sesi terbaru DI DALAM lock. Jangan memakai salinan sesi sebelum lock
     // untuk menentukan divisi, tanggal, lokasi, atau metadata pengajuan.
@@ -1326,9 +1346,8 @@ function addPermit_(actor,data){
     }
 
     const dup=sheetToObjects_(SHEET_PERMITS).filter(validPermit_).find(r=>r.sessionId===session.id&&r.userId===actor.id&&r.status!=="Ditolak");
-    if(dup)return {ok:true,record:dup,duplicate:true};
+    if(dup){trashNewPhoto_(photoUrl);return {ok:true,record:dup,duplicate:true};}
 
-    const photoUrl=data.photo?savePhotoToDrive_(data.photo,(actor.username||"user")+"_"+session.date+"_"+Date.now(),"permit"):null;
     const record={
       id:newId_("PERMIT"), sessionId:session.id,
       sessionActivity:session.activity, sessionDivision:session.division,
@@ -1339,23 +1358,11 @@ function addPermit_(actor,data){
       status:"Menunggu", submittedAt:new Date().toISOString(),
       reviewedBy:null, reviewedByName:null, reviewedAt:null, reviewNote:null
     };
-    try{
-      appendObject_(SHEET_PERMITS,record);
-    }catch(err){
-      // Jika Sheets gagal setelah Drive berhasil membuat foto, pindahkan
-      // file baru ke Trash agar tidak meninggalkan bukti yatim tanpa pengajuan.
-      if(photoUrl){
-        const match=photoUrl.match(/\/file\/d\/([A-Za-z0-9_-]{10,100})\/view/);
-        if(match){
-          try{DriveApp.getFileById(match[1]).setTrashed(true);}
-          catch(cleanupErr){Logger.log("Cleanup foto izin gagal: "+cleanupErr);}
-        }
-      }
-      throw err;
-    }
+    appendObject_(SHEET_PERMITS,record);
     auditEvent_(actor,"permit.create","permit",record.id,"Pengajuan "+record.type+" dibuat untuk sesi "+record.sessionId+".");
     return {ok:true,record:record};
   });
+  }catch(err){trashNewPhoto_(photoUrl);throw err;}
 }
 
 /* =========================================================
