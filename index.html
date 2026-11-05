@@ -3582,9 +3582,21 @@ APP
                             </p>
                         </div>
                     </div>
+                    <div id="koorAttendanceQrPreview" class="section-card hidden" style="margin:0 0 18px;background:#fafafa;">
+                        <div class="section-header" style="margin-bottom:8px;">
+                            <div>
+                                <h3><i class="fa-solid fa-qrcode"></i> QR Sesi Terpilih</h3>
+                                <p>QR yang sesuai dengan sesi kehadiran di bawah ini.</p>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;">
+                            <div id="koorAttendanceQrBox" class="qr-box" style="width:260px;min-width:220px;margin:0;flex:0 0 260px;"></div>
+                            <div id="koorAttendanceQrDetails" style="flex:1;min-width:220px;"></div>
+                        </div>
+                    </div>
                     <div class="form-group" style="max-width:420px;">
                         <label>Pilih Sesi Ngoprek</label>
-                        <select id="koorSessionPicker" class="form-control" onchange="renderKoorSessionRoster()">
+                        <select id="koorSessionPicker" class="form-control" onchange="handleKoorSessionPickerChange()">
                             <option value="">Pilih sesi...</option>
                         </select>
                         <div id="koorSessionHistoryControl"></div>
@@ -5641,43 +5653,51 @@ function loadSessionToQR(id,type){
         toast("Akses ditolak.","error");return;
     }
 
-    const targetPage=currentUser.role==="HRD" ? "hrd-qr" : "koor-qr";
+    const targetPage=currentUser.role==="HRD" ? "hrd-qr" : "koor-attendance";
     currentQR[type]=session;
 
-    // Muat QR dan pilih sesi yang sama pada bagian Kehadiran Staf per Sesi.
-    showPage(targetPage);
-    renderGeneratedQR(type,session);
-
-    if(currentUser.role==="HRD"){
-        const picker=document.getElementById("hrdSessionAttendancePicker");
-        const visible=hrdVisibleSessions().some(s=>String(s.id)===String(session.id));
-        if(!visible){
-            toast("Sesi ini belum tersedia untuk rekap HRD (sesi Koor KP harus disubmit).","warning");return;
+    // Arahkan ke halaman yang memang menampilkan QR dan/atau roster sesi.
+    if(currentUser.role==="KOOR KP"){
+        const eligible=koorOwnSessions();
+        if(!eligible.some(s=>String(s.id)===String(session.id))){
+            toast("Sesi ini tidak tersedia pada daftar kehadiran akun Anda.","error");return;
         }
+        const index=eligible.findIndex(s=>String(s.id)===String(session.id));
+        if(index>=5) koorSessionPickerExpanded=true;
+    }else{
+        const eligible=load(DB.sessions)
+            .filter(s=>s.creatorRole==="HRD" || (s.creatorRole==="KOOR KP" && s.attendanceSubmitted===true))
+            .sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+        const index=eligible.findIndex(s=>String(s.id)===String(session.id));
+        if(index>=SESSION_PICKER_PREVIEW_LIMIT) sessionPickerExpanded=true;
+    }
+
+    showPage(targetPage);
+    if(currentUser.role==="HRD"){
+        renderGeneratedQR(type,session);
         const eligible=load(DB.sessions).filter(s=>s.creatorRole==="HRD" ||
             (s.creatorRole==="KOOR KP" && s.attendanceSubmitted===true));
-        if(eligible.some(s=>String(s.id)===String(session.id))){
-            if(!sessionPickerExpanded && eligible.findIndex(s=>String(s.id)===String(session.id))>=SESSION_PICKER_PREVIEW_LIMIT){
-                sessionPickerExpanded=true;
-            }
+        const isVisibleToHrd=eligible.some(s=>String(s.id)===String(session.id));
+        const picker=document.getElementById("hrdSessionAttendancePicker");
+        if(isVisibleToHrd){
             populateSessionAttendancePicker();
             if(picker){picker.value=String(session.id);renderSessionStaffStatus();}
+            const section=picker?.closest(".section-card");
+            section?.scrollIntoView({behavior:"smooth",block:"start"});
+            toast("QR dan daftar kehadiran sesi berhasil dibuka.","success");
+        }else{
+            const table=document.getElementById("hrdSessionAttendanceTable");
+            if(table) table.innerHTML=emptyHTML("fa-lock","Sesi ini masih berstatus Draft Koor KP. Daftar kehadiran baru dapat dilihat HRD setelah Koor KP menekan Submit ke HRD.");
+            document.getElementById("hrdSessionAttendancePicker")?.closest(".section-card")?.scrollIntoView({behavior:"smooth",block:"start"});
+            toast("QR ditampilkan. Rekap kehadiran sesi Draft Koor KP akan terbuka setelah disubmit ke HRD.","warning");
         }
-        const section=document.getElementById("hrdSessionAttendancePicker")?.closest(".section-card");
-        section?.scrollIntoView({behavior:"smooth",block:"start"});
     }else{
-        const eligible=koorOwnSessions();
-        if(eligible.some(s=>String(s.id)===String(session.id))){
-            if(!koorSessionPickerExpanded && eligible.findIndex(s=>String(s.id)===String(session.id))>=5){
-                koorSessionPickerExpanded=true;
-            }
-            populateKoorSessionPicker();
-            const picker=document.getElementById("koorSessionPicker");
-            if(picker){picker.value=String(session.id);renderKoorSessionRoster();}
-        }
+        renderKoorAttendanceQrPreview(session);
+        const picker=document.getElementById("koorSessionPicker");
+        if(picker){picker.value=String(session.id);handleKoorSessionPickerChange();}
         document.getElementById("page-koor-attendance")?.scrollIntoView({behavior:"smooth",block:"start"});
+        toast("QR dan daftar kehadiran sesi berhasil dibuka.","success");
     }
-    toast("QR dan daftar kehadiran sesi berhasil dibuka.","success");
 }
 
 /* EDIT QR SESSION */
@@ -6348,7 +6368,59 @@ function populateKoorSessionPicker(){
             <span style="font-size:12px;color:#64748b;margin-left:8px;">${visibleSessions.length} dari ${sessions.length} sesi</span>
         ` : "";
     }
+    handleKoorSessionPickerChange();
+}
+
+function handleKoorSessionPickerChange(){
+    if(currentUser?.role!=="KOOR KP") return;
+    const sessionId=document.getElementById("koorSessionPicker")?.value;
+    const session=koorOwnSessions().find(s=>String(s.id)===String(sessionId));
+    if(session) renderKoorAttendanceQrPreview(session);
+    else{
+        const preview=document.getElementById("koorAttendanceQrPreview");
+        if(preview) preview.classList.add("hidden");
+    }
     renderKoorSessionRoster();
+}
+
+function renderKoorAttendanceQrPreview(session){
+    const preview=document.getElementById("koorAttendanceQrPreview");
+    const box=document.getElementById("koorAttendanceQrBox");
+    const details=document.getElementById("koorAttendanceQrDetails");
+    if(!preview||!box||!details) return;
+    if(currentUser?.role!=="KOOR KP" || !session ||
+       session.creatorId!==currentUser.id || session.creatorRole!=="KOOR KP" ||
+       session.activity!=="Ngoprek" || session.division!==currentUser.division){
+        preview.classList.add("hidden");
+        box.innerHTML="";
+        details.innerHTML="";
+        return;
+    }
+    if(typeof QRCode!=="function"){
+        box.innerHTML=emptyHTML("fa-triangle-exclamation","Library QR belum tersedia. Muat ulang halaman lalu coba kembali.");
+        preview.classList.remove("hidden");
+        return;
+    }
+    box.innerHTML="";
+    const qr=document.createElement("div");
+    box.appendChild(qr);
+    new QRCode(qr,{
+        text:qrTextForSession(session),
+        width:220,height:220,
+        colorDark:"#000000",colorLight:"#ffffff",
+        correctLevel:QRCode.CorrectLevel.L
+    });
+    details.innerHTML=`
+        <div class="qr-info" style="margin-top:0;">
+            <div class="qr-info-row"><span>Kegiatan</span><span>${escapeHTML(session.activity)}</span></div>
+            <div class="qr-info-row"><span>Divisi</span><span>${escapeHTML(session.division)}</span></div>
+            <div class="qr-info-row"><span>Tanggal</span><span>${escapeHTML(session.date)}</span></div>
+            <div class="qr-info-row"><span>Waktu</span><span>${escapeHTML(session.start)} - ${escapeHTML(session.end)}</span></div>
+            <div class="qr-info-row"><span>Lokasi</span><span>${escapeHTML(session.location && session.location!=="-" ? session.location : "Belum ditentukan")}</span></div>
+            <div class="qr-info-row"><span>Status</span><span>${session.active ? "Aktif" : "Nonaktif"}</span></div>
+            <div class="qr-info-row"><span>Pengiriman</span><span>${session.attendanceSubmitted ? "Sudah disubmit ke HRD" : "Draft Koor KP"}</span></div>
+        </div>`;
+    preview.classList.remove("hidden");
 }
 
 function renderKoorSessionRoster(){
