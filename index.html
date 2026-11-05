@@ -4862,6 +4862,7 @@ function renderGeneratedQR(type,session){
         <div class="qr-info">
             <div class="qr-info-row"><span>Kegiatan</span><span>${escapeHTML(session.activity)}</span></div>
             <div class="qr-info-row"><span>Divisi</span><span>${escapeHTML(session.division)}</span></div>
+            <div class="qr-info-row"><span>Lokasi</span><span>${escapeHTML(session.location && session.location!=="-" ? session.location : "Belum ditentukan")}</span></div>
             <div class="qr-info-row"><span>Tanggal</span><span>${escapeHTML(session.date)}</span></div>
             <div class="qr-info-row"><span>Waktu</span><span>${escapeHTML(session.start)} - ${escapeHTML(session.end)}</span></div>
             <div class="qr-info-row"><span>Scan dibuka</span><span>${escapeHTML(minutesToTime(Math.max(0,timeToMinutes(session.start)-EARLY_OPEN_MIN)))}</span></div>
@@ -5574,11 +5575,14 @@ function renderQRSessionList(type){
                             <td>${escapeHTML(s.date)}</td>
                             <td>${escapeHTML(s.start)} - ${escapeHTML(s.end)}${Number(s.expireMinutes)>0 ? `<br><span style="font-size:11px;color:#b45309;">QR s/d ${escapeHTML(getSessionDeadline(s))}</span>` : ""}</td>
                             <td>${escapeHTML(s.creatorName)}</td>
-                            <td>${s.geoEnabled ? `<span class="badge badge-active" title="Radius ${Number(s.geoRadius)||0} m"><i class="fa-solid fa-location-dot"></i> ${Number(s.geoRadius)||0}m</span>` : `<span style="color:#999;font-size:12px;">Kantor</span>`}</td>
+                            <td><strong>${escapeHTML(s.location && s.location!=="-" ? s.location : "Lokasi belum diisi")}</strong>${s.geoEnabled ? `<br><span class="badge badge-active" title="Radius ${Number(s.geoRadius)||0} m"><i class="fa-solid fa-location-dot"></i> Radius ${Number(s.geoRadius)||0} m</span>` : ""}</td>
                             <td><span class="badge ${s.active ? "badge-active" : "badge-inactive"}">${s.active ? "Aktif" : "Nonaktif"}</span>${s.attendanceSubmitted ? `<br><span style="font-size:11px;color:#15803d;"><i class="fa-solid fa-paper-plane"></i> Disubmit</span>` : (s.creatorRole==="KOOR KP" ? `<br><span style="font-size:11px;color:#b45309;">Draft Koor</span>` : "")}</td>
                             <td><div class="row-actions">
                                 <button class="btn btn-outline" style="padding:7px 9px;" onclick="loadSessionToQR('${jsId(s.id)}','${type}')" aria-label="Tampilkan QR sesi ${escapeHTML(s.activity)}">
                                     <i class="fa-solid fa-qrcode"></i>
+                                </button>
+                                <button class="btn btn-outline" style="padding:7px 9px;" ${(currentUser.role==="KOOR KP" && s.attendanceSubmitted) ? 'disabled title="Sesi sudah disubmit dan terkunci."' : ""} onclick="openEditQRSession('${jsId(s.id)}','${type}')" aria-label="Edit QR sesi ${escapeHTML(s.activity)}">
+                                    <i class="fa-solid fa-pen"></i>
                                 </button>
                                 <button class="btn btn-danger" style="padding:7px 9px;" ${(currentUser.role==="KOOR KP" && s.attendanceSubmitted) ? 'disabled title="Sudah disubmit. Hanya HRD yang dapat menghapus."' : ""} onclick="deleteSession('${jsId(s.id)}','${type}')" aria-label="Hapus sesi ${escapeHTML(s.activity)}">
                                     <i class="fa-solid fa-trash"></i>
@@ -5599,6 +5603,49 @@ function loadSessionToQR(id,type){
     currentQR[type]=session;
     renderGeneratedQR(type, session);
     toast("QR session ditampilkan.", "success");
+}
+
+/* EDIT QR SESSION */
+function openEditQRSession(id,type){
+ const session=load(DB.sessions).find(x=>x&&x.id===id);
+ if(!session){toast("Sesi QR tidak ditemukan.","error");return;}
+ if(currentUser?.role!=="HRD"&&currentUser?.role!=="KOOR KP"){toast("Akses ditolak.","error");return;}
+ if(currentUser.role==="KOOR KP"&&(session.creatorId!==currentUser.id||session.creatorRole!=="KOOR KP"||session.activity!=="Ngoprek"||session.division!==currentUser.division||session.attendanceSubmitted===true)){toast("QR ini tidak dapat diedit oleh akun Koor KP.","error");return;}
+ document.getElementById("editQRSessionModal")?.remove();
+ const modal=document.createElement("div"); modal.id="editQRSessionModal";
+ modal.style.cssText="position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.58);display:flex;align-items:center;justify-content:center;padding:14px;";
+ modal.innerHTML='<section role="dialog" aria-modal="true" style="background:#fff;color:#171717;width:min(100%,560px);max-height:92dvh;overflow:auto;border-radius:18px;padding:20px;">' +
+ '<h3 style="margin:0 0 16px;">Edit QR Absensi</h3><form id="editQRSessionForm">' +
+ '<div class="form-group"><label>Kegiatan</label><input id="editQRActivity" class="form-control" maxlength="100" required></div>' +
+ '<div class="form-group"><label>Divisi</label><input id="editQRDivision" class="form-control" maxlength="80"></div>' +
+ '<div class="form-group"><label>Lokasi Kegiatan</label><input id="editQRLocation" class="form-control" maxlength="120" placeholder="Contoh: Ruang NEV"></div>' +
+ '<div class="form-group"><label>Tanggal</label><input id="editQRDate" type="date" class="form-control" required></div>' +
+ '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;"><div class="form-group"><label>Jam Mulai</label><input id="editQRStart" type="time" class="form-control" required></div><div class="form-group"><label>Jam Selesai</label><input id="editQREnd" type="time" class="form-control" required></div></div>' +
+ '<div class="form-group"><label>Catatan</label><textarea id="editQRNotes" class="form-control" rows="3" maxlength="1000"></textarea></div>' +
+ '<p style="font-size:12px;color:#64748b;">Token QR tidak berubah. Perubahan tanggal/jam dapat memengaruhi masa pemindaian QR.</p>' +
+ '<div style="display:flex;justify-content:flex-end;gap:9px;flex-wrap:wrap;"><button type="button" class="btn btn-outline" onclick="closeEditQRSession()">Batal</button><button id="editQRSaveButton" type="submit" class="btn btn-primary">Simpan Perubahan</button></div></form></section>';
+ document.body.appendChild(modal);
+ const set=(id,value)=>{const el=document.getElementById(id);if(el)el.value=value||"";};
+ set("editQRActivity",session.activity);set("editQRDivision",session.division);set("editQRLocation",session.location==="-"?"":session.location);set("editQRDate",session.date);set("editQRStart",session.start);set("editQREnd",session.end);set("editQRNotes",session.notes==="-"?"":session.notes);
+ if(session.creatorRole==="KOOR KP")document.getElementById("editQRDivision").readOnly=true;
+ modal.addEventListener("click",e=>{if(e.target===modal)closeEditQRSession();});
+ document.getElementById("editQRSessionForm").addEventListener("submit",e=>saveEditedQRSession(e,id,type));
+}
+function closeEditQRSession(){document.getElementById("editQRSessionModal")?.remove();}
+async function saveEditedQRSession(event,id,type){
+ event.preventDefault();const button=document.getElementById("editQRSaveButton");if(!button||button.disabled)return;
+ const sessions=load(DB.sessions),index=sessions.findIndex(x=>x&&x.id===id);if(index<0){toast("Sesi QR tidak ditemukan.","error");closeEditQRSession();return;}
+ const old=sessions[index];
+ if(currentUser.role==="KOOR KP"&&(old.creatorId!==currentUser.id||old.attendanceSubmitted===true)){toast("Sesi sudah dikunci atau bukan milik Anda.","error");return;}
+ const value=id=>document.getElementById(id).value.trim();
+ const activity=value("editQRActivity"),division=value("editQRDivision")||"-",location=value("editQRLocation")||"-",date=value("editQRDate"),start=value("editQRStart"),end=value("editQREnd"),notes=value("editQRNotes")||"-";
+ if(!activity||!date||!start||!end||start>=end){toast("Periksa kegiatan, tanggal, dan jam. Jam selesai harus setelah jam mulai.","error");return;}
+ if(old.creatorRole==="KOOR KP"&&(activity!=="Ngoprek"||division!==currentUser.division)){toast("Koor KP hanya dapat mengedit QR Ngoprek pada divisinya sendiri.","error");return;}
+ if(Number(old.expireMinutes)>timeToMinutes(end)-timeToMinutes(start)){toast("Masa berlaku QR melebihi durasi baru. Sesuaikan masa berlaku melalui pembuatan QR baru.","error");return;}
+ const updated={...old,activity,division,location,date,start,end,notes,updatedAt:new Date().toISOString()};sessions[index]=updated;
+ button.disabled=true;button.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...';
+ try{await save(DB.sessions,sessions);currentQR[type]=updated;renderGeneratedQR(type,updated);renderAll();closeEditQRSession();toast("Perubahan QR berhasil disimpan dan disinkronkan.","success");}
+ catch(error){currentQR[type]=updated;renderGeneratedQR(type,updated);renderAll();closeEditQRSession();toast("Perubahan tersimpan di perangkat, tetapi sinkronisasi server belum berhasil. Periksa antrean sinkronisasi.","warning");console.warn("Edit QR cloud sync:",error);}
 }
 
 
