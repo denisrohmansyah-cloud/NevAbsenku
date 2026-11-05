@@ -1088,39 +1088,60 @@ async function wakeCloudBootstrap(){
 }
 
 async function bootWithCloud(){
-    try{await migrateNevLegacyPhotos();}catch(photoErr){
-        cloudLastError="Migrasi foto lokal belum selesai: "+friendlyCloudError(photoErr);
-        console.error(cloudLastError);
-    }
-    if(!cloudSyncEnabled){initializeDatabase();endRestoringState();startCloudPolling();return;}
-
+    // Reveal cached UI before potentially expensive legacy-photo migration.
+    // The migration still completes before any cloud snapshot can replace local data.
     const savedUser = readSavedLogin();
-    // Sisa sesi yang setengah tersimpan (token tanpa user, atau sebaliknya) dibersihkan.
-    if(!savedUser && (getAuthToken() || localStorage.getItem("nev_current_user"))) clearAuthSession();
-
-    wakeCloudBootstrap();
-
-    if(!savedUser){
-        initializeDatabase();
+    if(!cloudSyncEnabled){
+        if(savedUser){
+            ensureLocalDefaults(savedUser);
+            try{
+                restoreSessionUI(savedUser);
+                if(typeof renderAll==="function") renderAll();
+            }catch(e){ console.error("Pemulihan tampilan sesi gagal:",e); }
+        }else{
+            initializeDatabase();
+        }
         endRestoringState();
         updateCloudBadge();
         startCloudPolling();
+        try{ await migrateNevLegacyPhotos(); }catch(photoErr){
+            cloudLastError="Migrasi foto lokal belum selesai: "+friendlyCloudError(photoErr);
+            console.error(cloudLastError);
+            updateCloudBadge();
+        }
         return;
     }
 
-    // 1) Tampilkan aplikasi SEKARANG dari cache lokal — tidak menunggu jaringan sama sekali.
-    ensureLocalDefaults(savedUser);
-    try{
-        restoreSessionUI(savedUser);
-        if(typeof renderAll==="function") renderAll();
-    }catch(e){
-        console.error("Pemulihan tampilan sesi gagal:",e);
+    // Sisa sesi yang setengah tersimpan (token tanpa user, atau sebaliknya) dibersihkan.
+    if(!savedUser && (getAuthToken() || localStorage.getItem("nev_current_user"))) clearAuthSession();
+
+    if(savedUser){
+        // 1) Tampilkan aplikasi dari cache lokal tanpa menunggu IndexedDB / jaringan.
+        ensureLocalDefaults(savedUser);
+        try{
+            restoreSessionUI(savedUser);
+            if(typeof renderAll==="function") renderAll();
+        }catch(e){
+            console.error("Pemulihan tampilan sesi gagal:",e);
+        }
+    }else{
+        initializeDatabase();
     }
     endRestoringState();
     updateCloudBadge();
-    startCloudPolling();
 
-    // 2) Validasi ke server di latar belakang.
+    // Bangunkan Apps Script paralel dengan migrasi lokal.
+    wakeCloudBootstrap();
+    try{ await migrateNevLegacyPhotos(); }catch(photoErr){
+        cloudLastError="Migrasi foto lokal belum selesai: "+friendlyCloudError(photoErr);
+        console.error(cloudLastError);
+        updateCloudBadge();
+    }
+
+    startCloudPolling();
+    if(!savedUser) return;
+
+    // 2) Validasi sesi ke server hanya setelah migrasi lokal aman.
     const ok = await fetchCloudAll();
     if(ok){
         if(!currentUser) return;
@@ -1135,11 +1156,10 @@ async function bootWithCloud(){
         if(typeof renderAll==="function") renderAll();
         if(typeof consumePendingAttendance==="function") consumePendingAttendance();
     }
-    // ok=false: bila token ditolak server, handleSessionExpired() sudah mengembalikan ke layar login.
-    // Bila hanya jaringan/server lambat, pengguna tetap login dan badge Cloud menampilkan statusnya.
+    // ok=false: token yang ditolak ditangani handleSessionExpired(); gangguan sementara
+    // tidak menutup UI lokal dan tetap ditampilkan melalui badge sinkronisasi.
     updateCloudBadge();
 }
-
 setInterval(updateCloudBadge,5000);
 bootWithCloud();
 
