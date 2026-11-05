@@ -164,7 +164,8 @@
 href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
 <!-- QR Generator -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<!-- QR Generator: defer agar tidak menghambat parsing HTML; tersedia sebelum interaksi halaman. -->
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <!-- Library berat dimuat saat fiturnya benar-benar digunakan. -->
 <script>
@@ -4451,6 +4452,17 @@ async function login(event){
       "nev_current_user",
       JSON.stringify(currentUser)
     );
+
+    if(typeof migrateNevLegacyPhotos === "function"){
+        try{ await migrateNevLegacyPhotos(); }
+        catch(photoErr){
+            console.error("Migrasi foto lokal belum selesai:",photoErr);
+            toast("Penyimpanan foto lama belum selesai diproses. Data lokal dipertahankan; coba login kembali setelah memeriksa penyimpanan browser.","error");
+            clearAuthSession();
+            currentUser=null;
+            return;
+        }
+    }
 
     if(typeof fetchCloudAll === "function"){
         const synced = await fetchCloudAll();
