@@ -10,7 +10,115 @@
 
 <!-- Cegah kilatan layar login saat refresh jika masih ada sesi tersimpan.
      Kelas dicabut oleh cloud-sync.js; timer 8 dtk hanya sebagai pengaman. -->
-<style>html.nev-restoring #loginScreen{display:none!important}</style>
+<style>html.nev-restoring #loginScreen{display:none!important}
+/* =========================================================
+   MOBILE POLISH — touch targets, compact layouts, safe overflow
+   CSS-only: tidak mengubah alur absensi, sinkronisasi, atau data.
+========================================================= */
+@media (max-width: 800px) {
+  html { -webkit-text-size-adjust: 100%; }
+  body { overflow-x: hidden; }
+  .main, .content, .page, .section-card, .card,
+  .grid-2, .grid-3, .stats, .table-wrapper { min-width: 0; }
+  .sidebar { z-index: 1200; height: 100dvh; overflow-y: auto; overscroll-behavior: contain; }
+  .mobile-menu {
+    width: 44px; height: 44px; min-width: 44px; flex: 0 0 44px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 12px;
+  }
+  .topbar { position: sticky; top: 0; z-index: 100; }
+  .topbar > div:first-child { min-width: 0; }
+  .topbar-title { min-width: 0; }
+  .topbar-title h2, #pageTitle { overflow-wrap: anywhere; }
+  #currentDate { max-width: 38%; text-align: right; line-height: 1.35; }
+  .content { padding: 12px; }
+  .section-card { margin-bottom: 14px; }
+  .section-header { gap: 10px; }
+  .section-header > * { min-width: 0; }
+  .welcome { overflow: hidden; }
+  .stats { align-items: stretch; }
+  .stat-card { min-width: 0; }
+  .stat-card h3 { overflow-wrap: anywhere; }
+  .table-wrapper {
+    display: block; width: 100%; overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch; scrollbar-width: thin;
+    border-radius: 10px;
+  }
+  .table-wrapper table { min-width: 680px; }
+  .table-wrapper th, .table-wrapper td { white-space: nowrap; }
+  .table-wrapper td:first-child { white-space: normal; min-width: 130px; }
+  .form-grid, .filter-grid { min-width: 0; }
+  .form-control, input, select, textarea {
+    max-width: 100%; min-width: 0; font-size: 16px;
+  }
+  .btn, button { touch-action: manipulation; }
+  .btn:not(.icon-btn), .qr-actions .btn, .modal-footer .btn {
+    min-height: 44px;
+  }
+  .modal { padding: 8px; align-items: flex-end; }
+  .modal-box {
+    width: 100%; max-width: 100%; max-height: min(92dvh, 900px);
+    overflow-y: auto; overscroll-behavior: contain;
+    margin: 0; border-radius: 18px 18px 12px 12px;
+  }
+  .modal-body { overflow: visible; }
+  .modal-footer { position: sticky; bottom: 0; background: inherit; }
+  .toast-container { z-index: 2000; }
+  .toast { overflow-wrap: anywhere; }
+  .office-map { height: min(52dvh, 340px); }
+  .selfie-frame { max-width: min(100%, 420px); }
+  img, video, canvas { max-width: 100%; }
+}
+@media (max-width: 550px) {
+  .topbar { padding: 10px 10px; gap: 6px; min-height: 62px; }
+  .topbar-title h2, #pageTitle { font-size: 17px; line-height: 1.2; }
+  .topbar-title p { font-size: 11px; }
+  #currentDate { font-size: 10px !important; max-width: 32%; }
+  .content { padding: 10px; }
+  .welcome { padding: 18px 15px; }
+  .welcome h1 { font-size: 21px; }
+  .welcome p { font-size: 13px; }
+  .section-card { padding: 13px; border-radius: 14px; }
+  .section-header { align-items: flex-start; }
+  .section-header h3 { font-size: 16px; }
+  .stats { gap: 8px; }
+  .stat-card { padding: 11px; border-radius: 13px; }
+  .stat-card h3 { font-size: 19px; }
+  .stat-card p { font-size: 11px; line-height: 1.35; }
+  .stat-icon { width: 38px; height: 38px; }
+  .qr-preview { padding: 12px; }
+  .qr-box { min-height: 180px; }
+  .qr-actions { gap: 8px; }
+  .qr-actions .btn { width: 100%; }
+  .form-group { min-width: 0; }
+  .form-control { width: 100%; min-height: 46px; }
+  .modal { padding: 0; }
+  .modal-box { max-height: 94dvh; border-radius: 18px 18px 0 0; }
+  .modal-header, .modal-body, .modal-footer { padding-left: 15px; padding-right: 15px; }
+  .modal-footer { gap: 8px; }
+  .modal-footer .btn { flex: 1 1 120px; }
+  .toast-container { left: 10px; right: 10px; bottom: max(12px, env(safe-area-inset-bottom)); }
+  .toast { width: 100%; min-width: 0; font-size: 12px; }
+  .proof-thumb { width: 40px; height: 40px; }
+}
+@media (max-width: 360px) {
+  .content { padding: 8px; }
+  .topbar { padding-left: 8px; padding-right: 8px; }
+  .topbar-title h2, #pageTitle { font-size: 15px; }
+  #currentDate { display: none; }
+  .stats { gap: 6px; }
+  .stat-card { padding: 9px; }
+  .section-card { padding: 11px; }
+}
+/* Respect device safe areas on modern phones. */
+@supports (padding: max(0px)) {
+  @media (max-width: 800px) {
+    .content { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+    .toast-container { bottom: max(12px, env(safe-area-inset-bottom)); }
+  }
+}
+
+</style>
 <script>
 (function(){
     try{
