@@ -118,6 +118,32 @@
   }
 }
 
+
+/* QR SESSION TABLE — rapikan lokasi/status dan tampilan layar kecil */
+.qr-session-table th,.qr-session-table td{vertical-align:middle;}
+.qr-session-table .qr-location-cell{min-width:150px;white-space:normal;}
+.qr-location-name{font-weight:750;line-height:1.35;color:#171717;margin-bottom:7px;overflow-wrap:anywhere;}
+.qr-radius-badge{display:inline-flex;align-items:center;gap:5px;padding:7px 11px;font-size:11px;white-space:nowrap;}
+.qr-no-radius{display:block;color:#94a3b8;font-size:11px;line-height:1.4;}
+.qr-status-cell{min-width:110px;white-space:normal!important;}
+.qr-status-cell .badge{display:inline-flex;justify-content:center;min-width:72px;padding:7px 12px;font-size:11px;}
+.qr-submitted,.qr-draft{display:flex;align-items:center;gap:5px;margin-top:7px;font-size:11px;font-weight:650;line-height:1.35;white-space:nowrap;}
+.qr-submitted{color:#15803d;}
+.qr-draft{color:#b45309;}
+@media(max-width:800px){
+ .qr-session-table{min-width:760px!important;}
+ .qr-session-table th,.qr-session-table td{padding:12px 10px;}
+ .qr-session-table .qr-location-cell{min-width:150px;}
+ .qr-session-table .qr-status-cell{min-width:112px;}
+ .qr-session-table .qr-location-name{font-size:13px;}
+ .qr-radius-badge{font-size:10px;padding:7px 9px;}
+}
+@media(max-width:550px){
+ .qr-session-table{min-width:720px!important;}
+ .qr-session-table th,.qr-session-table td{padding:11px 9px;}
+ .qr-session-table .qr-location-cell{min-width:138px;}
+ .qr-session-table .qr-status-cell{min-width:104px;}
+}
 </style>
 <script>
 (function(){
@@ -5563,7 +5589,7 @@ function renderQRSessionList(type){
             ` : ""}
         </div>
         <div class="table-wrapper">
-            <table>
+            <table class="qr-session-table">
                 <thead>
                     <tr><th>Kegiatan</th><th>Divisi</th><th>Tanggal</th><th>Waktu</th><th>Pembuat</th><th>Lokasi</th><th>Status</th><th>Aksi</th></tr>
                 </thead>
@@ -5575,8 +5601,8 @@ function renderQRSessionList(type){
                             <td>${escapeHTML(s.date)}</td>
                             <td>${escapeHTML(s.start)} - ${escapeHTML(s.end)}${Number(s.expireMinutes)>0 ? `<br><span style="font-size:11px;color:#b45309;">QR s/d ${escapeHTML(getSessionDeadline(s))}</span>` : ""}</td>
                             <td>${escapeHTML(s.creatorName)}</td>
-                            <td><strong>${escapeHTML(s.location && s.location!=="-" ? s.location : "Lokasi belum diisi")}</strong>${s.geoEnabled ? `<br><span class="badge badge-active" title="Radius ${Number(s.geoRadius)||0} m"><i class="fa-solid fa-location-dot"></i> Radius ${Number(s.geoRadius)||0} m</span>` : ""}</td>
-                            <td><span class="badge ${s.active ? "badge-active" : "badge-inactive"}">${s.active ? "Aktif" : "Nonaktif"}</span>${s.attendanceSubmitted ? `<br><span style="font-size:11px;color:#15803d;"><i class="fa-solid fa-paper-plane"></i> Disubmit</span>` : (s.creatorRole==="KOOR KP" ? `<br><span style="font-size:11px;color:#b45309;">Draft Koor</span>` : "")}</td>
+                            <td class="qr-location-cell"><div class="qr-location-name">${escapeHTML(s.location && s.location!=="-" ? s.location : "Lokasi belum diisi")}</div>${s.geoEnabled ? `<span class="badge badge-active qr-radius-badge"><i class="fa-solid fa-location-dot"></i> Radius ${Number(s.geoRadius)||0} m</span>` : `<span class="qr-no-radius">Tanpa batas lokasi khusus</span>`}</td>
+                            <td class="qr-status-cell"><span class="badge ${s.active ? "badge-active" : "badge-inactive"}">${s.active ? "Aktif" : "Nonaktif"}</span>${s.attendanceSubmitted ? `<span class="qr-submitted"><i class="fa-solid fa-paper-plane"></i> Disubmit</span>` : (s.creatorRole==="KOOR KP" ? `<span class="qr-draft"><i class="fa-regular fa-file-lines"></i> Draft Koor</span>` : "")}</td>
                             <td><div class="row-actions">
                                 <button class="btn btn-outline" style="padding:7px 9px;" onclick="loadSessionToQR('${jsId(s.id)}','${type}')" aria-label="Tampilkan QR sesi ${escapeHTML(s.activity)}">
                                     <i class="fa-solid fa-qrcode"></i>
