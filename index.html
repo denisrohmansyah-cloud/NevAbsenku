@@ -5624,11 +5624,60 @@ function renderQRSessionList(type){
 
 function loadSessionToQR(id,type){
     const sessions=load(DB.sessions);
-    const session=sessions.find(s=>s.id===id);
-    if(!session)return;
+    const session=sessions.find(s=>String(s.id)===String(id));
+    if(!session){toast("Sesi QR tidak ditemukan.","error");return;}
+
+    // Terapkan scope role sebelum menampilkan QR maupun roster.
+    if(currentUser?.role==="HRD" && type!=="hrd"){
+        toast("Aksi QR tidak sesuai dengan akun HRD.","error");return;
+    }
+    if(currentUser?.role==="KOOR KP"){
+        if(type!=="koor" || session.creatorId!==currentUser.id ||
+           session.creatorRole!=="KOOR KP" || session.activity!=="Ngoprek" ||
+           session.division!==currentUser.division){
+            toast("Koor KP hanya dapat membuka QR dan kehadiran Ngoprek miliknya sendiri.","error");return;
+        }
+    }else if(currentUser?.role!=="HRD"){
+        toast("Akses ditolak.","error");return;
+    }
+
+    const targetPage=currentUser.role==="HRD" ? "hrd-qr" : "koor-qr";
     currentQR[type]=session;
-    renderGeneratedQR(type, session);
-    toast("QR session ditampilkan.", "success");
+
+    // Muat QR dan pilih sesi yang sama pada bagian Kehadiran Staf per Sesi.
+    showPage(targetPage);
+    renderGeneratedQR(type,session);
+
+    if(currentUser.role==="HRD"){
+        const picker=document.getElementById("hrdSessionAttendancePicker");
+        const visible=hrdVisibleSessions().some(s=>String(s.id)===String(session.id));
+        if(!visible){
+            toast("Sesi ini belum tersedia untuk rekap HRD (sesi Koor KP harus disubmit).","warning");return;
+        }
+        const eligible=load(DB.sessions).filter(s=>s.creatorRole==="HRD" ||
+            (s.creatorRole==="KOOR KP" && s.attendanceSubmitted===true));
+        if(eligible.some(s=>String(s.id)===String(session.id))){
+            if(!sessionPickerExpanded && eligible.findIndex(s=>String(s.id)===String(session.id))>=SESSION_PICKER_PREVIEW_LIMIT){
+                sessionPickerExpanded=true;
+            }
+            populateSessionAttendancePicker();
+            if(picker){picker.value=String(session.id);renderSessionStaffStatus();}
+        }
+        const section=document.getElementById("hrdSessionAttendancePicker")?.closest(".section-card");
+        section?.scrollIntoView({behavior:"smooth",block:"start"});
+    }else{
+        const eligible=koorOwnSessions();
+        if(eligible.some(s=>String(s.id)===String(session.id))){
+            if(!koorSessionPickerExpanded && eligible.findIndex(s=>String(s.id)===String(session.id))>=5){
+                koorSessionPickerExpanded=true;
+            }
+            populateKoorSessionPicker();
+            const picker=document.getElementById("koorSessionPicker");
+            if(picker){picker.value=String(session.id);renderKoorSessionRoster();}
+        }
+        document.getElementById("page-koor-attendance")?.scrollIntoView({behavior:"smooth",block:"start"});
+    }
+    toast("QR dan daftar kehadiran sesi berhasil dibuka.","success");
 }
 
 /* EDIT QR SESSION */
